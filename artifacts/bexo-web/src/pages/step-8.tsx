@@ -1,119 +1,77 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useOnboarding } from '../context/OnboardingContext';
 import { Button, Card } from '../design-system/primitives';
-import { ArrowRight, CheckCircle2 } from 'lucide-react';
-import { cn } from '../design-system/primitives';
+import { CheckCircle2, Copy, ExternalLink, Sparkles, ArrowRight } from 'lucide-react';
+import logo from '../assets/ace-digitals-logo.png';
 
-const TEMPLATES = [
-  {
-    id: 'minimal',
-    name: 'Minimal',
-    description: 'Clean, typography-driven layout perfect for developers.',
-    color: 'bg-slate-900'
-  },
-  {
-    id: 'academic',
-    name: 'Academic',
-    description: 'Traditional structure, emphasizes research and papers.',
-    color: 'bg-blue-900'
-  },
-  {
-    id: 'creative',
-    name: 'Creative',
-    description: 'Bold colors and unique grid layouts for designers.',
-    color: 'bg-rose-600'
-  }
-];
+export default function Step8Publish() {
+  const { data, nextStep } = useOnboarding();
+  const [copied, setCopied] = useState(false);
+  
+  const handleString = data.name ? data.name.toLowerCase().replace(/[^a-z0-9]/g, '') : 'portfolio';
+  const url = `${handleString}.mybexo.com`;
 
-export default function Step8Theme() {
-  const { data, updateData, nextStep } = useOnboarding();
-  const [selected, setSelected] = useState(data.templateId || 'minimal');
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(`https://${url}`);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const handleContinue = () => {
-    updateData({ templateId: selected });
     nextStep(8);
   };
 
   return (
-    <div className="flex flex-col h-full max-w-4xl w-full mx-auto pb-10">
-      <div className="mb-10 text-center md:text-left">
-        <h1 className="font-serif text-3xl md:text-4xl font-bold text-slate-900 mb-3 tracking-tight">
-          Choose a Template
+    <div className="flex-1 flex flex-col items-center justify-center py-12 px-4 relative max-w-3xl mx-auto w-full">
+      <div className="absolute top-0 w-full h-[300px] bg-gradient-to-b from-blue-50 to-transparent -z-10" />
+      
+      <div className="w-20 h-20 bg-white rounded-2xl shadow-sm border border-slate-200 flex items-center justify-center mb-8 animate-in slide-in-from-top-4 fade-in duration-500">
+        <img src={logo} alt="BEXO" className="w-10 h-10 object-contain" />
+      </div>
+
+      <div className="text-center max-w-2xl mb-12 animate-in slide-in-from-bottom-4 fade-in duration-700 delay-100 fill-mode-both">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-green-100 text-green-700 text-sm font-medium mb-6">
+          <CheckCircle2 className="w-4 h-4" /> Portfolio Published
+        </div>
+        <h1 className="font-serif text-4xl md:text-5xl font-bold text-slate-900 mb-4 tracking-tight">
+          Your site is ready!
         </h1>
-        <p className="text-slate-500 text-base md:text-lg">
-          Select a starting point. You can customize colors and fonts later.
+        <p className="text-slate-500 text-lg">
+          Your professional presence is live. Share this link on your resume and LinkedIn. You're just one step away from finishing.
         </p>
       </div>
 
-      <div className="grid md:grid-cols-3 gap-6 flex-1">
-        {TEMPLATES.map((tpl) => (
-          <Card 
-            key={tpl.id}
-            className={cn(
-              "cursor-pointer transition-all duration-300 border-2 overflow-hidden flex flex-col group",
-              selected === tpl.id 
-                ? "border-blue-600 ring-4 ring-blue-50" 
-                : "border-slate-200 hover:border-slate-300 hover:shadow-md"
-            )}
-            onClick={() => setSelected(tpl.id)}
-          >
-            {/* Mock Thumbnail Preview */}
-            <div className="h-48 bg-slate-100 border-b border-slate-100 relative overflow-hidden flex flex-col">
-              {/* Fake browser header */}
-              <div className="h-6 bg-slate-200/50 border-b border-slate-200 flex items-center px-2 gap-1.5 shrink-0">
-                <div className="w-2 h-2 rounded-full bg-slate-300" />
-                <div className="w-2 h-2 rounded-full bg-slate-300" />
-                <div className="w-2 h-2 rounded-full bg-slate-300" />
-              </div>
-              
-              {/* Fake content */}
-              <div className="p-4 flex-1 flex flex-col gap-3">
-                <div className="flex justify-between items-center">
-                  <div className={cn("w-8 h-8 rounded-full", tpl.color, "opacity-20")} />
-                  <div className="flex gap-2">
-                    <div className="w-8 h-2 rounded bg-slate-200" />
-                    <div className="w-8 h-2 rounded bg-slate-200" />
-                  </div>
-                </div>
-                <div className="mt-2">
-                  <div className={cn("w-2/3 h-4 rounded mb-2", tpl.color, "opacity-80")} />
-                  <div className="w-1/2 h-2 rounded bg-slate-200" />
-                </div>
-                <div className="grid grid-cols-2 gap-2 mt-auto">
-                  <div className="h-10 rounded bg-slate-200/50" />
-                  <div className="h-10 rounded bg-slate-200/50" />
-                </div>
-              </div>
-
-              {/* Selection overlay */}
-              <div className={cn(
-                "absolute inset-0 bg-blue-600/10 flex items-center justify-center transition-opacity backdrop-blur-[1px]",
-                selected === tpl.id ? "opacity-100" : "opacity-0"
-              )}>
-                <div className="bg-blue-600 text-white rounded-full p-2 shadow-lg scale-110">
-                  <CheckCircle2 className="w-6 h-6" />
-                </div>
-              </div>
+      <Card className="w-full p-2 md:p-3 shadow-lg shadow-blue-900/5 mb-12 animate-in zoom-in-95 fade-in duration-700 delay-200 fill-mode-both">
+        <div className="flex flex-col md:flex-row items-center gap-3 bg-slate-50 rounded-xl p-4 border border-slate-100">
+          <div className="flex-1 flex items-center gap-3 overflow-hidden w-full">
+            <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+              <Sparkles className="w-6 h-6 text-blue-600" />
             </div>
-
-            <div className="p-5 bg-white">
-              <h3 className="font-bold text-slate-900 mb-1 flex items-center justify-between">
-                {tpl.name}
-              </h3>
-              <p className="text-sm text-slate-500 leading-relaxed">
-                {tpl.description}
+            <div className="truncate">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Your Public URL</p>
+              <p className="text-lg md:text-2xl font-medium text-slate-900 truncate">
+                https://<span className="text-blue-600">{url}</span>
               </p>
             </div>
-          </Card>
-        ))}
-      </div>
+          </div>
+          <div className="flex gap-2 w-full md:w-auto mt-4 md:mt-0">
+            <Button variant="outline" className="flex-1 md:flex-none h-12" onClick={copyToClipboard}>
+              {copied ? <CheckCircle2 className="w-4 h-4 mr-2 text-green-600" /> : <Copy className="w-4 h-4 mr-2" />}
+              {copied ? 'Copied' : 'Copy'}
+            </Button>
+            <Button variant="secondary" className="flex-1 md:flex-none h-12">
+              <ExternalLink className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+      </Card>
 
-      <div className="mt-10 flex justify-end">
+      <div className="animate-in fade-in duration-700 delay-300 fill-mode-both w-full">
         <Button 
-          className="w-full md:w-auto md:min-w-[200px] h-14 text-base group shadow-lg shadow-blue-600/20"
+          className="w-full h-14 text-base group"
           onClick={handleContinue}
         >
-          Publish Portfolio
+          Continue to Activation
           <ArrowRight className="w-5 h-5 ml-2 transition-transform group-hover:translate-x-1" />
         </Button>
       </div>

@@ -12,9 +12,9 @@ const STEPS = [
   { id: 4, label: 'Photo' },
   { id: 5, label: 'Resume' },
   { id: 6, label: 'Profile' },
-  { id: 7, label: 'Plan' },
-  { id: 8, label: 'Theme' },
-  { id: 9, label: 'Publish' },
+  { id: 7, label: 'Theme' },
+  { id: 8, label: 'Publish' },
+  { id: 9, label: 'Plan' },
 ];
 
 export function OnboardingLayout({ children }: { children: React.ReactNode }) {
@@ -22,11 +22,6 @@ export function OnboardingLayout({ children }: { children: React.ReactNode }) {
   const match = location.match(/\/step\/(\d+)/);
   const currentStep = match ? parseInt(match[1], 10) : 1;
   const { prevStep } = useOnboarding();
-
-  if (currentStep === 9) {
-    // Step 9 has no sidebar, full screen layout
-    return <div className="min-h-[100dvh] bg-slate-50">{children}</div>;
-  }
 
   return (
     <div className="flex min-h-[100dvh] bg-slate-50/50 flex-col md:flex-row">
@@ -42,11 +37,11 @@ export function OnboardingLayout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <div className="text-xs font-medium text-slate-500 w-16">Step {currentStep} of 8</div>
+          <div className="text-xs font-medium text-slate-500 w-16">Step {currentStep} of 9</div>
           <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
             <div 
               className="h-full bg-blue-600 rounded-full transition-all duration-500 ease-out"
-              style={{ width: `${(currentStep / 8) * 100}%` }}
+              style={{ width: `${(currentStep / 9) * 100}%` }}
             />
           </div>
         </div>
@@ -62,7 +57,7 @@ export function OnboardingLayout({ children }: { children: React.ReactNode }) {
         </div>
         
         <div className="flex flex-col gap-6">
-          {STEPS.slice(0, 8).map((step) => {
+          {STEPS.map((step) => {
             const isCompleted = currentStep > step.id;
             const isCurrent = currentStep === step.id;
             
@@ -110,7 +105,7 @@ export function OnboardingLayout({ children }: { children: React.ReactNode }) {
         <div className="absolute top-0 right-0 -translate-y-1/4 translate-x-1/4 w-[800px] h-[800px] bg-blue-50/50 rounded-full blur-3xl pointer-events-none" />
         
         <div className="w-full flex-1 overflow-y-auto px-4 py-6 md:p-8 lg:p-12 z-10 flex flex-col">
-          <div className="w-full max-w-3xl mx-auto flex flex-col flex-1 relative">
+          <div className="w-full max-w-4xl mx-auto flex flex-col flex-1 relative">
             {currentStep > 1 && currentStep < 9 && (
               <button 
                 onClick={() => prevStep(currentStep)}

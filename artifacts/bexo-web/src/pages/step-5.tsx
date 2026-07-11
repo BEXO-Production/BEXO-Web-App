@@ -23,14 +23,21 @@ export default function Step5Resume() {
   const processFile = (selectedFile: File) => {
     setStatus('uploading');
     
-    // Mock upload
+    // Mock upload delay
     setTimeout(() => {
       setStatus('parsing');
       
-      // Mock parsing
+      // Mock parsing delay
       setTimeout(() => {
         setStatus('transitioning');
-        updateData({ resumeFileName: selectedFile.name });
+        
+        // Mock a plausible file size between 1MB and 4MB
+        const randomSizeBytes = Math.floor((Math.random() * 3 + 1) * 1024 * 1024);
+        
+        updateData({ 
+          resumeFileName: selectedFile.name,
+          resumeFileSize: randomSizeBytes
+        });
         
         // Transition to step 6 automatically after brief success message
         setTimeout(() => {
@@ -132,7 +139,7 @@ export default function Step5Resume() {
         </Button>
         {status === 'idle' && (
           <p className="text-center text-sm text-slate-500 mt-4">
-            Don't have a resume? <button onClick={() => { updateData({ resumeFileName: 'manual_entry' }); nextStep(5); }} className="text-blue-600 font-medium hover:underline">Enter manually</button>
+            Don't have a resume? <button onClick={() => { updateData({ resumeFileName: 'manual_entry', resumeFileSize: 0 }); nextStep(5); }} className="text-blue-600 font-medium hover:underline">Enter manually</button>
           </p>
         )}
       </div>

@@ -1,104 +1,170 @@
 import React, { useState } from 'react';
+import { useLocation } from 'wouter';
 import { useOnboarding } from '../context/OnboardingContext';
-import { Button, Card } from '../design-system/primitives';
-import { CheckCircle2, Copy, ExternalLink, Settings, Sparkles, User, FileText, ArrowRight } from 'lucide-react';
-import logo from '../assets/ace-digitals-logo.png';
+import { Button, Input, Card } from '../design-system/primitives';
+import { Check, ShieldCheck, Loader2, ArrowRight } from 'lucide-react';
+import { cn } from '../design-system/primitives';
 
-export default function Step9Publish() {
-  const { data } = useOnboarding();
-  const [copied, setCopied] = useState(false);
+export default function Step9Plan() {
+  const { data, updateData } = useOnboarding();
+  const [, setLocation] = useLocation();
   
-  const handleString = data.name ? data.name.toLowerCase().replace(/[^a-z0-9]/g, '') : 'portfolio';
-  const url = `${handleString}.mybexo.com`;
+  const [tab, setTab] = useState<'pay' | 'code'>('pay');
+  const [plan, setPlan] = useState<'annual' | 'lifetime'>('annual');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [code, setCode] = useState('');
+  const [codeError, setCodeError] = useState('');
 
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(`https://${url}`);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const validateCode = () => {
+    // Mock activation key format: BEXO-XXXX-XXXX
+    const pattern = /^BEXO-[A-Z0-9]{4}-[A-Z0-9]{4}$/i;
+    if (!pattern.test(code)) {
+      setCodeError('Invalid code format. Expected: BEXO-XXXX-XXXX');
+      return false;
+    }
+    setCodeError('');
+    return true;
+  };
+
+  const handleCheckout = () => {
+    if (tab === 'code' && !validateCode()) {
+      return;
+    }
+    
+    setIsProcessing(true);
+    setTimeout(() => {
+      setIsProcessing(false);
+      updateData({ plan: tab === 'code' ? 'activation_code' : plan });
+      setLocation('/dashboard'); // Finish flow and go to dashboard
+    }, 2000);
   };
 
   return (
-    <div className="min-h-[100dvh] flex flex-col items-center py-12 px-4 md:py-20 relative">
-      <div className="absolute top-0 w-full h-[400px] bg-gradient-to-b from-blue-50 to-transparent -z-10" />
-      
-      <div className="w-16 h-16 bg-white rounded-2xl shadow-sm border border-slate-200 flex items-center justify-center mb-8 animate-in slide-in-from-top-4 fade-in duration-500">
-        <img src={logo} alt="BEXO" className="w-8 h-8 object-contain" />
-      </div>
-
-      <div className="text-center max-w-2xl mb-12 animate-in slide-in-from-bottom-4 fade-in duration-700 delay-100 fill-mode-both">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-green-100 text-green-700 text-sm font-medium mb-6">
-          <CheckCircle2 className="w-4 h-4" /> Successfully Published
-        </div>
-        <h1 className="font-serif text-4xl md:text-5xl font-bold text-slate-900 mb-4 tracking-tight">
-          Your portfolio is live!
+    <div className="flex flex-col h-full max-w-lg w-full mx-auto justify-center pb-10">
+      <div className="mb-8 text-center">
+        <h1 className="font-serif text-3xl md:text-4xl font-bold text-slate-900 mb-3 tracking-tight">
+          Activate Your Account
         </h1>
-        <p className="text-slate-500 text-lg">
-          Your professional presence is ready to be shared with the world. Add this link to your resume, LinkedIn, and social profiles.
+        <p className="text-slate-500 text-base md:text-lg">
+          Complete your setup to unlock dashboard access and premium features.
         </p>
       </div>
 
-      <Card className="w-full max-w-2xl p-2 md:p-3 shadow-lg shadow-blue-900/5 mb-12 animate-in zoom-in-95 fade-in duration-700 delay-200 fill-mode-both">
-        <div className="flex flex-col md:flex-row items-center gap-3 bg-slate-50 rounded-xl p-4 border border-slate-100">
-          <div className="flex-1 flex items-center gap-3 overflow-hidden w-full">
-            <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
-              <Sparkles className="w-5 h-5 text-blue-600" />
-            </div>
-            <div className="truncate">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Your Public URL</p>
-              <p className="text-lg md:text-xl font-medium text-slate-900 truncate">
-                https://<span className="text-blue-600">{url}</span>
-              </p>
-            </div>
-          </div>
-          <div className="flex gap-2 w-full md:w-auto mt-4 md:mt-0">
-            <Button variant="secondary" className="flex-1 md:flex-none" onClick={copyToClipboard}>
-              {copied ? <CheckCircle2 className="w-4 h-4 mr-2" /> : <Copy className="w-4 h-4 mr-2" />}
-              {copied ? 'Copied' : 'Copy'}
-            </Button>
-            <Button className="flex-1 md:flex-none">
-              Visit Site <ExternalLink className="w-4 h-4 ml-2" />
-            </Button>
-          </div>
-        </div>
-      </Card>
+      <div className="bg-slate-200/50 p-1.5 rounded-xl flex mb-8">
+        <button
+          className={cn(
+            "flex-1 py-2.5 text-sm font-medium rounded-lg transition-all",
+            tab === 'pay' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+          )}
+          onClick={() => { setTab('pay'); setCodeError(''); }}
+        >
+          Choose Plan
+        </button>
+        <button
+          className={cn(
+            "flex-1 py-2.5 text-sm font-medium rounded-lg transition-all",
+            tab === 'code' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+          )}
+          onClick={() => setTab('code')}
+        >
+          Activation Code
+        </button>
+      </div>
 
-      <div className="w-full max-w-4xl grid md:grid-cols-3 gap-6 animate-in slide-in-from-bottom-8 fade-in duration-700 delay-300 fill-mode-both">
-        <div className="col-span-full mb-2">
-          <h2 className="text-lg font-bold text-slate-900">Next Steps Dashboard</h2>
+      {tab === 'pay' ? (
+        <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
+          <Card 
+            className={cn(
+              "p-6 cursor-pointer border-2 transition-all relative overflow-hidden",
+              plan === 'annual' ? "border-blue-600 bg-blue-50/30" : "border-slate-200 hover:border-blue-300"
+            )}
+            onClick={() => setPlan('annual')}
+          >
+            {plan === 'annual' && (
+              <div className="absolute top-0 right-0 bg-blue-600 text-white text-xs font-bold px-3 py-1 rounded-bl-lg">
+                POPULAR
+              </div>
+            )}
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="text-xl font-bold text-slate-900">Annual Plan</h3>
+              <div className="text-right">
+                <span className="text-2xl font-bold text-slate-900">₹499</span>
+                <span className="text-sm text-slate-500">/year</span>
+              </div>
+            </div>
+            <ul className="space-y-2 mt-4">
+              {['Custom mybexo.com domain', 'Unlimited resume parses', 'All premium templates'].map((feat, i) => (
+                <li key={i} className="flex items-center text-sm text-slate-600">
+                  <Check className="w-4 h-4 text-blue-600 mr-2 shrink-0" /> {feat}
+                </li>
+              ))}
+            </ul>
+          </Card>
+
+          <Card 
+            className={cn(
+              "p-6 cursor-pointer border-2 transition-all",
+              plan === 'lifetime' ? "border-blue-600 bg-blue-50/30" : "border-slate-200 hover:border-blue-300"
+            )}
+            onClick={() => setPlan('lifetime')}
+          >
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="text-xl font-bold text-slate-900">Lifetime</h3>
+              <div className="text-right">
+                <span className="text-2xl font-bold text-slate-900">₹1,999</span>
+              </div>
+            </div>
+            <p className="text-sm text-slate-500 mb-4">Pay once, keep your portfolio forever.</p>
+            <ul className="space-y-2">
+              <li className="flex items-center text-sm text-slate-600">
+                <Check className="w-4 h-4 text-blue-600 mr-2 shrink-0" /> Includes all Annual features
+              </li>
+            </ul>
+          </Card>
         </div>
+      ) : (
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 bg-white p-8 rounded-2xl border border-slate-200 shadow-sm">
+          <div className="text-center mb-6">
+            <ShieldCheck className="w-12 h-12 text-blue-600 mx-auto mb-3" />
+            <h3 className="font-semibold text-lg text-slate-900">Redeem Code</h3>
+            <p className="text-sm text-slate-500 mt-1">Enter the activation key provided by your college or placement cell.</p>
+          </div>
+          <div className="space-y-2">
+            <Input 
+              placeholder="BEXO-XXXX-XXXX" 
+              className={`h-14 text-center font-mono text-lg tracking-widest uppercase ${codeError ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+              value={code}
+              onChange={(e) => {
+                setCode(e.target.value.toUpperCase());
+                if (e.target.value.length > 0) setCodeError('');
+              }}
+            />
+            {codeError && <p className="text-red-500 text-sm text-center font-medium mt-1">{codeError}</p>}
+          </div>
+        </div>
+      )}
+
+      <div className="mt-8">
+        <Button 
+          className="w-full h-14 text-base group shadow-lg shadow-blue-600/20"
+          onClick={handleCheckout}
+          disabled={isProcessing || (tab === 'code' && code.length === 0)}
+        >
+          {isProcessing ? (
+            <Loader2 className="w-5 h-5 animate-spin" />
+          ) : (
+            <>
+              {tab === 'pay' ? `Proceed to Pay ${plan === 'annual' ? '₹499' : '₹1,999'}` : 'Finish Setup'}
+              <ArrowRight className="w-5 h-5 ml-2 transition-transform group-hover:translate-x-1" />
+            </>
+          )}
+        </Button>
         
-        <Card className="p-6 hover:shadow-md transition-shadow group cursor-pointer border-slate-200">
-          <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-            <User className="w-5 h-5" />
-          </div>
-          <h3 className="font-semibold text-slate-900 mb-1">Complete Profile</h3>
-          <p className="text-sm text-slate-500 mb-4">Add your projects, skills, and social links.</p>
-          <div className="flex items-center text-sm font-medium text-blue-600">
-            Edit Profile <ArrowRight className="w-4 h-4 ml-1" />
-          </div>
-        </Card>
-
-        <Card className="p-6 hover:shadow-md transition-shadow group cursor-pointer border-slate-200">
-          <div className="w-10 h-10 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-            <FileText className="w-5 h-5" />
-          </div>
-          <h3 className="font-semibold text-slate-900 mb-1">Update Resume</h3>
-          <p className="text-sm text-slate-500 mb-4">Keep your parsed experience up to date.</p>
-          <div className="flex items-center text-sm font-medium text-purple-600">
-            Manage Resume <ArrowRight className="w-4 h-4 ml-1" />
-          </div>
-        </Card>
-
-        <Card className="p-6 hover:shadow-md transition-shadow group cursor-pointer border-slate-200">
-          <div className="w-10 h-10 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-            <Settings className="w-5 h-5" />
-          </div>
-          <h3 className="font-semibold text-slate-900 mb-1">Settings</h3>
-          <p className="text-sm text-slate-500 mb-4">Change theme, domain, and account details.</p>
-          <div className="flex items-center text-sm font-medium text-slate-600">
-            Open Settings <ArrowRight className="w-4 h-4 ml-1" />
-          </div>
-        </Card>
+        {tab === 'pay' && (
+          <p className="text-center text-xs text-slate-400 mt-4 flex items-center justify-center gap-1">
+            <ShieldCheck className="w-3.5 h-3.5" /> Secure encrypted checkout
+          </p>
+        )}
       </div>
     </div>
   );
