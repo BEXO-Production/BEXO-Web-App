@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "BEXO Onboarding"
+version = "1.0.0"
+id = "artifacts/bexo-web"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 22601
+
+[services.development]
+run = "pnpm --filter @workspace/bexo-web run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/bexo-web", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/bexo-web/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22601"
+BASE_PATH = "/"

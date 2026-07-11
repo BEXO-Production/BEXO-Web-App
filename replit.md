@@ -1,6 +1,6 @@
-# [Project name]
+# BEXO
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+BEXO takes a student from phone verification through resume upload, profile building, activation/payment, template choice, and publishing a public portfolio site.
 
 ## Run & Operate
 
@@ -22,19 +22,22 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/bexo-web` — the 9-step onboarding wizard (frontend-only, mock data, no backend calls yet)
+- `artifacts/bexo-web/src/design-system/` — shared tokens (colors, type scale, spacing) and primitives (Button, Input, Card) all 9 screens pull from
+- `artifacts/bexo-web/src/App.tsx` — wouter route table (`/step/1` … `/step/9`)
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Onboarding flow is entirely mocked: local `useState` + `setTimeout` delays simulate OTP, resume parsing, payment, and publish — no real API calls yet.
+- Step 6 (About) is built as the reusable pattern for the other 7 verification sections that will be added later.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- 9-step student onboarding wizard: phone OTP → Google sign-in → name/DOB → resume upload (mock parsing) → profile photo → About section (verification pattern) → activation key/payment → template/theme selection → publish confirmation + dashboard shell.
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- Visual theme: white/off-white base with the blue tones from the Ace Digitals logo as the primary palette — professional, not generic SaaS. Confident serif headings for character.
 
 ## Gotchas
 
