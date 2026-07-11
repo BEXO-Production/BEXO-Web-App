@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useOnboarding } from '../context/OnboardingContext';
-import { Button, Input, Card } from '../design-system/primitives';
+import { Button, Input, Card, Label } from '../design-system/primitives';
 import { Check, ShieldCheck, Loader2, ArrowRight } from 'lucide-react';
 import { cn } from '../design-system/primitives';
 
@@ -10,8 +10,24 @@ export default function Step7Payment() {
   const [plan, setPlan] = useState<'annual' | 'lifetime'>('annual');
   const [isProcessing, setIsProcessing] = useState(false);
   const [code, setCode] = useState('');
+  const [codeError, setCodeError] = useState('');
+
+  const validateCode = () => {
+    // Mock activation key format: BEXO-XXXX-XXXX
+    const pattern = /^BEXO-[A-Z0-9]{4}-[A-Z0-9]{4}$/i;
+    if (!pattern.test(code)) {
+      setCodeError('Invalid code format. Expected: BEXO-XXXX-XXXX');
+      return false;
+    }
+    setCodeError('');
+    return true;
+  };
 
   const handleCheckout = () => {
+    if (tab === 'code' && !validateCode()) {
+      return;
+    }
+    
     setIsProcessing(true);
     setTimeout(() => {
       setIsProcessing(false);
@@ -37,7 +53,7 @@ export default function Step7Payment() {
             "flex-1 py-2.5 text-sm font-medium rounded-lg transition-all",
             tab === 'pay' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
           )}
-          onClick={() => setTab('pay')}
+          onClick={() => { setTab('pay'); setCodeError(''); }}
         >
           Choose Plan
         </button>
@@ -110,12 +126,18 @@ export default function Step7Payment() {
             <h3 className="font-semibold text-lg text-slate-900">Redeem Code</h3>
             <p className="text-sm text-slate-500 mt-1">Enter the activation key provided by your college or placement cell.</p>
           </div>
-          <Input 
-            placeholder="BEXO-XXXX-XXXX" 
-            className="h-14 text-center font-mono text-lg tracking-widest uppercase"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-          />
+          <div className="space-y-2">
+            <Input 
+              placeholder="BEXO-XXXX-XXXX" 
+              className={`h-14 text-center font-mono text-lg tracking-widest uppercase ${codeError ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+              value={code}
+              onChange={(e) => {
+                setCode(e.target.value.toUpperCase());
+                if (e.target.value.length > 0) setCodeError('');
+              }}
+            />
+            {codeError && <p className="text-red-500 text-sm text-center font-medium mt-1">{codeError}</p>}
+          </div>
         </div>
       )}
 
@@ -123,7 +145,7 @@ export default function Step7Payment() {
         <Button 
           className="w-full h-14 text-base group shadow-lg shadow-blue-600/20"
           onClick={handleCheckout}
-          disabled={isProcessing || (tab === 'code' && code.length < 8)}
+          disabled={isProcessing || (tab === 'code' && code.length === 0)}
         >
           {isProcessing ? (
             <Loader2 className="w-5 h-5 animate-spin" />

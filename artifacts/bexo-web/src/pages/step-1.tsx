@@ -11,6 +11,8 @@ export default function Step1Phone() {
   const [isSending, setIsSending] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [cooldown, setCooldown] = useState(0);
+  const [phoneError, setPhoneError] = useState('');
+  const [otpError, setOtpError] = useState('');
 
   useEffect(() => {
     let timer: number;
@@ -22,7 +24,11 @@ export default function Step1Phone() {
 
   const handleSendOtp = (e: React.FormEvent) => {
     e.preventDefault();
-    if (phone.length < 10) return;
+    if (phone.length < 10) {
+      setPhoneError('Please enter a valid 10-digit mobile number.');
+      return;
+    }
+    setPhoneError('');
     setIsSending(true);
     setTimeout(() => {
       setIsSending(false);
@@ -33,7 +39,11 @@ export default function Step1Phone() {
 
   const handleVerifyOtp = (e: React.FormEvent) => {
     e.preventDefault();
-    if (otp.join('').length < 6) return;
+    if (otp.join('').length < 6) {
+      setOtpError('Please enter the complete 6-digit verification code.');
+      return;
+    }
+    setOtpError('');
     setIsVerifying(true);
     setTimeout(() => {
       setIsVerifying(false);
@@ -42,11 +52,18 @@ export default function Step1Phone() {
     }, 1500);
   };
 
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+    setPhone(val);
+    if (val.length === 10) setPhoneError('');
+  };
+
   const handleOtpChange = (index: number, value: string) => {
     if (!/^\d*$/.test(value)) return;
     const newOtp = [...otp];
     newOtp[index] = value;
     setOtp(newOtp);
+    setOtpError('');
     if (value && index < 5) {
       const nextInput = document.getElementById(`otp-${index + 1}`);
       nextInput?.focus();
@@ -74,19 +91,20 @@ export default function Step1Phone() {
       {step === 'phone' ? (
         <form onSubmit={handleSendOtp} className="space-y-6">
           <div className="space-y-2">
-            <Label htmlFor="phone">Mobile Number</Label>
+            <Label htmlFor="phone" className={phoneError ? "text-red-500" : ""}>Mobile Number</Label>
             <div className="flex relative">
               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-medium">+91</span>
               <Input
                 id="phone"
                 type="tel"
                 placeholder="98765 43210"
-                className="pl-12 text-lg font-medium tracking-wide h-14 rounded-xl"
+                className={`pl-12 text-lg font-medium tracking-wide h-14 rounded-xl ${phoneError ? "border-red-500 focus-visible:ring-red-500" : ""}`}
                 value={phone}
-                onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                onChange={handlePhoneChange}
                 autoFocus
               />
             </div>
+            {phoneError && <p className="text-red-500 text-sm mt-1">{phoneError}</p>}
           </div>
           
           <Button 
@@ -100,7 +118,7 @@ export default function Step1Phone() {
       ) : (
         <form onSubmit={handleVerifyOtp} className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
           <div className="space-y-4">
-            <Label>Enter 6-digit code sent to +91 {phone}</Label>
+            <Label className={otpError ? "text-red-500" : ""}>Enter 6-digit code sent to +91 {phone}</Label>
             <div className="flex justify-between gap-2">
               {otp.map((digit, i) => (
                 <Input
@@ -112,11 +130,12 @@ export default function Step1Phone() {
                   value={digit}
                   onChange={(e) => handleOtpChange(i, e.target.value)}
                   onKeyDown={(e) => handleKeyDown(i, e)}
-                  className="w-12 h-14 md:w-14 md:h-16 text-center text-xl font-bold rounded-xl"
+                  className={`w-12 h-14 md:w-14 md:h-16 text-center text-xl font-bold rounded-xl ${otpError ? "border-red-500 focus-visible:ring-red-500" : ""}`}
                   autoFocus={i === 0}
                 />
               ))}
             </div>
+            {otpError && <p className="text-red-500 text-sm mt-1">{otpError}</p>}
           </div>
           
           <div className="space-y-4">
