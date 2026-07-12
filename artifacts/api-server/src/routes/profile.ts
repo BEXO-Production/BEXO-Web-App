@@ -248,8 +248,14 @@ router.post("/resume", requireAuth, upload.single("resume"), async (req: Authent
     // 2. Parse text with Gemma via OpenRouter or Fallback
     let parsedData: any;
     const apiKey = process.env.OPENROUTER_API_KEY;
-    const primaryModel = process.env.OPENROUTER_MODEL || "google/gemma-4-31b-it:free";
-    const backupModel = process.env.OPENROUTER_BACKUP_MODEL || "google/gemma-4-26b-a4b-it:free";
+    
+    const modelsToTry = [
+      process.env.OPENROUTER_MODEL,
+      "openrouter/free",
+      "meta-llama/llama-3.2-3b-instruct:free",
+      "qwen/qwen3-coder:free",
+      process.env.OPENROUTER_BACKUP_MODEL
+    ].filter(Boolean) as string[];
 
     const systemPrompt = `You are an expert resume parsing AI assistant.
     Your task is to extract professional information from the provided resume text and format it into a structured JSON object.
@@ -286,46 +292,61 @@ router.post("/resume", requireAuth, upload.single("resume"), async (req: Authent
 
     async function callOpenRouter(model: string): Promise<any> {
       logger.info({ model }, "Calling OpenRouter for resume parsing");
-      const openRouterRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${apiKey}`,
-          "HTTP-Referer": "https://mybexo.com",
-          "X-Title": "Bexo Onboarding"
-        },
-        body: JSON.stringify({
-          model,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: resumeText }
-          ],
-          response_format: { type: "json_object" }
-        })
-      });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 seconds timeout
 
-      if (!openRouterRes.ok) {
-        const errorText = await openRouterRes.text();
-        logger.error({ errorText, model, status: openRouterRes.status }, "OpenRouter API call failed");
-        throw new Error(`OpenRouter API failed (${openRouterRes.status}): ${openRouterRes.statusText}`);
+      try {
+        const openRouterRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${apiKey}`,
+            "HTTP-Referer": "https://mybexo.com",
+            "X-Title": "Bexo Onboarding"
+          },
+          body: JSON.stringify({
+            model,
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: resumeText }
+            ],
+            response_format: { type: "json_object" }
+          }),
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!openRouterRes.ok) {
+          const errorText = await openRouterRes.text();
+          logger.error({ errorText, model, status: openRouterRes.status }, "OpenRouter API call failed");
+          throw new Error(`OpenRouter API failed (${openRouterRes.status}): ${openRouterRes.statusText}`);
+        }
+
+        const openRouterData = (await openRouterRes.json()) as any;
+        const content = openRouterData.choices?.[0]?.message?.content || "";
+        const jsonStr = content.replace(/```json/g, "").replace(/```/g, "").trim();
+        return JSON.parse(jsonStr);
+      } catch (err: any) {
+        clearTimeout(timeoutId);
+        if (err.name === 'AbortError') {
+          logger.error({ model }, "OpenRouter API call timed out after 15 seconds");
+          throw new Error(`OpenRouter API call timed out for model ${model}`);
+        }
+        throw err;
       }
-
-      const openRouterData = (await openRouterRes.json()) as any;
-      const content = openRouterData.choices?.[0]?.message?.content || "";
-      const jsonStr = content.replace(/```json/g, "").replace(/```/g, "").trim();
-      return JSON.parse(jsonStr);
     }
 
     if (apiKey) {
-      try {
-        parsedData = await callOpenRouter(primaryModel);
-      } catch (primaryErr: any) {
-        logger.warn({ err: primaryErr.message, primaryModel }, "Primary model failed, trying backup model");
+      for (const model of modelsToTry) {
         try {
-          parsedData = await callOpenRouter(backupModel);
-        } catch (backupErr: any) {
-          logger.error({ err: backupErr.message, backupModel }, "Backup model also failed, using mock data");
-          parsedData = null;
+          parsedData = await callOpenRouter(model);
+          if (parsedData) {
+            logger.info({ model }, "Successfully parsed resume using model");
+            break;
+          }
+        } catch (err: any) {
+          logger.warn({ err: err.message, model }, "Model failed for resume parsing, trying next model");
         }
       }
     }

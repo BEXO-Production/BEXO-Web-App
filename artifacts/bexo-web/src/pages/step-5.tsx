@@ -44,8 +44,14 @@ export default function Step5Resume() {
       });
 
       if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.error || 'Failed to process resume');
+        let errMsg = 'Failed to process resume';
+        try {
+          const errData = await res.json();
+          errMsg = errData.error || errMsg;
+        } catch (e) {
+          errMsg = `Server error (${res.status}): ${res.statusText || 'Gateway Timeout or API Error'}`;
+        }
+        throw new Error(errMsg);
       }
 
       setStatus('parsing');
