@@ -32,7 +32,7 @@ export type ExperienceEntry = { id: string; company: string; role: string; durat
 export type CertificateEntry = { id: string; title: string; issuer: string; date: string; assets: AssetData };
 export type AchievementEntry = { id: string; title: string; organization: string; date: string; assets: AssetData };
 export type ResearchEntry = { id: string; title: string; organization: string; date: string; assets: AssetData };
-export type ContactData = { email: string; linkedin: string; github: string; portfolio: string };
+export type ContactData = { email: string; linkedin: string; github: string; portfolio: string; customLinks?: { name: string; url: string }[] };
 
 export type OnboardingData = {
   phone: string;
@@ -104,7 +104,8 @@ const defaultData: OnboardingData = {
     email: 'rahul.sharma@example.com',
     linkedin: 'linkedin.com/in/rahulsharma',
     github: 'github.com/rahulsharma',
-    portfolio: ''
+    portfolio: '',
+    customLinks: []
   },
   plan: null,
   templateId: 'minimal',
@@ -138,6 +139,14 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
             name: result.user.name || prev.name,
             dob: result.user.dob || prev.dob,
             phone: result.user.phone || prev.phone,
+            aboutEntries: result.aboutEntries?.length ? result.aboutEntries : prev.aboutEntries,
+            educationEntries: result.educationEntries?.length ? result.educationEntries : prev.educationEntries,
+            experienceEntries: result.experienceEntries?.length ? result.experienceEntries : prev.experienceEntries,
+            projectEntries: result.projectEntries?.length ? result.projectEntries : prev.projectEntries,
+            certificateEntries: result.certificateEntries?.length ? result.certificateEntries : prev.certificateEntries,
+            achievementEntries: result.achievementEntries?.length ? result.achievementEntries : prev.achievementEntries,
+            researchEntries: result.researchEntries?.length ? result.researchEntries : prev.researchEntries,
+            contactData: result.contactData || prev.contactData
           }));
         }
       })

@@ -54,8 +54,24 @@ export default function Step5Resume() {
 
       const defaultAssets = { mode: 'images' as const, images: [], pdfs: [], links: [] };
 
+      const contactLinks = parsed.links || [];
+      const linkedin = contactLinks.find((l: any) => l.name?.toLowerCase().includes("linkedin"))?.url || "";
+      const github = contactLinks.find((l: any) => l.name?.toLowerCase().includes("github"))?.url || "";
+      const portfolio = contactLinks.find((l: any) => !l.name?.toLowerCase().includes("linkedin") && !l.name?.toLowerCase().includes("github"))?.url || "";
+
       // Map parsed data into Context fields
       updateData({
+        name: parsed.name || data.name,
+        firstName: parsed.name ? parsed.name.split(' ')[0] : data.firstName,
+        lastName: parsed.name ? parsed.name.split(' ').slice(1).join(' ') : data.lastName,
+        contactData: {
+          email: parsed.email || data.contactData.email || '',
+          phone: parsed.phone || data.contactData.phone || data.phone || '',
+          linkedin,
+          github,
+          portfolio,
+          customLinks: contactLinks
+        },
         resumeFileName: selectedFile.name,
         resumeFileSize: selectedFile.size,
         aboutEntries: [

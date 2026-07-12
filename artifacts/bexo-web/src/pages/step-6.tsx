@@ -39,6 +39,20 @@ export default function Step6Review() {
   const [editForm, setEditForm] = useState<any>({});
   const [contactErrors, setContactErrors] = useState<any>({});
 
+  // Sync state when context data finishes fetching asynchronously
+  useEffect(() => {
+    setSections({
+      about: data.aboutEntries || [],
+      education: data.educationEntries || [],
+      experience: data.experienceEntries || [],
+      projects: data.projectEntries || [],
+      certificates: data.certificateEntries || [],
+      achievements: data.achievementEntries || [],
+      research: data.researchEntries || [],
+    });
+    setContactData(data.contactData);
+  }, [data.aboutEntries, data.educationEntries, data.experienceEntries, data.projectEntries, data.certificateEntries, data.achievementEntries, data.researchEntries, data.contactData]);
+
   // Compute total used storage
   const [usedStorage, setUsedStorage] = useState(0);
 
@@ -541,6 +555,32 @@ export default function Step6Review() {
                   <Label>Personal Portfolio (Optional)</Label>
                   <Input value={contactData.portfolio} onChange={e => setContactData({...contactData, portfolio: e.target.value})} placeholder="yourwebsite.com" />
                 </div>
+
+                {/* Custom Extracted Links */}
+                {contactData.customLinks && contactData.customLinks.length > 0 && (
+                  <div className="pt-4 border-t border-slate-100">
+                    <Label className="text-slate-700 font-semibold mb-2 block text-xs">Extracted Links</Label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {contactData.customLinks.map((link: any, idx: number) => (
+                        <a 
+                          key={idx}
+                          href={link.url.startsWith('http') ? link.url : `https://${link.url}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2.5 p-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-indigo-50/50 hover:border-indigo-200 transition-all group"
+                        >
+                          <div className="w-8 h-8 rounded-lg bg-white border border-slate-150 flex items-center justify-center shrink-0 shadow-sm group-hover:border-indigo-100">
+                            <LinkIcon className="w-4.5 h-4.5 text-slate-400 group-hover:text-indigo-500" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-slate-700 truncate group-hover:text-indigo-600">{link.name || 'Link'}</p>
+                            <p className="text-[10px] text-slate-400 truncate">{link.url}</p>
+                          </div>
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           ) : (

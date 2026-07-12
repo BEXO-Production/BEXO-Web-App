@@ -47,6 +47,11 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<voi
     }
 
     const profile = await getOrCreateProfile(userId);
+    const sections = await db.select().from(profileSections).where(eq(profileSections.profileId, profile.id));
+
+    const getEntries = (type: string) => sections.find(s => s.type === type)?.entries || [];
+    const contactEntries = sections.find(s => s.type === "contact")?.entries as any;
+
     res.json({
       profile,
       user: {
@@ -58,7 +63,15 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<voi
         profilePhotoAssetId: user.profilePhotoAssetId,
         storageUsedBytes: user.storageUsedBytes,
         storageQuotaBytes: user.storageQuotaBytes
-      }
+      },
+      aboutEntries: getEntries("about"),
+      educationEntries: getEntries("education"),
+      experienceEntries: getEntries("experience"),
+      projectEntries: getEntries("projects"),
+      certificateEntries: getEntries("certificates"),
+      achievementEntries: getEntries("achievements"),
+      researchEntries: getEntries("research"),
+      contactData: contactEntries || { email: user.email || "", phone: user.phone || "", linkedin: "", github: "", portfolio: "" }
     });
   } catch (err) {
     logger.error({ err, userId }, "Error fetching profile");
@@ -69,7 +82,10 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<voi
 // PATCH /profile
 router.patch("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<void> => {
   const userId = req.user!.id;
-  const { name, dob, handle, headline, careerGoal, bio, completionPct, profilePhotoAssetId } = req.body;
+  const { 
+    name, dob, handle, headline, careerGoal, bio, completionPct, profilePhotoAssetId,
+    aboutEntries, educationEntries, experienceEntries, projectEntries, certificateEntries, achievementEntries, researchEntries, contactData
+  } = req.body;
   try {
     // Update user info if name, dob, profilePhotoAssetId is provided
     const userUpdates: Partial<typeof users.$inferInsert> = {};
@@ -101,6 +117,32 @@ router.patch("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<v
 
     if (Object.keys(profileUpdates).length > 0) {
       await db.update(profiles).set(profileUpdates).where(eq(profiles.id, profile.id));
+    }
+
+    // Save sections if provided
+    const sectionsToSave = [
+      { type: "about", entries: aboutEntries },
+      { type: "education", entries: educationEntries },
+      { type: "experience", entries: experienceEntries },
+      { type: "projects", entries: projectEntries },
+      { type: "certificates", entries: certificateEntries },
+      { type: "achievements", entries: achievementEntries },
+      { type: "research", entries: researchEntries },
+      { type: "contact", entries: contactData }
+    ];
+
+    for (const sec of sectionsToSave) {
+      if (sec.entries !== undefined) {
+        await db.insert(profileSections).values({
+          profileId: profile.id,
+          type: sec.type,
+          entries: sec.entries,
+          reviewedAt: new Date()
+        }).onConflictDoUpdate({
+          target: [profileSections.profileId, profileSections.type],
+          set: { entries: sec.entries, reviewedAt: new Date() }
+        });
+      }
     }
 
     res.json({ success: true, message: "Profile updated successfully" });
@@ -210,31 +252,37 @@ router.post("/resume", requireAuth, upload.single("resume"), async (req: Authent
     const backupModel = process.env.OPENROUTER_BACKUP_MODEL || "google/gemma-4-26b-a4b-it:free";
 
     const systemPrompt = `You are an expert resume parsing AI assistant.
-Your task is to extract professional information from the provided resume text and format it into a structured JSON object.
-Return ONLY a valid JSON object. Do not include any explanations, introduction, markdown blocks, or extra text.
-
-The JSON structure must match this schema exactly:
-{
-  "headline": "A short, professional headline (e.g. Frontend Developer Intern)",
-  "bio": "A professional summary of 2-3 sentences.",
-  "education": [
-    { "institution": "Name of school/university", "degree": "Degree name", "year": "Graduation year or date range", "grade": "GPA, grade, or percentage (optional)" }
-  ],
-  "experience": [
-    { "company": "Company name", "role": "Job title/role", "duration": "Duration (e.g. June 2024 - Present)", "description": "Bullet points of key accomplishments" }
-  ],
-  "projects": [
-    { "title": "Project name", "description": "Brief description of the project", "tech": "Comma-separated list of technologies used" }
-  ],
-  "certificates": [
-    { "title": "Certificate name", "issuer": "Issuing organization", "date": "Date issued" }
-  ],
-  "achievements": [
-    { "title": "Achievement title", "organization": "Awarding organization", "date": "Date awarded" }
-  ]
-}
-
-Fill every field with information extracted from the resume. If a category has no data, return an empty array.`;
+    Your task is to extract professional information from the provided resume text and format it into a structured JSON object.
+    Return ONLY a valid JSON object. Do not include any explanations, introduction, markdown blocks, or extra text.
+    
+    The JSON structure must match this schema exactly:
+    {
+      "name": "Candidate's full name",
+      "headline": "A short, professional headline (e.g. Frontend Developer Intern)",
+      "bio": "A professional summary or overview of 2-3 sentences.",
+      "email": "Candidate's email address",
+      "phone": "Candidate's phone number",
+      "links": [
+        { "name": "Name of the website/link (e.g. GitHub, LinkedIn, Personal Portfolio, Blog, Custom Project Link)", "url": "The full link URL" }
+      ],
+      "education": [
+        { "institution": "Name of school/university", "degree": "Degree name", "year": "Graduation year or date range", "grade": "GPA, grade, or percentage (optional)" }
+      ],
+      "experience": [
+        { "company": "Company name", "role": "Job title/role", "duration": "Duration (e.g. June 2024 - Present)", "description": "Bullet points of key accomplishments" }
+      ],
+      "projects": [
+        { "title": "Project name", "description": "Brief description of the project", "tech": "Comma-separated list of technologies used" }
+      ],
+      "certificates": [
+        { "title": "Certificate name", "issuer": "Issuing organization", "date": "Date issued" }
+      ],
+      "achievements": [
+        { "title": "Achievement title", "organization": "Awarding organization", "date": "Date awarded" }
+      ]
+    }
+    
+    Fill every field with information extracted from the resume. If a category has no data, return an empty array or empty string. Extra links must be extracted with their names and full URLs.`;
 
     async function callOpenRouter(model: string): Promise<any> {
       logger.info({ model }, "Calling OpenRouter for resume parsing");
@@ -285,8 +333,15 @@ Fill every field with information extracted from the resume. If a category has n
     if (!parsedData) {
       logger.warn("AI parsing failed or no API key. Falling back to mock resume data.");
       parsedData = {
+        name: "Rahul Sharma",
         headline: "Software Engineer Intern",
         bio: "Passionate developer skilled in building modern web applications with React, Node.js, and TypeScript. Looking to create impactful portfolio experiences.",
+        email: "rahul.sharma@example.com",
+        phone: "+91 9999999999",
+        links: [
+          { name: "LinkedIn", url: "https://linkedin.com/in/rahulsharma" },
+          { name: "GitHub", url: "https://github.com/rahulsharma" }
+        ],
         education: [
           { institution: "Indian Institute of Technology", degree: "B.Tech in Computer Science", year: "2021 - 2025", grade: "9.2 CGPA" }
         ],
@@ -307,17 +362,42 @@ Fill every field with information extracted from the resume. If a category has n
 
     const profile = await getOrCreateProfile(userId);
     
+    // Save user name and email
+    if (parsedData.name) {
+      await db.update(users).set({ 
+        name: parsedData.name, 
+        email: parsedData.email || undefined 
+      }).where(eq(users.id, userId));
+    }
+
     await db.update(profiles).set({
       headline: parsedData.headline || "",
       bio: parsedData.bio || ""
     }).where(eq(profiles.id, profile.id));
 
+    // Construct contactData
+    const contactLinks = parsedData.links || [];
+    const linkedin = contactLinks.find((l: any) => l.name?.toLowerCase().includes("linkedin"))?.url || "";
+    const github = contactLinks.find((l: any) => l.name?.toLowerCase().includes("github"))?.url || "";
+    const portfolio = contactLinks.find((l: any) => !l.name?.toLowerCase().includes("linkedin") && !l.name?.toLowerCase().includes("github"))?.url || "";
+
+    const contactData = {
+      email: parsedData.email || "",
+      phone: parsedData.phone || "",
+      linkedin,
+      github,
+      portfolio,
+      customLinks: contactLinks
+    };
+
     const sectionsToSave = [
+      { type: "about", entries: [{ id: "1", title: parsedData.headline || "Software Engineer Intern", description: parsedData.bio || "" }] },
       { type: "education", entries: parsedData.education || [] },
       { type: "experience", entries: parsedData.experience || [] },
       { type: "projects", entries: parsedData.projects || [] },
       { type: "certificates", entries: parsedData.certificates || [] },
-      { type: "achievements", entries: parsedData.achievements || [] }
+      { type: "achievements", entries: parsedData.achievements || [] },
+      { type: "contact", entries: contactData }
     ];
 
     for (const sec of sectionsToSave) {
