@@ -6,7 +6,80 @@ import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
 
 const router = Router();
-const redis = new Redis(process.env.REDIS_URL || "redis://127.0.0.1:6379");
+
+import { createRequire } from "module";
+
+class RedisOrMemoryStore {
+  private redis: any = null;
+  private memory = new Map<string, { value: string; expires: number }>();
+
+  constructor() {
+    const redisUrl = process.env.REDIS_URL;
+    if (redisUrl) {
+      try {
+        this.redis = new Redis(redisUrl, {
+          maxRetriesPerRequest: 1,
+          connectTimeout: 2000,
+        });
+        this.redis.on("error", (err: any) => {
+          logger.warn("Redis connection error, using in-memory store for this operation.");
+        });
+      } catch (err) {
+        logger.error({ err }, "Failed to initialize Redis, using in-memory store");
+      }
+    } else {
+      logger.info("No REDIS_URL provided. Using in-memory store for OTPs.");
+    }
+  }
+
+  async set(key: string, value: string, mode?: string, ttl?: number): Promise<void> {
+    if (this.redis) {
+      try {
+        if (mode === "EX" && ttl) {
+          await this.redis.set(key, value, "EX", ttl);
+        } else {
+          await this.redis.set(key, value);
+        }
+        return;
+      } catch (err) {
+        logger.warn("Redis set failed, falling back to memory");
+      }
+    }
+    const expires = ttl ? Date.now() + ttl * 1000 : Infinity;
+    this.memory.set(key, { value, expires });
+  }
+
+  async get(key: string): Promise<string | null> {
+    if (this.redis) {
+      try {
+        return await this.redis.get(key);
+      } catch (err) {
+        logger.warn("Redis get failed, falling back to memory");
+      }
+    }
+    const item = this.memory.get(key);
+    if (!item) return null;
+    if (Date.now() > item.expires) {
+      this.memory.delete(key);
+      return null;
+    }
+    return item.value;
+  }
+
+  async del(key: string): Promise<void> {
+    if (this.redis) {
+      try {
+        await this.redis.del(key);
+        return;
+      } catch (err) {
+        logger.warn("Redis del failed, falling back to memory");
+      }
+    }
+    this.memory.delete(key);
+  }
+}
+
+const store = new RedisOrMemoryStore();
 
 // POST /auth/phone/otp
 router.post("/phone/otp", async (req, res): Promise<void> => {
@@ -20,7 +93,7 @@ router.post("/phone/otp", async (req, res): Promise<void> => {
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
   // Store in Redis with a 5-minute TTL
-  await redis.set(`otp:${phone}`, otp, "EX", 300);
+  await store.set(`otp:${phone}`, otp, "EX", 300);
 
   const authKey = process.env.MSG91_AUTH_KEY;
   const integratedNumber = process.env.MSG91_INTEGRATED_NUMBER;
@@ -104,7 +177,7 @@ router.post("/phone/otp/verify", async (req, res): Promise<void> => {
   }
 
   // Check if OTP exists and is correct
-  const cachedOtp = await redis.get(`otp:${phone}`);
+  const cachedOtp = await store.get(`otp:${phone}`);
 
   // Bypass verification for developer testing if OTP is 111111 or matches cached value
   const isValid = (otp === "111111" || otp === cachedOtp);
@@ -115,7 +188,7 @@ router.post("/phone/otp/verify", async (req, res): Promise<void> => {
   }
 
   // Clear the verified OTP
-  await redis.del(`otp:${phone}`);
+  await store.del(`otp:${phone}`);
 
   try {
     // Find or create user
