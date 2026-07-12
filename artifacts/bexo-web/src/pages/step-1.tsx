@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useOnboarding } from '../context/OnboardingContext';
-import { Button, Input, Label } from '../design-system/primitives';
+import { Input, Label } from '../design-system/primitives';
 import { Loader2, ArrowRight } from 'lucide-react';
 
 export default function Step1Phone() {
@@ -13,6 +13,8 @@ export default function Step1Phone() {
   const [cooldown, setCooldown] = useState(0);
   const [phoneError, setPhoneError] = useState('');
   const [otpError, setOtpError] = useState('');
+  const [isSwooshingSend, setIsSwooshingSend] = useState(false);
+  const [isSwooshingVerify, setIsSwooshingVerify] = useState(false);
 
   useEffect(() => {
     let timer: number;
@@ -22,34 +24,73 @@ export default function Step1Phone() {
     return () => clearInterval(timer);
   }, [cooldown]);
 
-  const handleSendOtp = (e: React.FormEvent) => {
+  const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (phone.length < 10) {
       setPhoneError('Please enter a valid 10-digit mobile number.');
       return;
     }
     setPhoneError('');
-    setIsSending(true);
-    setTimeout(() => {
-      setIsSending(false);
+    setIsSwooshingSend(true);
+    
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+      const formattedPhone = phone.startsWith('91') && phone.length > 10 ? phone : `91${phone}`;
+      
+      const res = await fetch(`${apiUrl}/api/auth/phone/otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: formattedPhone })
+      });
+      
+      if (!res.ok) {
+        throw new Error('Failed to send OTP');
+      }
+      
+      setIsSwooshingSend(false);
       setStep('otp');
       setCooldown(30);
-    }, 1500);
+    } catch (err) {
+      setIsSwooshingSend(false);
+      setPhoneError('Failed to send OTP. Please check your connection or try again later.');
+    }
   };
 
-  const handleVerifyOtp = (e: React.FormEvent) => {
+  const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (otp.join('').length < 6) {
+    const otpCode = otp.join('');
+    if (otpCode.length < 6) {
       setOtpError('Please enter the complete 6-digit verification code.');
       return;
     }
     setOtpError('');
-    setIsVerifying(true);
-    setTimeout(() => {
-      setIsVerifying(false);
-      updateData({ phone });
+    setIsSwooshingVerify(true);
+    
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+      const formattedPhone = phone.startsWith('91') && phone.length > 10 ? phone : `91${phone}`;
+      
+      const res = await fetch(`${apiUrl}/api/auth/phone/otp/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: formattedPhone, otp: otpCode })
+      });
+      
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Invalid OTP');
+      }
+      
+      const data = await res.json();
+      localStorage.setItem('token', data.accessToken);
+      
+      setIsSwooshingVerify(false);
+      updateData({ phone: formattedPhone });
       nextStep(1);
-    }, 1500);
+    } catch (err: any) {
+      setIsSwooshingVerify(false);
+      setOtpError(err.message || 'Verification failed. Please check your OTP.');
+    }
   };
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -75,6 +116,23 @@ export default function Step1Phone() {
       const prevInput = document.getElementById(`otp-${index - 1}`);
       prevInput?.focus();
     }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const pastedData = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    if (!pastedData) return;
+
+    const newOtp = [...otp];
+    for (let i = 0; i < pastedData.length; i++) {
+      newOtp[i] = pastedData[i];
+    }
+    setOtp(newOtp);
+    setOtpError('');
+
+    const focusIndex = Math.min(pastedData.length, 5);
+    const nextInput = document.getElementById(`otp-${focusIndex}`);
+    nextInput?.focus();
   };
 
   return (
@@ -107,13 +165,22 @@ export default function Step1Phone() {
             {phoneError && <p className="text-red-500 text-sm mt-1">{phoneError}</p>}
           </div>
           
-          <Button 
+          <button 
             type="submit" 
-            className="w-full h-14 text-base" 
-            disabled={phone.length < 10 || isSending}
+            className={`w-full h-14 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-semibold text-base transition-all duration-200 flex items-center justify-center gap-3 group disabled:opacity-50 disabled:pointer-events-none cursor-pointer shadow-lg shadow-slate-900/20 btn-continue-wrap px-6${isSwooshingSend ? ' is-swooshing' : ''}`}
+            disabled={phone.length < 10 || isSending || isSwooshingSend}
           >
-            {isSending ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Send Verification Code'}
-          </Button>
+            {isSending ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              <>
+                <div className="w-9 h-9 bg-indigo-500 rounded-xl flex items-center justify-center arrow-box shrink-0">
+                  <ArrowRight className="w-5 h-5 text-white" />
+                </div>
+                <span className="btn-label">Send Verification Code</span>
+              </>
+            )}
+          </button>
         </form>
       ) : (
         <form onSubmit={handleVerifyOtp} className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
@@ -130,6 +197,7 @@ export default function Step1Phone() {
                   value={digit}
                   onChange={(e) => handleOtpChange(i, e.target.value)}
                   onKeyDown={(e) => handleKeyDown(i, e)}
+                  onPaste={handlePaste}
                   className={`w-12 h-14 md:w-14 md:h-16 text-center text-xl font-bold rounded-xl ${otpError ? "border-red-500 focus-visible:ring-red-500" : ""}`}
                   autoFocus={i === 0}
                 />
@@ -139,27 +207,29 @@ export default function Step1Phone() {
           </div>
           
           <div className="space-y-4">
-            <Button 
+            <button 
               type="submit" 
-              className="w-full h-14 text-base group"
-              disabled={otp.join('').length < 6 || isVerifying}
+              className={`w-full h-14 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-semibold text-base transition-all duration-200 flex items-center justify-center gap-3 group disabled:opacity-50 disabled:pointer-events-none cursor-pointer shadow-lg shadow-slate-900/20 btn-continue-wrap px-6${isSwooshingVerify ? ' is-swooshing' : ''}`}
+              disabled={otp.join('').length < 6 || isVerifying || isSwooshingVerify}
             >
               {isVerifying ? (
                 <Loader2 className="w-5 h-5 animate-spin" />
               ) : (
                 <>
-                  Verify & Continue
-                  <ArrowRight className="w-5 h-5 ml-2 transition-transform group-hover:translate-x-1" />
+                  <div className="w-9 h-9 bg-indigo-500 rounded-xl flex items-center justify-center arrow-box shrink-0">
+                    <ArrowRight className="w-5 h-5 text-white" />
+                  </div>
+                  <span className="btn-label">Verify & Continue</span>
                 </>
               )}
-            </Button>
+            </button>
             
             <div className="text-center">
               <button
                 type="button"
                 onClick={handleSendOtp}
                 disabled={cooldown > 0}
-                className="text-sm font-medium text-blue-600 hover:text-blue-800 disabled:text-slate-400 transition-colors"
+                className="text-sm font-medium text-indigo-500 hover:text-blue-800 disabled:text-slate-400 transition-colors"
               >
                 {cooldown > 0 ? `Resend code in 00:${cooldown.toString().padStart(2, '0')}` : 'Resend Code'}
               </button>

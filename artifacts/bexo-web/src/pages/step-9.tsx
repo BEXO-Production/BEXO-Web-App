@@ -14,6 +14,7 @@ export default function Step9Plan() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [code, setCode] = useState('');
   const [codeError, setCodeError] = useState('');
+  const [isSwooshing, setIsSwooshing] = useState(false);
 
   const validateCode = () => {
     // Mock activation key format: BEXO-XXXX-XXXX
@@ -31,12 +32,16 @@ export default function Step9Plan() {
       return;
     }
     
-    setIsProcessing(true);
+    setIsSwooshing(true);
     setTimeout(() => {
-      setIsProcessing(false);
-      updateData({ plan: tab === 'code' ? 'activation_code' : plan });
-      setLocation('/dashboard'); // Finish flow and go to dashboard
-    }, 2000);
+      setIsSwooshing(false);
+      setIsProcessing(true);
+      setTimeout(() => {
+        setIsProcessing(false);
+        updateData({ plan: tab === 'code' ? 'activation_code' : plan });
+        setLocation('/dashboard');
+      }, 2000);
+    }, 600);
   };
 
   return (
@@ -95,7 +100,7 @@ export default function Step9Plan() {
             <ul className="space-y-2 mt-4">
               {['Custom mybexo.com domain', 'Unlimited resume parses', 'All premium templates'].map((feat, i) => (
                 <li key={i} className="flex items-center text-sm text-slate-600">
-                  <Check className="w-4 h-4 text-blue-600 mr-2 shrink-0" /> {feat}
+                  <Check className="w-4 h-4 text-indigo-500 mr-2 shrink-0" /> {feat}
                 </li>
               ))}
             </ul>
@@ -117,7 +122,7 @@ export default function Step9Plan() {
             <p className="text-sm text-slate-500 mb-4">Pay once, keep your portfolio forever.</p>
             <ul className="space-y-2">
               <li className="flex items-center text-sm text-slate-600">
-                <Check className="w-4 h-4 text-blue-600 mr-2 shrink-0" /> Includes all Annual features
+                <Check className="w-4 h-4 text-indigo-500 mr-2 shrink-0" /> Includes all Annual features
               </li>
             </ul>
           </Card>
@@ -125,7 +130,7 @@ export default function Step9Plan() {
       ) : (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 bg-white p-8 rounded-2xl border border-slate-200 shadow-sm">
           <div className="text-center mb-6">
-            <ShieldCheck className="w-12 h-12 text-blue-600 mx-auto mb-3" />
+            <ShieldCheck className="w-12 h-12 text-indigo-500 mx-auto mb-3" />
             <h3 className="font-semibold text-lg text-slate-900">Redeem Code</h3>
             <p className="text-sm text-slate-500 mt-1">Enter the activation key provided by your college or placement cell.</p>
           </div>
@@ -145,20 +150,23 @@ export default function Step9Plan() {
       )}
 
       <div className="mt-8">
-        <Button 
-          className="w-full h-14 text-base group shadow-lg shadow-blue-600/20"
+        <button
+          type="button"
+          className={`w-full h-14 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-semibold text-base transition-all duration-200 flex items-center justify-center gap-3 group disabled:opacity-50 disabled:pointer-events-none cursor-pointer shadow-lg shadow-slate-900/20 btn-continue-wrap px-6${isSwooshing ? ' is-swooshing' : ''}`}
           onClick={handleCheckout}
-          disabled={isProcessing || (tab === 'code' && code.length === 0)}
+          disabled={isProcessing || isSwooshing || (tab === 'code' && code.length === 0)}
         >
           {isProcessing ? (
             <Loader2 className="w-5 h-5 animate-spin" />
           ) : (
             <>
-              {tab === 'pay' ? `Proceed to Pay ${plan === 'annual' ? '₹499' : '₹1,999'}` : 'Finish Setup'}
-              <ArrowRight className="w-5 h-5 ml-2 transition-transform group-hover:translate-x-1" />
+              <div className="w-9 h-9 bg-indigo-500 rounded-xl flex items-center justify-center arrow-box shrink-0">
+                <ArrowRight className="w-5 h-5 text-white" />
+              </div>
+              <span className="btn-label">{tab === 'pay' ? `Proceed to Pay ${plan === 'annual' ? '₹499' : '₹1,999'}` : 'Finish Setup'}</span>
             </>
           )}
-        </Button>
+        </button>
         
         {tab === 'pay' && (
           <p className="text-center text-xs text-slate-400 mt-4 flex items-center justify-center gap-1">

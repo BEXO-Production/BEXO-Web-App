@@ -38,10 +38,14 @@ export default function Step7Theme() {
   const [selectedTemplate, setSelectedTemplate] = useState(data.templateId || 'minimal');
   const [selectedTheme, setSelectedTheme] = useState(data.themeColor || 'blue');
   const [previewTemplate, setPreviewTemplate] = useState<string | null>(null);
+  const [isSwooshing, setIsSwooshing] = useState(false);
 
   const handleContinue = () => {
     updateData({ templateId: selectedTemplate, themeColor: selectedTheme });
-    nextStep(7);
+    setIsSwooshing(true);
+    setTimeout(() => {
+      nextStep(7);
+    }, 600);
   };
 
   const getThemeClass = (isBg = true) => {
@@ -184,13 +188,17 @@ export default function Step7Theme() {
       </div>
 
       <div className="mt-10 flex justify-end pt-6 border-t border-slate-200">
-        <Button 
-          className="w-full md:w-auto md:min-w-[200px] h-14 text-base group shadow-lg"
+        <button
+          type="button"
+          className={`w-full md:w-auto md:min-w-[240px] h-14 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-semibold text-base transition-all duration-200 flex items-center justify-center gap-3 group cursor-pointer shadow-lg shadow-slate-900/20 btn-continue-wrap px-6${isSwooshing ? ' is-swooshing' : ''}`}
           onClick={handleContinue}
+          disabled={isSwooshing}
         >
-          Publish Portfolio
-          <ArrowRight className="w-5 h-5 ml-2 transition-transform group-hover:translate-x-1" />
-        </Button>
+          <div className="w-9 h-9 bg-indigo-500 rounded-xl flex items-center justify-center arrow-box shrink-0">
+            <ArrowRight className="w-5 h-5 text-white" />
+          </div>
+          <span className="btn-label">Publish Portfolio</span>
+        </button>
       </div>
 
       {/* Custom Fullscreen Preview Modal */}

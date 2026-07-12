@@ -10,45 +10,115 @@ export default function Step5Resume() {
   const [status, setStatus] = useState<'idle' | 'uploading' | 'parsing' | 'success' | 'transitioning'>(
     data.resumeFileName ? 'success' : 'idle'
   );
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isSwooshing, setIsSwooshing] = useState(false);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile && selectedFile.type === 'application/pdf') {
       setFile(selectedFile);
       processFile(selectedFile);
+    } else if (selectedFile) {
+      setErrorMsg('Please select a valid PDF file.');
     }
   };
 
-  const processFile = (selectedFile: File) => {
+  const processFile = async (selectedFile: File) => {
     setStatus('uploading');
-    
-    // Mock upload delay
-    setTimeout(() => {
+    setErrorMsg(null);
+
+    const formData = new FormData();
+    formData.append('resume', selectedFile);
+
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+      const token = localStorage.getItem('token');
+
+      const res = await fetch(`${apiUrl}/api/profile/resume`, {
+        method: 'POST',
+        headers: {
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: formData
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || 'Failed to process resume');
+      }
+
       setStatus('parsing');
-      
-      // Mock parsing delay
+      const result = await res.json();
+      const parsed = result.data;
+
+      const defaultAssets = { mode: 'images' as const, images: [], pdfs: [], links: [] };
+
+      // Map parsed data into Context fields
+      updateData({
+        resumeFileName: selectedFile.name,
+        resumeFileSize: selectedFile.size,
+        aboutEntries: [
+          { id: '1', title: parsed.headline || 'Software Engineer Intern', description: parsed.bio || '' }
+        ],
+        educationEntries: (parsed.education || []).map((edu: any, idx: number) => ({
+          id: String(idx + 1),
+          institution: edu.institution || '',
+          degree: edu.degree || '',
+          year: edu.year || '',
+          grade: edu.grade || ''
+        })),
+        experienceEntries: (parsed.experience || []).map((exp: any, idx: number) => ({
+          id: String(idx + 1),
+          company: exp.company || '',
+          role: exp.role || '',
+          duration: exp.duration || '',
+          description: exp.description || ''
+        })),
+        projectEntries: (parsed.projects || []).map((proj: any, idx: number) => ({
+          id: String(idx + 1),
+          title: proj.title || '',
+          description: proj.description || '',
+          tech: proj.tech || '',
+          link: '',
+          assets: defaultAssets
+        })),
+        certificateEntries: (parsed.certificates || []).map((cert: any, idx: number) => ({
+          id: String(idx + 1),
+          title: cert.title || '',
+          issuer: cert.issuer || '',
+          date: cert.date || '',
+          assets: defaultAssets
+        })),
+        achievementEntries: (parsed.achievements || []).map((ach: any, idx: number) => ({
+          id: String(idx + 1),
+          title: ach.title || '',
+          organization: ach.organization || '',
+          date: ach.date || '',
+          assets: defaultAssets
+        }))
+      });
+
+      setStatus('success');
       setTimeout(() => {
         setStatus('transitioning');
-        
-        // Mock a plausible file size between 1MB and 4MB
-        const randomSizeBytes = Math.floor((Math.random() * 3 + 1) * 1024 * 1024);
-        
-        updateData({ 
-          resumeFileName: selectedFile.name,
-          resumeFileSize: randomSizeBytes
-        });
-        
-        // Transition to step 6 automatically after brief success message
         setTimeout(() => {
           nextStep(5);
-        }, 2000);
-      }, 2500);
-    }, 1500);
+        }, 1000);
+      }, 1500);
+
+    } catch (err: any) {
+      setStatus('idle');
+      setFile(null);
+      setErrorMsg(err.message || 'Failed to process resume. Please try again.');
+    }
   };
 
   const handleContinue = () => {
-    nextStep(5);
+    setIsSwooshing(true);
+    setTimeout(() => {
+      nextStep(5);
+    }, 600);
   };
 
   return (
@@ -81,11 +151,12 @@ export default function Step5Resume() {
 
         {status === 'idle' && (
           <div className="flex flex-col items-center animate-in fade-in zoom-in-95">
-            <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-4">
+            <div className="w-16 h-16 bg-indigo-100 text-indigo-500 rounded-full flex items-center justify-center mb-4">
               <UploadCloud className="w-8 h-8" />
             </div>
             <h3 className="text-lg font-semibold text-slate-900 mb-1">Click to upload PDF</h3>
-            <p className="text-slate-500 text-sm">PDF formats only, up to 5MB.</p>
+            <p className="text-slate-500 text-sm mb-3">PDF formats only, up to 5MB.</p>
+            {errorMsg && <p className="text-red-500 text-sm font-medium">{errorMsg}</p>}
           </div>
         )}
 
@@ -95,7 +166,7 @@ export default function Step5Resume() {
               <Loader2 className="w-8 h-8 animate-spin" />
             </div>
             <h3 className="text-lg font-semibold text-slate-900 mb-1">
-              {status === 'uploading' ? 'Uploading resume...' : 'Parsing your details...'}
+              {status === 'uploading' ? 'Uploading resume...' : 'Parsing your details with Gemma AI...'}
             </h3>
             <p className="text-slate-500 text-sm">This takes just a moment.</p>
             
@@ -119,7 +190,7 @@ export default function Step5Resume() {
               {status === 'transitioning' ? 'Preparing your review...' : 'Parsing Complete'}
             </h3>
             <div className="flex items-center gap-2 text-slate-600 bg-white border border-slate-200 px-4 py-2 rounded-lg mt-2 shadow-sm">
-              <FileText className="w-4 h-4 text-blue-600" />
+              <FileText className="w-4 h-4 text-indigo-500" />
               <span className="text-sm font-medium truncate max-w-[200px]">
                 {file?.name || data.resumeFileName}
               </span>
@@ -129,17 +200,20 @@ export default function Step5Resume() {
       </div>
 
       <div className="pt-8">
-        <Button 
-          className="w-full h-14 text-base group"
-          disabled={status !== 'success'}
+        <button
+          type="button"
+          className={`w-full h-14 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-semibold text-base transition-all duration-200 flex items-center justify-center gap-3 group disabled:opacity-50 disabled:pointer-events-none cursor-pointer shadow-lg shadow-slate-900/20 btn-continue-wrap px-6${isSwooshing ? ' is-swooshing' : ''}`}
+          disabled={status !== 'success' || isSwooshing}
           onClick={handleContinue}
         >
-          Review Extracted Data
-          <ArrowRight className="w-5 h-5 ml-2 transition-transform group-hover:translate-x-1" />
-        </Button>
+          <div className="w-9 h-9 bg-indigo-500 rounded-xl flex items-center justify-center arrow-box shrink-0">
+            <ArrowRight className="w-5 h-5 text-white" />
+          </div>
+          <span className="btn-label">Review Extracted Data</span>
+        </button>
         {status === 'idle' && (
           <p className="text-center text-sm text-slate-500 mt-4">
-            Don't have a resume? <button onClick={() => { updateData({ resumeFileName: 'manual_entry', resumeFileSize: 0 }); nextStep(5); }} className="text-blue-600 font-medium hover:underline">Enter manually</button>
+            Don't have a resume? <button onClick={() => { updateData({ resumeFileName: 'manual_entry', resumeFileSize: 0 }); nextStep(5); }} className="text-indigo-500 font-medium hover:underline cursor-pointer">Enter manually</button>
           </p>
         )}
       </div>

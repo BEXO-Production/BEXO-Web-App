@@ -1,20 +1,113 @@
-// Export your models here. Add one export per file
-// export * from "./posts";
-//
-// Each model/table should ideally be split into different files.
-// Each model/table should define a Drizzle table, insert schema, and types:
-//
-//   import { pgTable, text, serial } from "drizzle-orm/pg-core";
-//   import { createInsertSchema } from "drizzle-zod";
-//   import { z } from "zod/v4";
-//
-//   export const postsTable = pgTable("posts", {
-//     id: serial("id").primaryKey(),
-//     title: text("title").notNull(),
-//   });
-//
-//   export const insertPostSchema = createInsertSchema(postsTable).omit({ id: true });
-//   export type InsertPost = z.infer<typeof insertPostSchema>;
-//   export type Post = typeof postsTable.$inferSelect;
+import { pgTable, uuid, text, timestamp, date, integer, boolean, bigint, unique, jsonb } from "drizzle-orm/pg-core";
 
-export {}
+// 1. Users Table
+export const users = pgTable("users", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  phone: text("phone").unique().notNull(),
+  phoneVerifiedAt: timestamp("phone_verified_at", { withTimezone: true }),
+  email: text("email").unique(),
+  oauthProvider: text("oauth_provider"),
+  oauthId: text("oauth_id"),
+  name: text("name"),
+  dob: date("dob"),
+  profilePhotoAssetId: uuid("profile_photo_asset_id"),
+  storageUsedBytes: bigint("storage_used_bytes", { mode: "number" }).default(0),
+  storageQuotaBytes: bigint("storage_quota_bytes", { mode: "number" }).default(52428800), // 50MB in bytes
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});
+
+// 2. Profiles Table
+export const profiles = pgTable("profiles", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").references(() => users.id).unique().notNull(),
+  handle: text("handle").unique(),
+  headline: text("headline"),
+  careerGoal: text("career_goal"),
+  bio: text("bio"),
+  completionPct: integer("completion_pct").default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});
+
+// 3. Profile Sections Table
+export const profileSections = pgTable("profile_sections", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  profileId: uuid("profile_id").references(() => profiles.id).notNull(),
+  type: text("type").notNull(), // 'about' | 'education' | 'projects' | 'experience' | 'certificates' | 'achievements' | 'research' | 'contact'
+  entries: jsonb("entries").default([]),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+}, (table) => {
+  return {
+    profileTypeUnique: unique("profile_type_unique").on(table.profileId, table.type),
+  };
+});
+
+// 4. Assets Table
+export const assets = pgTable("assets", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").references(() => users.id).notNull(),
+  name: text("name").notNull(),
+  url: text("url").notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  sectionType: text("section_type"),
+  entryId: text("entry_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});
+
+// 5. Templates Table
+export const templates = pgTable("templates", {
+  id: text("id").primaryKey(), // 'minimal' | 'academic' | 'creative'
+  name: text("name").notNull(),
+  description: text("description"),
+});
+
+// 6. Theme Variants Table
+export const themeVariants = pgTable("theme_variants", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  templateId: text("template_id").references(() => templates.id).notNull(),
+  name: text("name").notNull(),
+  tokens: jsonb("tokens").notNull(),
+});
+
+// 7. Portfolios Table
+export const portfolios = pgTable("portfolios", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").references(() => users.id).unique().notNull(),
+  handle: text("handle").unique().notNull(),
+  selectedTemplateId: text("selected_template_id").references(() => templates.id),
+  selectedThemeId: text("selected_theme_id"),
+  isPublished: boolean("is_published").default(false),
+  publishedAt: timestamp("published_at", { withTimezone: true }),
+  draftPreviewToken: text("draft_preview_token").unique(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});
+
+// 8. Activation Keys Table
+export const activationKeys = pgTable("activation_keys", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  code: text("code").unique().notNull(),
+  status: text("status").default("unused"), // 'unused' | 'redeemed' | 'expired' | 'revoked'
+  redeemedBy: uuid("redeemed_by").references(() => users.id),
+  redeemedAt: timestamp("redeemed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});
+
+// 9. Subscriptions Table
+export const subscriptions = pgTable("subscriptions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").references(() => users.id).unique().notNull(),
+  plan: text("plan").notNull(), // 'annual' | 'lifetime'
+  status: text("status").notNull(), // 'active' | 'expired'
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});
+
+// 10. Payments Table
+export const payments = pgTable("payments", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").references(() => users.id).notNull(),
+  razorpayOrderId: text("razorpay_order_id").unique().notNull(),
+  razorpayPaymentId: text("razorpay_payment_id").unique(),
+  amount: integer("amount").notNull(), // in paise
+  status: text("status").notNull(), // 'pending' | 'success' | 'failed'
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});

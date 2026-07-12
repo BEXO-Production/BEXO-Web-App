@@ -2,11 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { useOnboarding } from '../context/OnboardingContext';
 import { Button, Card } from '../design-system/primitives';
 import { CheckCircle2, Copy, ExternalLink, Sparkles, ArrowRight } from 'lucide-react';
-import logo from '../assets/ace-digitals-logo.png';
+import logo from '../assets/bexo-logo.png';
 
 export default function Step8Publish() {
   const { data, nextStep } = useOnboarding();
   const [copied, setCopied] = useState(false);
+  const [isSwooshing, setIsSwooshing] = useState(false);
   
   const handleString = data.name ? data.name.toLowerCase().replace(/[^a-z0-9]/g, '') : 'portfolio';
   const url = `${handleString}.mybexo.com`;
@@ -18,7 +19,10 @@ export default function Step8Publish() {
   };
 
   const handleContinue = () => {
-    nextStep(8);
+    setIsSwooshing(true);
+    setTimeout(() => {
+      nextStep(8);
+    }, 600);
   };
 
   return (
@@ -45,12 +49,12 @@ export default function Step8Publish() {
         <div className="flex flex-col md:flex-row items-center gap-3 bg-slate-50 rounded-xl p-4 border border-slate-100">
           <div className="flex-1 flex items-center gap-3 overflow-hidden w-full">
             <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
-              <Sparkles className="w-6 h-6 text-blue-600" />
+              <Sparkles className="w-6 h-6 text-indigo-500" />
             </div>
             <div className="truncate">
               <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Your Public URL</p>
               <p className="text-lg md:text-2xl font-medium text-slate-900 truncate">
-                https://<span className="text-blue-600">{url}</span>
+                https://<span className="text-indigo-500">{url}</span>
               </p>
             </div>
           </div>
@@ -67,13 +71,17 @@ export default function Step8Publish() {
       </Card>
 
       <div className="animate-in fade-in duration-700 delay-300 fill-mode-both w-full">
-        <Button 
-          className="w-full h-14 text-base group"
+        <button
+          type="button"
+          className={`w-full h-14 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-semibold text-base transition-all duration-200 flex items-center justify-center gap-3 group cursor-pointer shadow-lg shadow-slate-900/20 btn-continue-wrap px-6${isSwooshing ? ' is-swooshing' : ''}`}
           onClick={handleContinue}
+          disabled={isSwooshing}
         >
-          Continue to Activation
-          <ArrowRight className="w-5 h-5 ml-2 transition-transform group-hover:translate-x-1" />
-        </Button>
+          <div className="w-9 h-9 bg-indigo-500 rounded-xl flex items-center justify-center arrow-box shrink-0">
+            <ArrowRight className="w-5 h-5 text-white" />
+          </div>
+          <span className="btn-label">Continue to Activation</span>
+        </button>
       </div>
     </div>
   );

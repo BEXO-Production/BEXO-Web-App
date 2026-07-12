@@ -35,6 +35,7 @@ export default function Step6Review() {
   
   const [contactData, setContactData] = useState(data.contactData);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isSwooshing, setIsSwooshing] = useState(false);
   const [editForm, setEditForm] = useState<any>({});
   const [contactErrors, setContactErrors] = useState<any>({});
 
@@ -145,7 +146,11 @@ export default function Step6Review() {
       researchEntries: sections.research,
       contactData
     });
-    nextStep(6);
+    // Trigger swoosh animation, then navigate
+    setIsSwooshing(true);
+    setTimeout(() => {
+      nextStep(6);
+    }, 600);
   };
 
   // Asset Handlers for the form
@@ -211,7 +216,10 @@ export default function Step6Review() {
 
     return (
       <div className="mt-6 pt-6 border-t border-slate-100">
-        <Label className="text-base mb-3 block">Attach Evidence</Label>
+        <div className="flex items-center gap-2 mb-1">
+          <Label className="text-base block">Supporting Materials</Label>
+        </div>
+        <p className="text-xs text-slate-400 mb-3">Add images, documents, or links to showcase your work.</p>
         
         {/* Mode Toggle */}
         <div className="flex p-1 bg-slate-100 rounded-lg mb-4 w-fit">
@@ -332,7 +340,7 @@ export default function Step6Review() {
             </div>
             <div className="space-y-2">
               <Label>Description</Label>
-              <textarea value={editForm.description || ''} onChange={e => setEditForm({...editForm, description: e.target.value})} className="flex min-h-[100px] w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 resize-none" placeholder="Write a brief description..." />
+              <textarea value={editForm.description || ''} onChange={e => setEditForm({...editForm, description: e.target.value})} className="flex min-h-[100px] w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 resize-none" placeholder="Write a brief description..." />
             </div>
           </>
         );
@@ -378,7 +386,7 @@ export default function Step6Review() {
             </div>
             <div className="space-y-2">
               <Label>Description</Label>
-              <textarea value={editForm.description || ''} onChange={e => setEditForm({...editForm, description: e.target.value})} className="flex min-h-[100px] w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 resize-none" />
+              <textarea value={editForm.description || ''} onChange={e => setEditForm({...editForm, description: e.target.value})} className="flex min-h-[100px] w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 resize-none" />
             </div>
           </>
         );
@@ -391,7 +399,7 @@ export default function Step6Review() {
             </div>
             <div className="space-y-2">
               <Label>Description</Label>
-              <textarea value={editForm.description || ''} onChange={e => setEditForm({...editForm, description: e.target.value})} className="flex min-h-[80px] w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 resize-none" />
+              <textarea value={editForm.description || ''} onChange={e => setEditForm({...editForm, description: e.target.value})} className="flex min-h-[80px] w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 resize-none" />
             </div>
             <div className="space-y-2">
               <Label>Technologies</Label>
@@ -441,7 +449,7 @@ export default function Step6Review() {
   const renderAssetPreviewIcon = (entry: any) => {
     if (!entry.assets) return null;
     const a = entry.assets as AssetData;
-    if (a.images.length > 0) return <div className="flex items-center gap-1 text-xs text-blue-600 mt-2"><ImageIcon className="w-3 h-3"/> {a.images.length} Images</div>;
+    if (a.images.length > 0) return <div className="flex items-center gap-1 text-xs text-indigo-500 mt-2"><ImageIcon className="w-3 h-3"/> {a.images.length} Images</div>;
     if (a.pdfs.length > 0) return <div className="flex items-center gap-1 text-xs text-red-600 mt-2"><FileText className="w-3 h-3"/> {a.pdfs.length} PDFs</div>;
     if (a.links.length > 0) return <div className="flex items-center gap-1 text-xs text-emerald-600 mt-2"><LinkIcon className="w-3 h-3"/> {a.links.length} Links</div>;
     return null;
@@ -471,7 +479,7 @@ export default function Step6Review() {
           </div>
           <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden relative z-10">
             <div 
-              className={cn("h-full rounded-full transition-all duration-500", isStorageFull ? "bg-red-500" : "bg-blue-600")}
+              className={cn("h-full rounded-full transition-all duration-500", isStorageFull ? "bg-red-500" : "bg-indigo-500")}
               style={{ width: `${storagePercentage}%` }}
             />
           </div>
@@ -551,7 +559,7 @@ export default function Step6Review() {
                       </div>
                     </Card>
                   ) : (
-                    <Card className="p-4 flex items-start gap-4 group hover:border-blue-200 transition-colors">
+                    <Card className="p-4 flex items-start gap-4 group hover:border-indigo-200 transition-colors">
                       <div className="mt-1 cursor-grab text-slate-300 group-hover:text-slate-400 hidden sm:block">
                         <GripVertical className="w-5 h-5" />
                       </div>
@@ -578,7 +586,7 @@ export default function Step6Review() {
               {editingId === null && (
                 <Button 
                   variant="outline" 
-                  className="w-full border-dashed border-2 h-14 text-slate-500 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50/50"
+                  className="w-full border-dashed border-2 h-14 text-slate-500 hover:text-indigo-500 hover:border-indigo-200 hover:bg-indigo-50/50"
                   onClick={handleAdd}
                 >
                   <Plus className="w-5 h-5 mr-2" />
@@ -594,14 +602,17 @@ export default function Step6Review() {
         <p className="text-sm text-slate-500 text-center md:text-left">
           {!allTabsVisited ? `Please visit all ${TABS.length} sections to continue.` : 'All sections reviewed!'}
         </p>
-        <Button 
-          className="w-full md:w-auto h-14 text-base group"
+        <button
+          type="button"
+          className={`w-full md:w-auto h-14 px-8 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-semibold text-base transition-all duration-200 flex items-center justify-center gap-3 group disabled:opacity-50 disabled:pointer-events-none cursor-pointer shadow-lg shadow-slate-900/20 btn-continue-wrap${isSwooshing ? ' is-swooshing' : ''}`}
           onClick={handleContinue}
-          disabled={!allTabsVisited || editingId !== null}
+          disabled={!allTabsVisited || editingId !== null || isSwooshing}
         >
-          Verify & Continue
-          <ArrowRight className="w-5 h-5 ml-2 transition-transform group-hover:translate-x-1" />
-        </Button>
+          <div className="w-9 h-9 bg-indigo-500 rounded-xl flex items-center justify-center arrow-box shrink-0">
+            <ArrowRight className="w-5 h-5 text-white" />
+          </div>
+          <span className="btn-label">Verify & Continue</span>
+        </button>
       </div>
     </div>
   );

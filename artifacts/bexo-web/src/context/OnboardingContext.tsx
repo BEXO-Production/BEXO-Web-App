@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { useLocation } from 'wouter';
 
 export type AssetMode = 'images' | 'pdfs' | 'links';
@@ -38,6 +38,11 @@ export type OnboardingData = {
   phone: string;
   name: string;
   dob: string;
+  handle?: string;
+  firstName?: string;
+  lastName?: string;
+  nationality?: string;
+  pronouns?: string;
   resumeFileName: string;
   resumeFileSize: number; // in bytes
   photoUrl: string;
@@ -66,6 +71,11 @@ const defaultData: OnboardingData = {
   phone: '',
   name: '',
   dob: '',
+  handle: '',
+  firstName: '',
+  lastName: '',
+  nationality: 'India',
+  pronouns: 'She/Her',
   resumeFileName: '',
   resumeFileSize: 0,
   photoUrl: '',
@@ -108,8 +118,32 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<OnboardingData>(defaultData);
   const [, setLocation] = useLocation();
 
+  useEffect(() => {
+    fetch('/api/profile')
+      .then(res => res.json())
+      .then(result => {
+        if (result.profile && result.user) {
+          setData(prev => ({
+            ...prev,
+            handle: result.profile.handle || prev.handle,
+            firstName: result.user.name?.split(' ')[0] || prev.firstName,
+            lastName: result.user.name?.split(' ').slice(1).join(' ') || prev.lastName,
+            name: result.user.name || prev.name,
+            dob: result.user.dob || prev.dob,
+            phone: result.user.phone || prev.phone,
+          }));
+        }
+      })
+      .catch(console.error);
+  }, []);
+
   const updateData = (updates: Partial<OnboardingData>) => {
     setData((prev) => ({ ...prev, ...updates }));
+    fetch('/api/profile', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    }).catch(console.error);
   };
 
   const nextStep = (currentStep: number) => {
