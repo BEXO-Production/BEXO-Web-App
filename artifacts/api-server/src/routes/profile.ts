@@ -385,10 +385,21 @@ router.post("/resume", requireAuth, upload.single("resume"), async (req: Authent
     
     // Save user name and email
     if (parsedData.name) {
-      await db.update(users).set({ 
-        name: parsedData.name, 
-        email: parsedData.email || undefined 
-      }).where(eq(users.id, userId));
+      try {
+        await db.update(users).set({ 
+          name: parsedData.name, 
+          email: parsedData.email || undefined 
+        }).where(eq(users.id, userId));
+      } catch (dbErr: any) {
+        if (dbErr.message?.includes("unique") || dbErr.message?.includes("duplicate")) {
+          logger.warn({ userId, email: parsedData.email }, "Duplicate email update failed, updating name only");
+          await db.update(users).set({ 
+            name: parsedData.name 
+          }).where(eq(users.id, userId));
+        } else {
+          throw dbErr;
+        }
+      }
     }
 
     await db.update(profiles).set({
