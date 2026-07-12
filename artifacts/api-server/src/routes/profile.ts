@@ -352,33 +352,8 @@ router.post("/resume", requireAuth, upload.single("resume"), async (req: Authent
     }
 
     if (!parsedData) {
-      logger.warn("AI parsing failed or no API key. Falling back to mock resume data.");
-      parsedData = {
-        name: "Rahul Sharma",
-        headline: "Software Engineer Intern",
-        bio: "Passionate developer skilled in building modern web applications with React, Node.js, and TypeScript. Looking to create impactful portfolio experiences.",
-        email: "rahul.sharma@example.com",
-        phone: "+91 9999999999",
-        links: [
-          { name: "LinkedIn", url: "https://linkedin.com/in/rahulsharma" },
-          { name: "GitHub", url: "https://github.com/rahulsharma" }
-        ],
-        education: [
-          { institution: "Indian Institute of Technology", degree: "B.Tech in Computer Science", year: "2021 - 2025", grade: "9.2 CGPA" }
-        ],
-        experience: [
-          { company: "Bexo Tech", role: "Software Developer Intern", duration: "May 2024 - July 2024", description: "Collaborated on building secure onboarding flows. Optimized database schemas and API latency." }
-        ],
-        projects: [
-          { title: "Bexo Web Portal", description: "A portfolio building onboarding flow wizard with integrated secure OTP phone verification.", tech: "React, Vite, Tailwind CSS, Express, Drizzle ORM, Supabase" }
-        ],
-        certificates: [
-          { title: "React Developer Certification", issuer: "Meta", date: "Jan 2024" }
-        ],
-        achievements: [
-          { title: "Winner of HackFest 2024", organization: "IIT Madras", date: "Feb 2024" }
-        ]
-      };
+      logger.error({ userId }, "Resume parsing failed across all models");
+      throw new Error("AI parsing failed. Please try again or fill details manually.");
     }
 
     const profile = await getOrCreateProfile(userId);
@@ -391,13 +366,13 @@ router.post("/resume", requireAuth, upload.single("resume"), async (req: Authent
           email: parsedData.email || undefined 
         }).where(eq(users.id, userId));
       } catch (dbErr: any) {
-        if (dbErr.message?.includes("unique") || dbErr.message?.includes("duplicate")) {
-          logger.warn({ userId, email: parsedData.email }, "Duplicate email update failed, updating name only");
+        logger.warn({ err: dbErr.message, userId, email: parsedData.email }, "Failed to update user name/email, trying name only");
+        try {
           await db.update(users).set({ 
             name: parsedData.name 
           }).where(eq(users.id, userId));
-        } else {
-          throw dbErr;
+        } catch (nameErr: any) {
+          logger.error({ err: nameErr.message, userId }, "Failed to update name only");
         }
       }
     }
