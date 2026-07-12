@@ -119,7 +119,14 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
   const [, setLocation] = useLocation();
 
   useEffect(() => {
-    fetch('/api/profile')
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    fetch('/api/profile', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
       .then(res => res.json())
       .then(result => {
         if (result.profile && result.user) {
@@ -139,9 +146,15 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
 
   const updateData = (updates: Partial<OnboardingData>) => {
     setData((prev) => ({ ...prev, ...updates }));
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
     fetch('/api/profile', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
       body: JSON.stringify(updates),
     }).catch(console.error);
   };

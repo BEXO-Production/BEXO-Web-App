@@ -56,6 +56,7 @@ export default function Step3Info() {
   const initialDob = parseInitialDob();
 
   const [handle, setHandle] = useState(data.handle || '');
+  const [handleAvailability, setHandleAvailability] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle');
   const [firstName, setFirstName] = useState(data.firstName || '');
   const [lastName, setLastName] = useState(data.lastName || '');
   const [dobDay, setDobDay] = useState(initialDob.day);
@@ -68,6 +69,48 @@ export default function Step3Info() {
   const [handleError, setHandleError] = useState('');
   const [dobError, setDobError] = useState('');
   const [isSwooshing, setIsSwooshing] = useState(false);
+
+  React.useEffect(() => {
+    if (!handle.trim()) {
+      setHandleAvailability('idle');
+      setHandleError('');
+      return;
+    }
+
+    setHandleAvailability('checking');
+    setHandleError('');
+
+    const token = localStorage.getItem('token');
+    const headers: HeadersInit = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/profile/check-handle?handle=${handle.trim()}`, { headers });
+        if (!res.ok) {
+          setHandleAvailability('taken');
+          setHandleError('Verification failed');
+          return;
+        }
+        const result = await res.json();
+        if (result.available) {
+          setHandleAvailability('available');
+          setHandleError('');
+        } else {
+          setHandleAvailability('taken');
+          setHandleError('Handle is already taken');
+        }
+      } catch (err) {
+        console.error(err);
+        setHandleAvailability('taken');
+        setHandleError('Connection failed');
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [handle]);
 
   const validateDate = (dayStr: string, monthStr: string, yearStr: string) => {
     const day = parseInt(dayStr, 10);
@@ -138,9 +181,13 @@ export default function Step3Info() {
 
     // Save and check uniqueness of handle
     try {
+      const token = localStorage.getItem('token');
       const res = await fetch('/api/profile', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({ handle })
       });
       if (!res.ok) {
@@ -214,7 +261,15 @@ export default function Step3Info() {
                 .mybexo.com
               </div>
             </div>
-            {handleError && <p className="text-red-500 text-xs mt-1">{handleError}</p>}
+            {handleAvailability === 'checking' && (
+              <p className="text-slate-400 text-xs mt-1 animate-pulse">Checking availability...</p>
+            )}
+            {handleAvailability === 'available' && (
+              <p className="text-emerald-500 text-xs mt-1 font-medium">✓ Handle is available!</p>
+            )}
+            {handleError && handleAvailability === 'taken' && (
+              <p className="text-red-500 text-xs mt-1">{handleError}</p>
+            )}
           </div>
 
           {/* Name Fields */}
@@ -379,7 +434,7 @@ export default function Step3Info() {
           <div className="pt-4">
             <button
               type="submit"
-              disabled={!firstName.trim() || isSwooshing}
+              disabled={!firstName.trim() || isSwooshing || handleAvailability === 'checking' || handleAvailability === 'taken'}
               className={`w-full h-14 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-semibold text-base transition-all duration-200 flex items-center justify-center gap-3 group disabled:opacity-50 disabled:pointer-events-none cursor-pointer shadow-lg shadow-slate-900/20 btn-continue-wrap px-6${isSwooshing ? ' is-swooshing' : ''}`}
             >
               <div className="w-9 h-9 bg-indigo-500 rounded-xl flex items-center justify-center arrow-box shrink-0">

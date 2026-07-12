@@ -110,6 +110,23 @@ router.patch("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<v
   }
 });
 
+// GET /profile/check-handle
+router.get("/check-handle", requireAuth, async (req: AuthenticatedRequest, res): Promise<void> => {
+  const handle = req.query.handle as string;
+  if (!handle) {
+    res.status(400).json({ error: "Handle query parameter is required" });
+    return;
+  }
+  try {
+    const existing = await db.select().from(profiles).where(eq(profiles.handle, handle)).limit(1);
+    const taken = existing.length > 0 && existing[0].userId !== req.user!.id;
+    res.json({ available: !taken });
+  } catch (err) {
+    logger.error({ err, handle }, "Error checking handle availability");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // GET /profile/sections/:type
 router.get("/sections/:type", requireAuth, async (req: AuthenticatedRequest, res): Promise<void> => {
   const userId = req.user!.id;
