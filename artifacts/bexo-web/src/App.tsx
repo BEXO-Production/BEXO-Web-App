@@ -1,10 +1,12 @@
+import React, { useState, useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import { Route, Switch, Router as WouterRouter, Redirect } from 'wouter';
-import { OnboardingProvider } from './context/OnboardingContext';
+import { OnboardingProvider, useOnboarding } from './context/OnboardingContext';
 import { OnboardingLayout } from './layouts/OnboardingLayout';
+import { supabase } from './lib/supabase';
 
 import Step1Phone from './pages/step-1';
 import Step2Auth from './pages/step-2';
@@ -21,6 +23,81 @@ import Dashboard from './pages/dashboard';
 const queryClient = new QueryClient();
 
 function Router() {
+  const { data, isLoading } = useOnboarding();
+  const [sessionLoading, setSessionLoading] = useState(true);
+  const [hasGoogleSession, setHasGoogleSession] = useState(false);
+
+  useEffect(() => {
+    const checkSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        setHasGoogleSession(!!session?.user);
+      } catch (err) {
+        console.error("Error checking Supabase session:", err);
+      } finally {
+        setSessionLoading(false);
+      }
+    };
+    checkSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setHasGoogleSession(!!session?.user);
+      setSessionLoading(false);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  if (isLoading || sessionLoading) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-sm font-medium text-slate-500">Loading your profile...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const token = localStorage.getItem('token');
+  const hasToken = !!token;
+
+  // Function to calculate maximum allowed step
+  const getMaxAllowedStep = () => {
+    // Step 1: Verification (no requirements)
+    if (!hasToken) return 1;
+
+    // Step 2: Google Link
+    if (!hasGoogleSession) return 2;
+
+    // Step 3: Profile Info (Name, DOB, Handle required)
+    if (!data.name?.trim() || !data.dob || !data.handle?.trim()) {
+      return 3;
+    }
+
+    // Step 4: Photo / Layout Selection (Optional, defaults to minimal)
+    // Step 5: Resume Upload
+    if (!data.resumeFileName) {
+      return 5;
+    }
+
+    // Step 6: Review & Verify (must visit all tabs to continue)
+    const requiredTabs = ['about', 'education', 'experience', 'projects', 'certificates', 'achievements', 'research', 'contact'];
+    const hasVisitedAllTabs = requiredTabs.every(t => data.visitedTabs?.includes(t));
+    if (!hasVisitedAllTabs) {
+      return 6;
+    }
+
+    // Step 7: Theme
+    // Step 8: Publish
+    // Step 9: Plan
+    return 9;
+  };
+
+  const maxAllowedStep = getMaxAllowedStep();
+
   return (
     <Switch>
       <Route path="/" component={() => <Redirect to="/step/1" />} />
@@ -31,6 +108,11 @@ function Router() {
           
           if (stepId < 1 || stepId > 9) {
             return <Redirect to="/step/1" />;
+          }
+
+          // If trying to access a step beyond what is allowed, redirect to maxAllowedStep
+          if (stepId > maxAllowedStep) {
+            return <Redirect to={`/step/${maxAllowedStep}`} />;
           }
 
           return (

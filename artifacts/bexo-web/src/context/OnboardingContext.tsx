@@ -62,6 +62,7 @@ export type OnboardingData = {
 
 interface OnboardingContextType {
   data: OnboardingData;
+  isLoading: boolean;
   updateData: (updates: Partial<OnboardingData>) => void;
   nextStep: (currentStep: number) => void;
   prevStep: (currentStep: number) => void;
@@ -117,11 +118,15 @@ const OnboardingContext = createContext<OnboardingContextType | undefined>(undef
 
 export function OnboardingProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<OnboardingData>(defaultData);
+  const [isLoading, setIsLoading] = useState(true);
   const [, setLocation] = useLocation();
 
   useEffect(() => {
     const token = localStorage.getItem('token');
-    if (!token) return;
+    if (!token) {
+      setIsLoading(false);
+      return;
+    }
 
     fetch('/api/profile', {
       headers: {
@@ -150,7 +155,10 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
           }));
         }
       })
-      .catch(console.error);
+      .catch(console.error)
+      .finally(() => {
+        setIsLoading(false);
+      });
   }, []);
 
   const updateData = (updates: Partial<OnboardingData>) => {
@@ -181,7 +189,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <OnboardingContext.Provider value={{ data, updateData, nextStep, prevStep }}>
+    <OnboardingContext.Provider value={{ data, isLoading, updateData, nextStep, prevStep }}>
       {children}
     </OnboardingContext.Provider>
   );
