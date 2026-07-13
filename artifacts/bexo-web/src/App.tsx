@@ -36,8 +36,11 @@ const getSubdomain = () => {
     return null;
   }
   
-  if (parts.length > 2 && parts[0] !== 'www') {
-    return parts[0];
+  if (hostname.endsWith('mybexo.com')) {
+    if (parts.length > 2 && parts[0] !== 'www') {
+      return parts[0];
+    }
+    return null;
   }
   
   return null;
