@@ -54,25 +54,20 @@ export default function Step1Phone() {
       });
       
       if (!res.ok) {
-        throw new Error('Failed to send OTP');
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to send OTP');
       }
       
       setIsSwooshingSend(false);
       setStep('otp');
       setCooldown(30);
-    } catch (err) {
+    } catch (err: any) {
       setIsSwooshingSend(false);
-      setPhoneError('Failed to send OTP. Please check your connection or try again later.');
+      setPhoneError(err.message || 'Failed to send OTP. Please check your connection or try again later.');
     }
   };
 
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const otpCode = otp.join('');
-    if (otpCode.length < 6) {
-      setOtpError('Please enter the complete 6-digit verification code.');
-      return;
-    }
+  const verifyOtpCode = async (otpCode: string) => {
     setOtpError('');
     setIsSwooshingVerify(true);
     
@@ -104,6 +99,16 @@ export default function Step1Phone() {
     }
   };
 
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const otpCode = otp.join('');
+    if (otpCode.length < 6) {
+      setOtpError('Please enter the complete 6-digit verification code.');
+      return;
+    }
+    await verifyOtpCode(otpCode);
+  };
+
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value.replace(/\D/g, '').slice(0, 10);
     setPhone(val);
@@ -116,9 +121,16 @@ export default function Step1Phone() {
     newOtp[index] = value;
     setOtp(newOtp);
     setOtpError('');
+    
     if (value && index < 5) {
       const nextInput = document.getElementById(`otp-${index + 1}`);
       nextInput?.focus();
+    }
+
+    // Auto-submit OTP when fully entered (6 digits)
+    const otpCode = newOtp.join('');
+    if (otpCode.length === 6) {
+      verifyOtpCode(otpCode);
     }
   };
 

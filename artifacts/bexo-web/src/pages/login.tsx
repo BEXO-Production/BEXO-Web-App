@@ -48,25 +48,20 @@ export default function Login() {
       });
       
       if (!res.ok) {
-        throw new Error('Failed to send OTP');
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to send OTP');
       }
       
       setIsSwooshingSend(false);
       setStep('otp');
       setCooldown(30);
-    } catch (err) {
+    } catch (err: any) {
       setIsSwooshingSend(false);
-      setPhoneError('Failed to send OTP. Please check your connection or try again later.');
+      setPhoneError(err.message || 'Failed to send OTP. Please check your connection or try again later.');
     }
   };
 
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const otpCode = otp.join('');
-    if (otpCode.length < 6) {
-      setOtpError('Please enter the complete 6-digit verification code.');
-      return;
-    }
+  const verifyOtpCode = async (otpCode: string) => {
     setOtpError('');
     setIsSwooshingVerify(true);
     
@@ -108,6 +103,16 @@ export default function Login() {
     }
   };
 
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const otpCode = otp.join('');
+    if (otpCode.length < 6) {
+      setOtpError('Please enter the complete 6-digit verification code.');
+      return;
+    }
+    await verifyOtpCode(otpCode);
+  };
+
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value.replace(/\D/g, '').slice(0, 10);
     setPhone(val);
@@ -120,9 +125,16 @@ export default function Login() {
     newOtp[index] = value;
     setOtp(newOtp);
     setOtpError('');
+    
     if (value && index < 5) {
       const nextInput = document.getElementById(`login-otp-${index + 1}`);
       nextInput?.focus();
+    }
+
+    // Auto-submit OTP when fully entered (6 digits)
+    const otpCode = newOtp.join('');
+    if (otpCode.length === 6) {
+      verifyOtpCode(otpCode);
     }
   };
 
@@ -233,7 +245,7 @@ export default function Login() {
               <button
                 type="submit"
                 disabled={isSwooshingVerify}
-                className="w-full h-12 bg-indigo-650 text-white hover:bg-indigo-750 transition-all rounded-xl font-bold text-sm shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
+                className="w-full h-12 bg-indigo-600 text-white hover:bg-indigo-700 transition-all rounded-xl font-bold text-sm shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 {isSwooshingVerify ? (
                   <>

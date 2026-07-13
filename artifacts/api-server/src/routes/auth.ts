@@ -89,11 +89,32 @@ router.post("/phone/otp", async (req, res): Promise<void> => {
     return;
   }
 
+  const lockKey = `otp_limit:lock:${phone}`;
+  const isLocked = await store.get(lockKey);
+  if (isLocked) {
+    res.status(429).json({ error: "Too many OTP requests. Please try again after 15 minutes." });
+    return;
+  }
+
+  const countKey = `otp_limit:count:${phone}`;
+  const countVal = await store.get(countKey);
+  const currentCount = countVal ? parseInt(countVal, 10) : 0;
+
+  if (currentCount >= 3) {
+    await store.set(lockKey, "true", "EX", 900);
+    await store.del(countKey);
+    res.status(429).json({ error: "Too many OTP requests. Please try again after 15 minutes." });
+    return;
+  }
+
   // Generate a secure 6-digit OTP
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
   // Store in Redis with a 5-minute TTL
   await store.set(`otp:${phone}`, otp, "EX", 300);
+
+  // Increment the request count
+  await store.set(countKey, (currentCount + 1).toString(), "EX", 900);
 
   const authKey = process.env.MSG91_AUTH_KEY;
   const integratedNumber = process.env.MSG91_INTEGRATED_NUMBER;
