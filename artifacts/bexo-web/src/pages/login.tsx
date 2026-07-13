@@ -3,6 +3,7 @@ import { useOnboarding } from '../context/OnboardingContext';
 import { useLocation } from 'wouter';
 import { Input, Label, Card } from '../design-system/primitives';
 import { Loader2, ArrowRight, ShieldCheck } from 'lucide-react';
+import { FaWhatsapp } from 'react-icons/fa';
 import logo from '../assets/bexo-logo.png';
 
 export default function Login() {
@@ -89,8 +90,7 @@ export default function Login() {
       // Sync phone info to context
       updateData({ phone: formattedPhone });
 
-      // Routing Gate Logic: 
-      // If user has completed onboarding, send to dashboard. Otherwise start onboarding step 1.
+      // Routing gate: OTP is verified here, so incomplete users resume after verification.
       sessionStorage.setItem('showLoginToast', 'true');
       if (responseData.hasCompletedOnboarding) {
         setLocation('/dashboard');
@@ -220,6 +220,10 @@ export default function Login() {
                 <p className="text-xs text-slate-500 leading-normal">
                   Sent a 6-digit OTP to <span className="font-semibold text-slate-800">+91 {phone}</span>
                 </p>
+                <div className="flex items-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">
+                  <FaWhatsapp className="h-4 w-4 text-emerald-500" aria-hidden="true" />
+                  <span>Check WhatsApp. Your OTP is sent through WhatsApp.</span>
+                </div>
 
                 <div className="flex justify-between gap-2 pt-2">
                   {otp.map((digit, idx) => (

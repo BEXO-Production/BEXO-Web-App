@@ -1,0 +1,21 @@
+# Ignore Git and GitHub metadata
+.git
+.github
+
+# Ignore node_modules and builds that will be built in the container
+node_modules/
+dist/
+artifacts/bexo-web/node_modules/
+artifacts/api-server/node_modules/
+artifacts/mockup-sandbox/node_modules/
+scripts/node_modules/
+
+# Ignore local tool files
+.local/
+.gemini/
+.replit
+.replitignore
+dump.rdb
+
+# DO NOT ignore dotfiles like .npmrc
+!.npmrc

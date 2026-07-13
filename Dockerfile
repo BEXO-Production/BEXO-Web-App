@@ -2,8 +2,8 @@ FROM node:24-slim
 
 WORKDIR /app
 
-# Install pnpm
-RUN npm install -g pnpm
+# Install pnpm (lock to local version 10.33.2)
+RUN npm install -g pnpm@10.33.2
 
 # Copy lockfile and configs
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.json tsconfig.base.json .npmrc ./
@@ -15,6 +15,7 @@ COPY scripts ./scripts
 
 # Install dependencies and build
 RUN pnpm install --frozen-lockfile
+RUN pnpm exec tsc --build --clean
 RUN pnpm build
 
 # Clean dev dependencies for a smaller image size

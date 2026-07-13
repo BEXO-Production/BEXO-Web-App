@@ -3,6 +3,7 @@ import { useOnboarding } from '../context/OnboardingContext';
 import { Input, Label } from '../design-system/primitives';
 import { Loader2, ArrowRight } from 'lucide-react';
 import { useLocation } from 'wouter';
+import { FaWhatsapp } from 'react-icons/fa';
 
 export default function Step1Phone() {
   const { data, updateData, nextStep, setToken } = useOnboarding();
@@ -86,13 +87,17 @@ export default function Step1Phone() {
         throw new Error(errorData.error || 'Invalid OTP');
       }
       
-      const data = await res.json();
-      localStorage.setItem('token', data.accessToken);
-      setToken(data.accessToken);
+      const responseData = await res.json();
+      localStorage.setItem('token', responseData.accessToken);
+      setToken(responseData.accessToken);
       
       setIsSwooshingVerify(false);
       updateData({ phone: formattedPhone });
-      nextStep(1);
+      if (responseData.hasCompletedOnboarding) {
+        setLocation('/dashboard');
+      } else {
+        nextStep(1);
+      }
     } catch (err: any) {
       setIsSwooshingVerify(false);
       setOtpError(err.message || 'Verification failed. Please check your OTP.');
@@ -209,6 +214,10 @@ export default function Step1Phone() {
         <form onSubmit={handleVerifyOtp} className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
           <div className="space-y-4">
             <Label className={otpError ? "text-red-500" : ""}>Enter 6-digit code sent to +91 {phone}</Label>
+            <div className="flex items-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">
+              <FaWhatsapp className="h-5 w-5 text-emerald-500" aria-hidden="true" />
+              <span>Check WhatsApp. Your OTP is sent through WhatsApp.</span>
+            </div>
             <div className="flex justify-between gap-2">
               {otp.map((digit, i) => (
                 <Input

@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLocation } from 'wouter';
-import { Check, ChevronLeft, Cloud, Sparkles } from 'lucide-react';
+import { Check, ChevronLeft, Cloud, Loader2, LogOut, Sparkles } from 'lucide-react';
 import { cn } from '../design-system/primitives';
 import logo from '../assets/bexo-logo.png';
 import step1Img from '../assets/illustrations/step-1.jpeg';
@@ -15,6 +15,7 @@ import carousel1Img from '../assets/illustrations/carousel-1.jpeg';
 import carousel2Img from '../assets/illustrations/carousel-2.jpeg';
 import carousel3Img from '../assets/illustrations/carousel-3.jpeg';
 import { useOnboarding } from '../context/OnboardingContext';
+import { supabase } from '../lib/supabase';
 
 const CAROUSEL_IMAGES = [carousel1Img, carousel2Img, carousel3Img];
 
@@ -43,13 +44,14 @@ const STEP_CONTENT: Record<number, { title: string; subtitle: string; image: str
 };
 
 export function OnboardingLayout({ children }: { children: React.ReactNode }) {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const match = location.match(/\/step\/(\d+)/);
   const currentStep = match ? parseInt(match[1], 10) : 1;
-  const { prevStep } = useOnboarding();
+  const { prevStep, setToken } = useOnboarding();
   const progressPercentage = currentStep >= 3 ? (10 + currentStep * 10) : Math.round((currentStep / 9) * 100);
 
   const [carouselIndex, setCarouselIndex] = React.useState(0);
+  const [isLoggingOut, setIsLoggingOut] = React.useState(false);
 
   React.useEffect(() => {
     const timer = setInterval(() => {
@@ -57,6 +59,32 @@ export function OnboardingLayout({ children }: { children: React.ReactNode }) {
     }, 5000);
     return () => clearInterval(timer);
   }, []);
+
+  const handleLogout = async () => {
+    if (isLoggingOut) return;
+    setIsLoggingOut(true);
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' }).catch(() => undefined);
+      await supabase.auth.signOut().catch(() => undefined);
+    } finally {
+      localStorage.removeItem('token');
+      setToken(null);
+      setLocation('/');
+      setIsLoggingOut(false);
+    }
+  };
+
+  const logoutButton = (
+    <button
+      type="button"
+      onClick={handleLogout}
+      disabled={isLoggingOut}
+      className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 shadow-sm transition-colors hover:bg-slate-100 hover:text-slate-900 disabled:opacity-60"
+    >
+      {isLoggingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
+      <span>Logout</span>
+    </button>
+  );
 
   return (
     <div className="flex min-h-[100dvh] bg-slate-50 flex-col md:flex-row">
@@ -67,8 +95,19 @@ export function OnboardingLayout({ children }: { children: React.ReactNode }) {
             <img src={logo} alt="BEXO" className="w-6 h-6 object-contain" />
             <span className="font-serif font-semibold text-lg tracking-tight">BEXO</span>
           </div>
-          <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-400 bg-emerald-950/40 px-2 py-1 rounded-full">
-            <Cloud className="w-3.5 h-3.5" /> Saved
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-400 bg-emerald-950/40 px-2 py-1 rounded-full">
+              <Cloud className="w-3.5 h-3.5" /> Saved
+            </div>
+            <button
+              type="button"
+              onClick={handleLogout}
+              disabled={isLoggingOut}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/10 text-white transition-colors hover:bg-white/20 disabled:opacity-60"
+              aria-label="Logout"
+            >
+              {isLoggingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
+            </button>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -133,6 +172,15 @@ export function OnboardingLayout({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-2 text-xs font-medium text-emerald-400 bg-emerald-950/30 px-3 py-2 rounded-lg border border-emerald-800/30">
             <Cloud className="w-3.5 h-3.5" /> Your progress is saved
           </div>
+          <button
+            type="button"
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+            className="flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-300 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-60"
+          >
+            {isLoggingOut ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LogOut className="h-3.5 w-3.5" />}
+            Logout
+          </button>
           
           {/* Motivational Card with Illustration */}
           <div className="relative rounded-2xl overflow-hidden shadow-lg h-44 bg-slate-900 shrink-0">
@@ -190,7 +238,13 @@ export function OnboardingLayout({ children }: { children: React.ReactNode }) {
                 </button>
               ) : <div />}
               
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-widest">
+              <div className="hidden md:flex items-center gap-4">
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-widest">
+                  Onboarding Step {currentStep} of 9
+                </span>
+                {logoutButton}
+              </div>
+              <span className="md:hidden text-xs font-semibold text-slate-500 uppercase tracking-widest">
                 Onboarding Step {currentStep} of 9
               </span>
             </div>

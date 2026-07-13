@@ -153,6 +153,12 @@ function Router() {
             return <Redirect to="/dashboard" />;
           }
 
+          // Phone OTP is already verified once a token exists, so do not send
+          // incomplete users back to the verification screen.
+          if (hasToken && stepId === 1) {
+            return <Redirect to={`/step/${maxAllowedStep}`} />;
+          }
+
           // If trying to access a step beyond what is allowed, redirect to maxAllowedStep
           if (stepId > maxAllowedStep) {
             return <Redirect to={`/step/${maxAllowedStep}`} />;
