@@ -10,5 +10,9 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "tsx": "catalog:"
+  },
+  "dependencies": {
+    "jsonwebtoken": "^9.0.3",
+    "drizzle-orm": "catalog:"
   }
 }

@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useOnboarding } from '../context/OnboardingContext';
 import { Button, cn } from '../design-system/primitives';
 import { Camera, Image as ImageIcon, Crop, ArrowRight, Trash2, ZoomIn, ZoomOut, RefreshCw } from 'lucide-react';
-import demoLogo from '../assets/bexo-logo.png';
 
 export default function Step4Photo() {
   const { data, updateData, nextStep } = useOnboarding();
@@ -188,7 +187,39 @@ export default function Step4Photo() {
     try {
       const croppedDataUrl = canvas.toDataURL('image/jpeg', 0.9);
       setPhoto(croppedDataUrl);
-      updateData({ photoUrl: croppedDataUrl });
+
+      // Upload to R2 in the background
+      canvas.toBlob(async (blob) => {
+        if (!blob) return;
+        const file = new File([blob], "profile-photo.jpg", { type: "image/jpeg" });
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const token = localStorage.getItem('token');
+        try {
+          const res = await fetch("/api/profile/upload", {
+            method: "POST",
+            headers: {
+              ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+            },
+            body: formData
+          });
+          if (res.ok) {
+            const result = await res.json();
+            if (result.url) {
+              setPhoto(result.url);
+              updateData({ photoUrl: result.url });
+              return;
+            }
+          }
+        } catch (err) {
+          console.error("Failed to upload profile photo to R2:", err);
+        }
+
+        // Fallback to base64 if upload failed
+        updateData({ photoUrl: croppedDataUrl });
+      }, "image/jpeg", 0.9);
+
     } catch (err) {
       console.error("Failed to crop image on canvas: ", err);
     }
@@ -315,21 +346,7 @@ export default function Step4Photo() {
           )}
         </div>
 
-        {!photo && (
-          <button
-            type="button"
-            onClick={() => {
-              setPhoto(demoLogo);
-              setZoom(1);
-              setOffset({ x: 0, y: 0 });
-              setNaturalSize(null);
-              setIsCropping(true);
-            }}
-            className="mt-4 text-xs text-indigo-500 hover:text-indigo-600 hover:underline font-semibold cursor-pointer transition-colors"
-          >
-            Or use BEXO logo for testing
-          </button>
-        )}
+
 
         {/* Action button options when a photo exists */}
         {photo && !isCropping && (

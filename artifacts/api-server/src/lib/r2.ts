@@ -1,0 +1,73 @@
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { logger } from "./logger";
+
+let s3Client: S3Client | null = null;
+
+export function getR2Client() {
+  if (s3Client) return s3Client;
+
+  const accountId = process.env.R2_ACCOUNT_ID;
+  const accessKeyId = process.env.R2_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
+
+  // If placeholders are present, treat as not configured
+  if (
+    !accountId || 
+    !accessKeyId || 
+    !secretAccessKey || 
+    accountId.includes("your_") || 
+    accessKeyId.includes("your_") || 
+    secretAccessKey.includes("your_")
+  ) {
+    logger.warn("R2 credentials missing or placeholders not replaced, uploads will be simulated locally");
+    return null;
+  }
+
+  s3Client = new S3Client({
+    endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId,
+      secretAccessKey,
+    },
+    region: "auto",
+  });
+
+  return s3Client;
+}
+
+export async function uploadToR2(
+  fileBuffer: Buffer,
+  fileName: string,
+  contentType: string
+): Promise<string> {
+  const client = getR2Client();
+  
+  // If R2 is not fully configured, fallback to generating a dummy local/mock URL
+  // so the app still functions normally for testing before credentials are added!
+  if (!client) {
+    logger.warn("Cloudflare R2 not configured. Simulating successful upload.");
+    // Simulate public dev URL
+    const uniqueName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}-${fileName.replace(/\s+/g, "_")}`;
+    return `https://simulation.r2.dev/${uniqueName}`;
+  }
+
+  const bucketName = process.env.R2_BUCKET_NAME;
+  const publicUrl = process.env.R2_PUBLIC_URL;
+
+  if (!bucketName || !publicUrl) {
+    throw new Error("R2 BUCKET_NAME or PUBLIC_URL is missing in environment variables");
+  }
+
+  const uniqueName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}-${fileName.replace(/\s+/g, "_")}`;
+
+  await client.send(
+    new PutObjectCommand({
+      Bucket: bucketName,
+      Key: uniqueName,
+      Body: fileBuffer,
+      ContentType: contentType,
+    })
+  );
+
+  return `${publicUrl.replace(/\/$/, "")}/${uniqueName}`;
+}

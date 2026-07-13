@@ -5,6 +5,7 @@ import { eq, and } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import multer from "multer";
 import { createRequire } from "module";
+import { uploadToR2 } from "../lib/r2";
 
 const require = createRequire(import.meta.url);
 const pdf = require("pdf-parse");
@@ -13,7 +14,7 @@ const router = Router();
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+  limits: { fileSize: 15 * 1024 * 1024 } // 15MB limit to support larger PDFs/images
 });
 
 // Helper to get or create profile
@@ -60,6 +61,8 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<voi
         name: user.name,
         email: user.email,
         dob: user.dob,
+        photoUrl: user.photoUrl,
+        resumeUrl: user.resumeUrl,
         profilePhotoAssetId: user.profilePhotoAssetId,
         storageUsedBytes: user.storageUsedBytes,
         storageQuotaBytes: user.storageQuotaBytes
@@ -83,14 +86,16 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<voi
 router.patch("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<void> => {
   const userId = req.user!.id;
   const { 
-    name, dob, handle, headline, careerGoal, bio, completionPct, profilePhotoAssetId,
+    name, dob, photoUrl, resumeUrl, handle, headline, careerGoal, bio, completionPct, profilePhotoAssetId,
     aboutEntries, educationEntries, experienceEntries, projectEntries, certificateEntries, achievementEntries, researchEntries, contactData
   } = req.body;
   try {
-    // Update user info if name, dob, profilePhotoAssetId is provided
+    // Update user info if name, dob, etc. is provided
     const userUpdates: Partial<typeof users.$inferInsert> = {};
     if (name !== undefined) userUpdates.name = name;
     if (dob !== undefined) userUpdates.dob = dob;
+    if (photoUrl !== undefined) userUpdates.photoUrl = photoUrl;
+    if (resumeUrl !== undefined) userUpdates.resumeUrl = resumeUrl;
     if (profilePhotoAssetId !== undefined) userUpdates.profilePhotoAssetId = profilePhotoAssetId;
 
     if (Object.keys(userUpdates).length > 0) {
@@ -217,6 +222,76 @@ router.patch("/sections/:type", requireAuth, async (req: AuthenticatedRequest, r
     res.status(500).json({ error: "Internal server error" });
   }
 });
+function normalizeParsedData(raw: any): any {
+  const data = raw || {};
+  const res: any = {
+    name: typeof data.name === "string" ? data.name : "",
+    headline: typeof data.headline === "string" ? data.headline : "",
+    bio: typeof data.bio === "string" ? data.bio : "",
+    email: typeof data.email === "string" ? data.email : "",
+    phone: typeof data.phone === "string" ? data.phone : "",
+    pronouns: typeof data.pronouns === "string" ? data.pronouns : "He/Him",
+    links: [],
+    education: [],
+    experience: [],
+    projects: [],
+    certificates: [],
+    achievements: []
+  };
+
+  // Links normalization
+  if (Array.isArray(data.links)) {
+    res.links = data.links.map((l: any) => {
+      if (typeof l === "string") return { name: "Link", url: l };
+      if (l && typeof l === "object") {
+        return { name: String(l.name || l.title || "Link"), url: String(l.url || l.href || "") };
+      }
+      return null;
+    }).filter(Boolean);
+  } else if (data.links && typeof data.links === "object") {
+    res.links = Object.entries(data.links).map(([name, url]) => ({
+      name,
+      url: typeof url === "string" ? url : ""
+    }));
+  }
+
+  // Education normalization
+  if (Array.isArray(data.education)) {
+    res.education = data.education.filter((edu: any) => edu && typeof edu === "object");
+  } else if (data.education && typeof data.education === "object") {
+    res.education = [data.education];
+  }
+
+  // Experience normalization
+  if (Array.isArray(data.experience)) {
+    res.experience = data.experience.filter((exp: any) => exp && typeof exp === "object");
+  } else if (data.experience && typeof data.experience === "object") {
+    res.experience = [data.experience];
+  }
+
+  // Projects normalization
+  if (Array.isArray(data.projects)) {
+    res.projects = data.projects.filter((proj: any) => proj && typeof proj === "object");
+  } else if (data.projects && typeof data.projects === "object") {
+    res.projects = [data.projects];
+  }
+
+  // Certificates normalization
+  if (Array.isArray(data.certificates)) {
+    res.certificates = data.certificates.filter((cert: any) => cert && typeof cert === "object");
+  } else if (data.certificates && typeof data.certificates === "object") {
+    res.certificates = [data.certificates];
+  }
+
+  // Achievements normalization
+  if (Array.isArray(data.achievements)) {
+    res.achievements = data.achievements.filter((ach: any) => ach && typeof ach === "object");
+  } else if (data.achievements && typeof data.achievements === "object") {
+    res.achievements = [data.achievements];
+  }
+
+  return res;
+}
 
 // POST /profile/resume
 router.post("/resume", requireAuth, upload.single("resume"), async (req: AuthenticatedRequest, res): Promise<void> => {
@@ -233,8 +308,18 @@ router.post("/resume", requireAuth, upload.single("resume"), async (req: Authent
     return;
   }
 
+  // Upload resume to R2 inside a wrapper variable
+  let resumeUrl = "";
+
   try {
     logger.info({ userId, fileName: file.originalname }, "Starting resume processing");
+
+    try {
+      resumeUrl = await uploadToR2(file.buffer, file.originalname, file.mimetype);
+      logger.info({ userId, resumeUrl }, "Successfully uploaded resume to R2");
+    } catch (r2Err) {
+      logger.error({ r2Err, userId }, "Failed to upload resume to R2");
+    }
 
     // 1. Extract text from PDF
     const parsedPdf = await pdf(file.buffer);
@@ -250,10 +335,10 @@ router.post("/resume", requireAuth, upload.single("resume"), async (req: Authent
     const apiKey = process.env.OPENROUTER_API_KEY;
     
     const modelsToTry = [
-      process.env.OPENROUTER_MODEL,
       "openrouter/free",
-      "meta-llama/llama-3.2-3b-instruct:free",
-      "qwen/qwen3-coder:free",
+      process.env.OPENROUTER_MODEL,
+      "qwen/qwen-2.5-72b-instruct:free",
+      "google/gemini-2.5-flash",
       process.env.OPENROUTER_BACKUP_MODEL
     ].filter(Boolean) as string[];
 
@@ -268,6 +353,7 @@ router.post("/resume", requireAuth, upload.single("resume"), async (req: Authent
       "bio": "A professional summary or overview of 2-3 sentences.",
       "email": "Candidate's email address",
       "phone": "Candidate's phone number",
+      "pronouns": "Candidate's pronouns, e.g. He/Him, She/Her, They/Them. If the candidate's pronouns are not explicitly mentioned in the resume text, intelligently deduce/determine the pronouns based on the candidate's first name (for example: Kavin or Kavinbalaji are male names, so pronouns should be He/Him). Default to He/Him if not clear.",
       "links": [
         { "name": "Name of the website/link (e.g. GitHub, LinkedIn, Personal Portfolio, Blog, Custom Project Link)", "url": "The full link URL" }
       ],
@@ -325,7 +411,12 @@ router.post("/resume", requireAuth, upload.single("resume"), async (req: Authent
 
         const openRouterData = (await openRouterRes.json()) as any;
         const content = openRouterData.choices?.[0]?.message?.content || "";
-        const jsonStr = content.replace(/```json/g, "").replace(/```/g, "").trim();
+        const firstBrace = content.indexOf("{");
+        const lastBrace = content.lastIndexOf("}");
+        if (firstBrace === -1 || lastBrace === -1) {
+          throw new Error("No JSON object found in response");
+        }
+        const jsonStr = content.substring(firstBrace, lastBrace + 1);
         return JSON.parse(jsonStr);
       } catch (err: any) {
         clearTimeout(timeoutId);
@@ -340,8 +431,9 @@ router.post("/resume", requireAuth, upload.single("resume"), async (req: Authent
     if (apiKey) {
       for (const model of modelsToTry) {
         try {
-          parsedData = await callOpenRouter(model);
-          if (parsedData) {
+          const rawParsed = await callOpenRouter(model);
+          if (rawParsed) {
+            parsedData = normalizeParsedData(rawParsed);
             logger.info({ model }, "Successfully parsed resume using model");
             break;
           }
@@ -397,13 +489,93 @@ router.post("/resume", requireAuth, upload.single("resume"), async (req: Authent
       customLinks: contactLinks
     };
 
+    const defaultAssets = { mode: "images", images: [], pdfs: [], links: [] };
+
+    const latestEdu = parsedData.education && parsedData.education.length > 0 ? `${parsedData.education[0].degree} at ${parsedData.education[0].institution}` : '';
+    const latestExp = parsedData.experience && parsedData.experience.length > 0 ? `${parsedData.experience[0].role} at ${parsedData.experience[0].company}` : '';
+    const currentStatus = latestExp || latestEdu || '';
+
     const sectionsToSave = [
-      { type: "about", entries: [{ id: "1", title: parsedData.headline || "Software Engineer Intern", description: parsedData.bio || "" }] },
-      { type: "education", entries: parsedData.education || [] },
-      { type: "experience", entries: parsedData.experience || [] },
-      { type: "projects", entries: parsedData.projects || [] },
-      { type: "certificates", entries: parsedData.certificates || [] },
-      { type: "achievements", entries: parsedData.achievements || [] },
+      { type: "about", entries: [{ id: "1", title: parsedData.headline || "Software Engineer Intern", description: parsedData.bio || "", currentStatus }] },
+      {
+        type: "education",
+        entries: (parsedData.education || []).map((edu: any, idx: number) => {
+          let startYear = "";
+          let endYear = "";
+          const yr = edu.year || "";
+          if (yr.includes("-")) {
+            const parts = yr.split("-");
+            startYear = parts[0]?.trim() || "";
+            endYear = parts[1]?.trim() || "";
+          } else {
+            endYear = yr;
+          }
+          return {
+            id: edu.id || String(idx + 1),
+            institution: edu.institution || "",
+            degree: edu.degree || "",
+            startYear,
+            endYear,
+            year: yr,
+            grade: edu.grade || ""
+          };
+        })
+      },
+      {
+        type: "experience",
+        entries: (parsedData.experience || []).map((exp: any, idx: number) => {
+          let startYear = "";
+          let endYear = "";
+          const dur = exp.duration || "";
+          if (dur.includes("-")) {
+            const parts = dur.split("-");
+            startYear = parts[0]?.trim() || "";
+            endYear = parts[1]?.trim() || "";
+          } else {
+            endYear = dur;
+          }
+          return {
+            id: exp.id || String(idx + 1),
+            company: exp.company || "",
+            role: exp.role || "",
+            startYear,
+            endYear,
+            duration: dur,
+            description: exp.description || ""
+          };
+        })
+      },
+      {
+        type: "projects",
+        entries: (parsedData.projects || []).map((proj: any, idx: number) => ({
+          id: proj.id || String(idx + 1),
+          title: proj.title || "",
+          description: proj.description || "",
+          tech: proj.tech || "",
+          link: proj.link || "",
+          assets: proj.assets || defaultAssets
+        }))
+      },
+      {
+        type: "certificates",
+        entries: (parsedData.certificates || []).map((cert: any, idx: number) => ({
+          id: cert.id || String(idx + 1),
+          title: cert.title || "",
+          issuer: cert.issuer || "",
+          date: cert.date || "",
+          assets: cert.assets || defaultAssets
+        }))
+      },
+      {
+        type: "achievements",
+        entries: (parsedData.achievements || []).map((ach: any, idx: number) => ({
+          id: ach.id || String(idx + 1),
+          title: ach.title || "",
+          organization: ach.organization || "",
+          date: ach.date || "",
+          assets: ach.assets || defaultAssets
+        }))
+      },
       { type: "contact", entries: contactData }
     ];
 
@@ -422,11 +594,34 @@ router.post("/resume", requireAuth, upload.single("resume"), async (req: Authent
     res.json({
       success: true,
       message: "Resume processed and profile updated successfully",
-      data: parsedData
+      data: parsedData,
+      resumeUrl: resumeUrl || undefined
     });
   } catch (err: any) {
     logger.error({ err, userId }, "Error processing resume");
     res.status(500).json({ error: err.message || "Failed to process resume" });
+  }
+});
+
+// POST /profile/upload
+router.post("/upload", requireAuth, upload.single("file"), async (req: AuthenticatedRequest, res): Promise<void> => {
+  const file = req.file;
+  if (!file) {
+    res.status(400).json({ error: "No file uploaded" });
+    return;
+  }
+
+  try {
+    const url = await uploadToR2(file.buffer, file.originalname, file.mimetype);
+    res.json({
+      success: true,
+      url,
+      name: file.originalname,
+      sizeBytes: file.size
+    });
+  } catch (err: any) {
+    logger.error({ err }, "Error uploading to R2");
+    res.status(500).json({ error: err.message || "Failed to upload file to R2" });
   }
 });
 

@@ -27,7 +27,9 @@ import {
   Link as LinkIcon,
   Image as ImageIcon,
   Upload,
-  AlertCircle
+  AlertCircle,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 import { cn } from '../design-system/primitives';
 import logo from '../assets/bexo-logo.png';
@@ -154,8 +156,9 @@ export default function Dashboard() {
     achievements: data.achievementEntries || [],
     research: data.researchEntries || [],
   });
-  const [contactData, setContactData] = useState(data.contactData || { email: '', linkedin: '', github: '', portfolio: '' });
+  const [contactData, setContactData] = useState(data.contactData || { email: '', phone: '', linkedin: '', github: '', portfolio: '' });
   const [editingId, setEditingId] = useState<string | null>(null);
+  const isNewEntry = editingId !== null && !sections[activeEditorTab as keyof typeof sections]?.some((e: any) => e.id === editingId);
   const [editForm, setEditForm] = useState<any>({});
   const [contactErrors, setContactErrors] = useState<any>({});
 
@@ -170,17 +173,52 @@ export default function Dashboard() {
       achievements: data.achievementEntries || [],
       research: data.researchEntries || [],
     });
-    setContactData(data.contactData || { email: '', linkedin: '', github: '', portfolio: '' });
+    setContactData(data.contactData || { email: '', phone: '', linkedin: '', github: '', portfolio: '' });
   }, [data, currentView]);
+
+  const handleMove = (index: number, direction: 'up' | 'down') => {
+    const list = [...(sections[activeEditorTab as keyof typeof sections] || [])];
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= list.length) return;
+    
+    const temp = list[index];
+    list[index] = list[targetIndex];
+    list[targetIndex] = temp;
+
+    const updated = { ...sections, [activeEditorTab]: list };
+    setSections(updated);
+    updateContextSections(updated);
+  };
+
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    e.dataTransfer.setData('text/plain', index.toString());
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (e: React.DragEvent, hoverIndex: number) => {
+    e.preventDefault();
+    const dragIndex = parseInt(e.dataTransfer.getData('text/plain'), 10);
+    if (isNaN(dragIndex) || dragIndex === hoverIndex) return;
+
+    const list = [...(sections[activeEditorTab as keyof typeof sections] || [])];
+    const draggedItem = list[dragIndex];
+    list.splice(dragIndex, 1);
+    list.splice(hoverIndex, 0, draggedItem);
+
+    const updated = { ...sections, [activeEditorTab]: list };
+    setSections(updated);
+    updateContextSections(updated);
+  };
 
   const handleAdd = () => {
     const newId = Date.now().toString();
     const newEntry = {
       id: newId,
-      title: 'New Entry',
-      assets: { mode: 'images', images: [], pdfs: [], links: [] }
+      assets: { mode: 'images' as const, images: [], pdfs: [], links: [] }
     };
-    setSections({ ...sections, [activeEditorTab]: [...sections[activeEditorTab as keyof typeof sections], newEntry] });
     setEditingId(newId);
     setEditForm(newEntry);
   };
@@ -207,10 +245,19 @@ export default function Dashboard() {
   };
 
   const handleSave = () => {
-    const updated = {
-      ...sections,
-      [activeEditorTab]: sections[activeEditorTab as keyof typeof sections].map((e: any) => e.id === editingId ? { ...e, ...editForm } : e)
-    };
+    let updated;
+    const isNew = !sections[activeEditorTab as keyof typeof sections].some((e: any) => e.id === editingId);
+    if (isNew) {
+      updated = {
+        ...sections,
+        [activeEditorTab]: [...sections[activeEditorTab as keyof typeof sections], { ...editForm, id: editingId }]
+      };
+    } else {
+      updated = {
+        ...sections,
+        [activeEditorTab]: sections[activeEditorTab as keyof typeof sections].map((e: any) => e.id === editingId ? { ...e, ...editForm } : e)
+      };
+    }
     setSections(updated);
     updateContextSections(updated);
     setEditingId(null);
@@ -250,42 +297,73 @@ export default function Dashboard() {
     setEditForm({ ...editForm, assets: { ...editForm.assets, mode } });
   };
 
-  const handleMockUpload = (type: 'images' | 'pdfs') => {
+  const handleFileUpload = (type: 'images' | 'pdfs') => {
     if (isStorageFull) return;
     const current = editForm.assets[type] || [];
     if (type === 'images' && current.length >= 5) return;
     if (type === 'pdfs' && current.length >= 2) return;
 
-    let sizeBytes = 0;
-    if (type === 'images') {
-      sizeBytes = Math.floor((Math.random() * 3.5 + 0.5) * 1024 * 1024);
-    } else {
-      sizeBytes = Math.floor((Math.random() * 5 + 1) * 1024 * 1024);
-    }
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = type === 'images' ? 'image/*' : 'application/pdf';
+    input.onchange = async (e: any) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
 
-    if (usedStorage + sizeBytes > storageLimit) {
-      toast({
-        title: 'Quota Exceeded',
-        description: 'Not enough storage. Please clear space first.',
-        variant: 'destructive'
-      });
-      return;
-    }
-
-    const newAsset: FileAsset = {
-      id: Date.now().toString(),
-      name: `upload-${Date.now()}.${type === 'images' ? 'jpg' : 'pdf'}`,
-      url: `fake-url-${Date.now()}`,
-      sizeBytes
-    };
-
-    setEditForm({
-      ...editForm,
-      assets: {
-        ...editForm.assets,
-        [type]: [...current, newAsset]
+      const sizeBytes = file.size;
+      if (usedStorage + sizeBytes > storageLimit) {
+        toast({
+          title: 'Quota Exceeded',
+          description: 'Not enough storage. Please clear space or buy more storage first.',
+          variant: 'destructive'
+        });
+        return;
       }
-    });
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const token = localStorage.getItem('token');
+      try {
+        const res = await fetch("/api/profile/upload", {
+          method: "POST",
+          headers: {
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          body: formData
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || "Upload failed");
+        }
+
+        const result = await res.json();
+        if (result.url) {
+          const newAsset: FileAsset = {
+            id: Date.now().toString(),
+            name: file.name,
+            url: result.url,
+            sizeBytes
+          };
+          setEditForm({
+            ...editForm,
+            assets: {
+              ...editForm.assets,
+              [type]: [...current, newAsset]
+            }
+          });
+        }
+      } catch (err: any) {
+        console.error("Failed to upload file to R2:", err);
+        toast({
+          title: 'Upload Failed',
+          description: err.message || 'An error occurred during file upload.',
+          variant: 'destructive'
+        });
+      }
+    };
+    input.click();
   };
 
   const handleRemoveAsset = (type: 'images' | 'pdfs' | 'links', id: string) => {
@@ -429,18 +507,24 @@ export default function Dashboard() {
             <div className="space-y-2">
               <div className="flex justify-between items-center">
                 <span className="text-xs text-slate-400">{(assets.images || []).length} / 5 images used</span>
-                <Button type="button" variant="outline" size="sm" className="h-8 text-xs px-3" onClick={() => handleMockUpload('images')} disabled={(assets.images || []).length >= 5 || isStorageFull}>
+                <Button type="button" variant="outline" size="sm" className="h-8 text-xs px-3" onClick={() => handleFileUpload('images')} disabled={(assets.images || []).length >= 5 || isStorageFull}>
                   <Upload className="w-3.5 h-3.5 mr-1.5" /> Attach Image
                 </Button>
               </div>
               <div className="grid grid-cols-3 gap-2">
                 {(assets.images || []).map(img => (
-                  <div key={img.id} className="relative group bg-white border border-slate-200 rounded-lg p-1.5 flex items-center justify-center h-16">
-                    <ImageIcon className="w-6 h-6 text-slate-300" />
-                    <button type="button" onClick={() => handleRemoveAsset('images', img.id)} className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-white border border-slate-200 rounded-full flex items-center justify-center text-red-500 shadow-sm hover:bg-red-50">
+                  <div key={img.id} className="relative group bg-white border border-slate-200 rounded-lg p-1.5 flex items-center justify-center h-16 overflow-hidden">
+                    {img.url && (img.url.startsWith('data:image/') || img.url.startsWith('http') || img.url.startsWith('/')) ? (
+                      <a href={img.url} target="_blank" rel="noopener noreferrer" className="w-full h-full flex items-center justify-center">
+                        <img src={img.url} alt={img.name} className="w-full h-full object-cover rounded" />
+                      </a>
+                    ) : (
+                      <ImageIcon className="w-6 h-6 text-slate-300" />
+                    )}
+                    <button type="button" onClick={() => handleRemoveAsset('images', img.id)} className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-white border border-slate-200 rounded-full flex items-center justify-center text-red-500 shadow-sm hover:bg-red-50 z-10">
                       <X className="w-2.5 h-2.5" />
                     </button>
-                    <span className="absolute bottom-1 left-1 right-1 text-[9px] text-center truncate text-slate-400">{(img.sizeBytes / 1024 / 1024).toFixed(1)}MB</span>
+                    <span className="absolute bottom-0.5 left-0.5 right-0.5 text-[9px] text-center truncate text-slate-500 bg-white/70 px-1 py-0.2 rounded">{(img.sizeBytes / 1024 / 1024).toFixed(1)}MB</span>
                   </div>
                 ))}
               </div>
@@ -451,7 +535,7 @@ export default function Dashboard() {
             <div className="space-y-2">
               <div className="flex justify-between items-center">
                 <span className="text-xs text-slate-400">{(assets.pdfs || []).length} / 2 PDFs used</span>
-                <Button type="button" variant="outline" size="sm" className="h-8 text-xs px-3" onClick={() => handleMockUpload('pdfs')} disabled={(assets.pdfs || []).length >= 2 || isStorageFull}>
+                <Button type="button" variant="outline" size="sm" className="h-8 text-xs px-3" onClick={() => handleFileUpload('pdfs')} disabled={(assets.pdfs || []).length >= 2 || isStorageFull}>
                   <Upload className="w-3.5 h-3.5 mr-1.5" /> Attach PDF
                 </Button>
               </div>
@@ -459,8 +543,10 @@ export default function Dashboard() {
                 {(assets.pdfs || []).map(pdf => (
                   <div key={pdf.id} className="flex items-center justify-between bg-white border border-slate-200 rounded-lg px-2.5 py-1.5">
                     <div className="flex items-center gap-1.5 overflow-hidden">
-                      <FileText className="w-4 h-4 text-red-400 shrink-0" />
-                      <span className="text-xs text-slate-700 truncate max-w-[150px]">{pdf.name}</span>
+                      <a href={pdf.url} download={pdf.name} className="flex items-center gap-1.5 overflow-hidden hover:underline">
+                        <FileText className="w-4 h-4 text-red-400 shrink-0" />
+                        <span className="text-xs text-slate-700 truncate max-w-[150px]">{pdf.name}</span>
+                      </a>
                       <span className="text-[10px] text-slate-400">{(pdf.sizeBytes / 1024 / 1024).toFixed(1)}MB</span>
                     </div>
                     <button type="button" onClick={() => handleRemoveAsset('pdfs', pdf.id)} className="text-slate-400 hover:text-red-500">
@@ -528,6 +614,10 @@ export default function Dashboard() {
               <Input value={editForm.title || ''} onChange={e => setEditForm({...editForm, title: e.target.value})} placeholder="e.g. Aspiring Software Developer" />
             </div>
             <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Current Education or Work</Label>
+              <Input value={editForm.currentStatus || ''} onChange={e => setEditForm({...editForm, currentStatus: e.target.value})} placeholder="e.g. Studying BS Statistics at PSG College" />
+            </div>
+            <div className="space-y-1.5">
               <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Bio / Description</Label>
               <textarea value={editForm.description || ''} onChange={e => setEditForm({...editForm, description: e.target.value})} className="flex min-h-[80px] w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 resize-none" placeholder="Write a summary..." />
             </div>
@@ -540,14 +630,35 @@ export default function Dashboard() {
               <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">School / University</Label>
               <Input value={editForm.institution || ''} onChange={e => setEditForm({...editForm, institution: e.target.value})} placeholder="e.g. Stanford University" />
             </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Degree / Field</Label>
+              <Input value={editForm.degree || ''} onChange={e => setEditForm({...editForm, degree: e.target.value})} placeholder="e.g. Bachelor of Science" />
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Degree / Field</Label>
-                <Input value={editForm.degree || ''} onChange={e => setEditForm({...editForm, degree: e.target.value})} placeholder="e.g. BS in CS" />
+                <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Start Year</Label>
+                <Input value={editForm.startYear || ''} onChange={e => setEditForm({...editForm, startYear: e.target.value})} placeholder="e.g. 2020" />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Graduation Year</Label>
-                <Input value={editForm.year || ''} onChange={e => setEditForm({...editForm, year: e.target.value})} placeholder="e.g. 2024" />
+                <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">End Year</Label>
+                <div className="flex gap-2 items-center">
+                  <Input 
+                    value={editForm.endYear === 'Present' ? '' : (editForm.endYear || '')} 
+                    onChange={e => setEditForm({...editForm, endYear: e.target.value})} 
+                    disabled={editForm.endYear === 'Present'} 
+                    placeholder="e.g. 2024" 
+                    className="flex-1 text-sm h-10 px-3 rounded-xl border border-slate-200"
+                  />
+                  <label className="flex items-center gap-1.5 text-xs text-slate-650 font-medium cursor-pointer shrink-0">
+                    <input 
+                      type="checkbox" 
+                      checked={editForm.endYear === 'Present'} 
+                      onChange={e => setEditForm({...editForm, endYear: e.target.checked ? 'Present' : ''})} 
+                      className="rounded border-slate-350 text-indigo-650 focus:ring-indigo-500 h-4 w-4"
+                    />
+                    Still there
+                  </label>
+                </div>
               </div>
             </div>
             <div className="space-y-1.5">
@@ -563,14 +674,35 @@ export default function Dashboard() {
               <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Company / Org</Label>
               <Input value={editForm.company || ''} onChange={e => setEditForm({...editForm, company: e.target.value})} placeholder="e.g. Google" />
             </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Role</Label>
+              <Input value={editForm.role || ''} onChange={e => setEditForm({...editForm, role: e.target.value})} placeholder="e.g. Software Intern" />
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Role</Label>
-                <Input value={editForm.role || ''} onChange={e => setEditForm({...editForm, role: e.target.value})} placeholder="e.g. Software Intern" />
+                <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Start Date / Year</Label>
+                <Input value={editForm.startYear || ''} onChange={e => setEditForm({...editForm, startYear: e.target.value})} placeholder="e.g. 01/2024" />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Duration</Label>
-                <Input value={editForm.duration || ''} onChange={e => setEditForm({...editForm, duration: e.target.value})} placeholder="e.g. June 2023 - Aug 2023" />
+                <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">End Date / Year</Label>
+                <div className="flex gap-2 items-center">
+                  <Input 
+                    value={editForm.endYear === 'Present' ? '' : (editForm.endYear || '')} 
+                    onChange={e => setEditForm({...editForm, endYear: e.target.value})} 
+                    disabled={editForm.endYear === 'Present'} 
+                    placeholder="e.g. 11/2025" 
+                    className="flex-1 text-sm h-10 px-3 rounded-xl border border-slate-200"
+                  />
+                  <label className="flex items-center gap-1.5 text-xs text-slate-655 font-medium cursor-pointer shrink-0">
+                    <input 
+                      type="checkbox" 
+                      checked={editForm.endYear === 'Present'} 
+                      onChange={e => setEditForm({...editForm, endYear: e.target.checked ? 'Present' : ''})} 
+                      className="rounded border-slate-350 text-indigo-650 focus:ring-indigo-500 h-4 w-4"
+                    />
+                    Still there
+                  </label>
+                </div>
               </div>
             </div>
             <div className="space-y-1.5">
@@ -582,6 +714,7 @@ export default function Dashboard() {
       case 'projects':
         return (
           <>
+            {renderAssetEditor()}
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Project Name</Label>
               <Input value={editForm.title || ''} onChange={e => setEditForm({...editForm, title: e.target.value})} placeholder="e.g. E-Commerce API" />
@@ -594,7 +727,6 @@ export default function Dashboard() {
               <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Tech Stack</Label>
               <Input value={editForm.tech || ''} onChange={e => setEditForm({...editForm, tech: e.target.value})} placeholder="e.g. React, PostgreSQL" />
             </div>
-            {renderAssetEditor()}
           </>
         );
       case 'certificates':
@@ -602,6 +734,7 @@ export default function Dashboard() {
       case 'research':
         return (
           <>
+            {renderAssetEditor()}
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Title</Label>
               <Input value={editForm.title || ''} onChange={e => setEditForm({...editForm, title: e.target.value})} />
@@ -613,10 +746,9 @@ export default function Dashboard() {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Date</Label>
-                <Input value={editForm.date || ''} onChange={e => setEditForm({...editForm, date: e.target.value})} placeholder="e.g. Oct 2023" />
+                <Input type="date" value={editForm.date || ''} onChange={e => setEditForm({...editForm, date: e.target.value})} />
               </div>
             </div>
-            {renderAssetEditor()}
           </>
         );
       default: return null;
@@ -625,13 +757,23 @@ export default function Dashboard() {
 
   const renderPreview = (entry: any) => {
     switch (activeEditorTab) {
-      case 'education': return `${entry.degree || ''} • ${entry.year || ''} • ${entry.grade || ''}`;
-      case 'experience': return `${entry.role || ''} • ${entry.duration || ''}`;
+      case 'education': {
+        const start = entry.startYear || '';
+        const end = entry.endYear || '';
+        const yearStr = (start && end) ? `${start} - ${end}` : (entry.year || '');
+        return `${entry.degree || ''}${yearStr ? ` • ${yearStr}` : ''}${entry.grade ? ` • ${entry.grade}` : ''}`;
+      }
+      case 'experience': {
+        const start = entry.startYear || '';
+        const end = entry.endYear || '';
+        const durationStr = (start && end) ? `${start} - ${end}` : (entry.duration || '');
+        return `${entry.role || ''}${durationStr ? ` • ${durationStr}` : ''}`;
+      }
       case 'projects': return `${entry.tech || ''}`;
       case 'certificates': return `${entry.issuer || ''} • ${entry.date || ''}`;
       case 'achievements': 
       case 'research': return `${entry.organization || ''} • ${entry.date || ''}`;
-      default: return entry.description;
+      default: return entry.currentStatus ? `${entry.currentStatus} • ${entry.description}` : entry.description;
     }
   };
 
@@ -910,7 +1052,7 @@ export default function Dashboard() {
               </div>
 
               {/* Editor panel */}
-              <div className="flex-1 bg-white p-5 md:p-6 rounded-2xl border border-slate-200 shadow-sm min-h-[400px]">
+              <div className="flex-1 bg-white p-5 md:p-6 rounded-2xl border border-slate-200 shadow-sm min-h-[400px] min-w-0">
                 {activeEditorTab === 'contact' ? (
                   <div className="space-y-6 max-w-xl">
                     <h3 className="text-lg font-bold text-slate-900 border-b pb-2">Contact Details</h3>
@@ -933,8 +1075,19 @@ export default function Dashboard() {
                         <Input value={contactData.github} onChange={e => setContactData({...contactData, github: e.target.value})} placeholder="github.com/username" />
                       </div>
                       <div className="space-y-1.5">
-                        <Label>Personal Website</Label>
-                        <Input value={contactData.portfolio} onChange={e => setContactData({...contactData, portfolio: e.target.value})} placeholder="mywebsite.com" />
+                        <Label>Phone Number</Label>
+                        <div className="flex relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-medium">+91</span>
+                          <Input 
+                            value={(contactData.phone || data.phone || '').replace(/^\+?91/, '').trim()} 
+                            onChange={e => {
+                              const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                              setContactData({...contactData, phone: val ? `+91${val}` : ''});
+                            }} 
+                            placeholder="98765 43210" 
+                            className="pl-12 text-sm font-medium tracking-wide h-10 rounded-xl"
+                          />
+                        </div>
                       </div>
                     </div>
                     <Button onClick={handleSaveContact} className="h-10 text-xs px-4">
@@ -953,8 +1106,15 @@ export default function Dashboard() {
                     </div>
 
                     <div className="space-y-3">
-                      {(sections[activeEditorTab as keyof typeof sections] || []).map((entry: any) => (
-                        <div key={entry.id}>
+                      {(sections[activeEditorTab as keyof typeof sections] || []).map((entry: any, idx: number) => (
+                        <div 
+                          key={entry.id}
+                          draggable={editingId === null}
+                          onDragStart={(e) => handleDragStart(e, idx)}
+                          onDragOver={(e) => handleDragOver(e)}
+                          onDrop={(e) => handleDrop(e, idx)}
+                          className="transition-all duration-200"
+                        >
                           {editingId === entry.id ? (
                             <Card className="p-4 border-indigo-200 ring-2 ring-indigo-50">
                               <div className="space-y-4">
@@ -966,17 +1126,32 @@ export default function Dashboard() {
                               </div>
                             </Card>
                           ) : (
-                            <Card className="p-3.5 flex items-start justify-between gap-4 hover:border-slate-300 transition-colors">
-                              <div className="flex-1 min-w-0">
-                                <h4 className="font-semibold text-slate-900 text-sm truncate">
-                                  {entry.title || entry.institution || entry.company || 'Untitled'}
-                                </h4>
-                                <p className="text-xs text-slate-500 mt-0.5 leading-relaxed line-clamp-1">
-                                  {renderPreview(entry) || <span className="text-slate-300 italic">No details</span>}
-                                </p>
-                                {renderAssetPreviewIcon(entry)}
+                            <Card className="p-3.5 flex items-start justify-between gap-4 hover:border-slate-300 transition-colors w-full min-w-0 overflow-hidden">
+                              <div className="flex items-center gap-2 flex-1 min-w-0">
+                                <div className="cursor-grab text-slate-300 hover:text-indigo-500 hidden sm:block active:cursor-grabbing">
+                                  <GripVertical className="w-4 h-4" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <h4 className="font-semibold text-slate-900 text-sm truncate w-full">
+                                    {entry.title || entry.institution || entry.company || 'Untitled'}
+                                  </h4>
+                                  <p className="text-xs text-slate-500 mt-0.5 leading-relaxed line-clamp-1">
+                                    {renderPreview(entry) || <span className="text-slate-300 italic">No details</span>}
+                                  </p>
+                                  {renderAssetPreviewIcon(entry)}
+                                </div>
                               </div>
                               <div className="flex items-center gap-1.5 shrink-0">
+                                {idx > 0 && (
+                                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-slate-400 hover:text-slate-605" onClick={() => handleMove(idx, 'up')}>
+                                    <ArrowUp className="w-3.5 h-3.5" />
+                                  </Button>
+                                )}
+                                {idx < (sections[activeEditorTab as keyof typeof sections] || []).length - 1 && (
+                                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-slate-400 hover:text-slate-605" onClick={() => handleMove(idx, 'down')}>
+                                    <ArrowDown className="w-3.5 h-3.5" />
+                                  </Button>
+                                )}
                                 <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleEdit(entry.id)}>
                                   <Pencil className="w-3.5 h-3.5" />
                                 </Button>
@@ -988,6 +1163,18 @@ export default function Dashboard() {
                           )}
                         </div>
                       ))}
+                      
+                      {isNewEntry && (
+                        <Card className="p-4 border-indigo-200 ring-2 ring-indigo-50 animate-in fade-in">
+                          <div className="space-y-4">
+                            {renderFields()}
+                            <div className="flex justify-end gap-2 pt-2 border-t mt-2">
+                              <Button variant="ghost" size="sm" className="h-9 px-4 text-xs" onClick={() => setEditingId(null)}>Cancel</Button>
+                              <Button onClick={handleSave} size="sm" className="h-9 px-4 text-xs">Save</Button>
+                            </div>
+                          </div>
+                        </Card>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1120,7 +1307,17 @@ export default function Dashboard() {
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-xs font-semibold text-slate-500">Phone</Label>
-                    <Input value={settingsPhone} onChange={e => setSettingsPhone(e.target.value)} />
+                    <div className="flex relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-medium">+91</span>
+                      <Input 
+                        value={settingsPhone.replace(/^\+?91/, '').trim()} 
+                        onChange={e => {
+                          const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                          setSettingsPhone(val ? `+91${val}` : '');
+                        }} 
+                        className="pl-12 text-sm font-medium tracking-wide h-10 rounded-xl"
+                      />
+                    </div>
                   </div>
                 </div>
 

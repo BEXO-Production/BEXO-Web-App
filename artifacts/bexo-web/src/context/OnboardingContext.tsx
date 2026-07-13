@@ -25,14 +25,14 @@ export type AssetData = {
 
 const defaultAssets: AssetData = { mode: 'images', images: [], pdfs: [], links: [] };
 
-export type AboutEntry = { id: string; title: string; description: string };
-export type EducationEntry = { id: string; institution: string; degree: string; year: string; grade: string };
+export type AboutEntry = { id: string; title: string; description: string; currentStatus?: string };
+export type EducationEntry = { id: string; institution: string; degree: string; startYear: string; endYear: string; year?: string; grade: string };
 export type ProjectEntry = { id: string; title: string; description: string; tech: string; link: string; assets: AssetData };
-export type ExperienceEntry = { id: string; company: string; role: string; duration: string; description: string };
+export type ExperienceEntry = { id: string; company: string; role: string; startYear: string; endYear: string; duration?: string; description: string };
 export type CertificateEntry = { id: string; title: string; issuer: string; date: string; assets: AssetData };
 export type AchievementEntry = { id: string; title: string; organization: string; date: string; assets: AssetData };
 export type ResearchEntry = { id: string; title: string; organization: string; date: string; assets: AssetData };
-export type ContactData = { email: string; linkedin: string; github: string; portfolio: string; customLinks?: { name: string; url: string }[] };
+export type ContactData = { email: string; phone?: string; linkedin: string; github: string; portfolio: string; customLinks?: { name: string; url: string }[] };
 
 export type OnboardingData = {
   phone: string;
@@ -45,6 +45,7 @@ export type OnboardingData = {
   pronouns?: string;
   resumeFileName: string;
   resumeFileSize: number; // in bytes
+  resumeUrl?: string;
   photoUrl: string;
   aboutEntries: AboutEntry[];
   educationEntries: EducationEntry[];
@@ -79,32 +80,20 @@ const defaultData: OnboardingData = {
   pronouns: 'She/Her',
   resumeFileName: '',
   resumeFileSize: 0,
+  resumeUrl: '',
   photoUrl: '',
-  aboutEntries: [
-    { id: '1', title: 'Aspiring Software Engineer', description: 'Passionate about building scalable web applications and learning new technologies.' }
-  ],
-  educationEntries: [
-    { id: '1', institution: 'Indian Institute of Technology', degree: 'B.Tech in Computer Science', year: '2020 - 2024', grade: '9.2 CGPA' }
-  ],
-  projectEntries: [
-    { id: '1', title: 'E-commerce Platform', description: 'Built a full-stack e-commerce site with React, Node, and MongoDB.', tech: 'React, Node.js, MongoDB', link: 'github.com/rahul/ecommerce', assets: defaultAssets }
-  ],
-  experienceEntries: [
-    { id: '1', company: 'Tech Solutions Inc.', role: 'Frontend Developer Intern', duration: 'May 2023 - Jul 2023', description: 'Developed responsive UIs and integrated REST APIs.' }
-  ],
-  certificateEntries: [
-    { id: '1', title: 'AWS Certified Cloud Practitioner', issuer: 'Amazon Web Services', date: 'Aug 2023', assets: defaultAssets }
-  ],
-  achievementEntries: [
-    { id: '1', title: 'Hackathon Winner', organization: 'National Coding Fest', date: '2022', assets: defaultAssets }
-  ],
-  researchEntries: [
-    { id: '1', title: 'AI in Healthcare', organization: 'IEEE Conference', date: '2023', assets: defaultAssets }
-  ],
+  aboutEntries: [],
+  educationEntries: [],
+  projectEntries: [],
+  experienceEntries: [],
+  certificateEntries: [],
+  achievementEntries: [],
+  researchEntries: [],
   contactData: {
-    email: 'rahul.sharma@example.com',
-    linkedin: 'linkedin.com/in/rahulsharma',
-    github: 'github.com/rahulsharma',
+    email: '',
+    phone: '',
+    linkedin: '',
+    github: '',
     portfolio: '',
     customLinks: []
   },
@@ -116,18 +105,126 @@ const defaultData: OnboardingData = {
 
 const OnboardingContext = createContext<OnboardingContextType | undefined>(undefined);
 
+const ensureIdsAndDefaults = (entries: any[], type: string) => {
+  if (!Array.isArray(entries)) return [];
+  return entries.map((entry, idx) => {
+    const id = entry.id || String(idx + 1);
+    const defaultAssets = { mode: 'images' as const, images: [], pdfs: [], links: [] };
+    switch (type) {
+      case 'about':
+        return {
+          id,
+          title: entry.title || '',
+          description: entry.description || '',
+          currentStatus: entry.currentStatus || ''
+        };
+      case 'education': {
+        let startYear = entry.startYear || '';
+        let endYear = entry.endYear || '';
+        const yr = entry.year || '';
+        if (!startYear && !endYear && yr) {
+          if (yr.includes('-')) {
+            const parts = yr.split('-');
+            startYear = parts[0]?.trim() || '';
+            endYear = parts[1]?.trim() || '';
+          } else {
+            endYear = yr;
+          }
+        }
+        return {
+          id,
+          institution: entry.institution || '',
+          degree: entry.degree || '',
+          startYear,
+          endYear,
+          year: yr,
+          grade: entry.grade || ''
+        };
+      }
+      case 'experience': {
+        let startYear = entry.startYear || '';
+        let endYear = entry.endYear || '';
+        const dur = entry.duration || '';
+        if (!startYear && !endYear && dur) {
+          if (dur.includes('-')) {
+            const parts = dur.split('-');
+            startYear = parts[0]?.trim() || '';
+            endYear = parts[1]?.trim() || '';
+          } else {
+            endYear = dur;
+          }
+        }
+        return {
+          id,
+          company: entry.company || '',
+          role: entry.role || '',
+          startYear,
+          endYear,
+          duration: dur,
+          description: entry.description || ''
+        };
+      }
+      case 'projects':
+        return {
+          id,
+          title: entry.title || '',
+          description: entry.description || '',
+          tech: entry.tech || '',
+          link: entry.link || '',
+          assets: entry.assets || defaultAssets
+        };
+      case 'certificates':
+        return {
+          id,
+          title: entry.title || '',
+          issuer: entry.issuer || entry.organization || '',
+          date: entry.date || '',
+          assets: entry.assets || defaultAssets
+        };
+      case 'achievements':
+        return {
+          id,
+          title: entry.title || '',
+          organization: entry.organization || entry.issuer || '',
+          date: entry.date || '',
+          assets: entry.assets || defaultAssets
+        };
+      case 'research':
+        return {
+          id,
+          title: entry.title || '',
+          organization: entry.organization || '',
+          date: entry.date || '',
+          assets: entry.assets || defaultAssets
+        };
+      default:
+        return entry;
+    }
+  });
+};
+
+interface OnboardingContextType {
+  data: OnboardingData;
+  isLoading: boolean;
+  updateData: (updates: Partial<OnboardingData>) => void;
+  nextStep: (currentStep: number) => void;
+  prevStep: (currentStep: number) => void;
+  setToken: (token: string | null) => void;
+}
+
 export function OnboardingProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<OnboardingData>(defaultData);
   const [isLoading, setIsLoading] = useState(true);
+  const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
   const [, setLocation] = useLocation();
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
     if (!token) {
       setIsLoading(false);
       return;
     }
 
+    setIsLoading(true);
     fetch('/api/profile', {
       headers: {
         'Authorization': `Bearer ${token}`
@@ -144,13 +241,15 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
             name: result.user.name || prev.name,
             dob: result.user.dob || prev.dob,
             phone: result.user.phone || prev.phone,
-            aboutEntries: result.aboutEntries?.length ? result.aboutEntries : prev.aboutEntries,
-            educationEntries: result.educationEntries?.length ? result.educationEntries : prev.educationEntries,
-            experienceEntries: result.experienceEntries?.length ? result.experienceEntries : prev.experienceEntries,
-            projectEntries: result.projectEntries?.length ? result.projectEntries : prev.projectEntries,
-            certificateEntries: result.certificateEntries?.length ? result.certificateEntries : prev.certificateEntries,
-            achievementEntries: result.achievementEntries?.length ? result.achievementEntries : prev.achievementEntries,
-            researchEntries: result.researchEntries?.length ? result.researchEntries : prev.researchEntries,
+            photoUrl: result.user.photoUrl || prev.photoUrl,
+            resumeUrl: result.user.resumeUrl || prev.resumeUrl,
+            aboutEntries: result.aboutEntries !== undefined ? ensureIdsAndDefaults(result.aboutEntries, 'about') : prev.aboutEntries,
+            educationEntries: result.educationEntries !== undefined ? ensureIdsAndDefaults(result.educationEntries, 'education') : prev.educationEntries,
+            experienceEntries: result.experienceEntries !== undefined ? ensureIdsAndDefaults(result.experienceEntries, 'experience') : prev.experienceEntries,
+            projectEntries: result.projectEntries !== undefined ? ensureIdsAndDefaults(result.projectEntries, 'projects') : prev.projectEntries,
+            certificateEntries: result.certificateEntries !== undefined ? ensureIdsAndDefaults(result.certificateEntries, 'certificates') : prev.certificateEntries,
+            achievementEntries: result.achievementEntries !== undefined ? ensureIdsAndDefaults(result.achievementEntries, 'achievements') : prev.achievementEntries,
+            researchEntries: result.researchEntries !== undefined ? ensureIdsAndDefaults(result.researchEntries, 'research') : prev.researchEntries,
             contactData: result.contactData || prev.contactData
           }));
         }
@@ -159,18 +258,18 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
       .finally(() => {
         setIsLoading(false);
       });
-  }, []);
+  }, [token]);
 
   const updateData = (updates: Partial<OnboardingData>) => {
     setData((prev) => ({ ...prev, ...updates }));
-    const token = localStorage.getItem('token');
-    if (!token) return;
+    const activeToken = token || localStorage.getItem('token');
+    if (!activeToken) return;
 
     fetch('/api/profile', {
       method: 'PATCH',
       headers: { 
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
+        'Authorization': `Bearer ${activeToken}`
       },
       body: JSON.stringify(updates),
     }).catch(console.error);
@@ -189,7 +288,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <OnboardingContext.Provider value={{ data, isLoading, updateData, nextStep, prevStep }}>
+    <OnboardingContext.Provider value={{ data, isLoading, updateData, nextStep, prevStep, setToken }}>
       {children}
     </OnboardingContext.Provider>
   );

@@ -4,7 +4,7 @@ import { Input, Label } from '../design-system/primitives';
 import { Loader2, ArrowRight } from 'lucide-react';
 
 export default function Step1Phone() {
-  const { data, updateData, nextStep } = useOnboarding();
+  const { data, updateData, nextStep, setToken } = useOnboarding();
   const [phone, setPhone] = useState(data.phone);
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
@@ -83,6 +83,7 @@ export default function Step1Phone() {
       
       const data = await res.json();
       localStorage.setItem('token', data.accessToken);
+      setToken(data.accessToken);
       
       setIsSwooshingVerify(false);
       updateData({ phone: formattedPhone });

@@ -241,37 +241,6 @@ export default function Step3Info() {
       {/* Right Column: Form */}
       <div className="lg:w-3/5 flex flex-col">
         <form onSubmit={handleSubmit} className="space-y-5 flex-1">
-          {/* Handle Field */}
-          <div className="space-y-2 pb-2">
-            <Label htmlFor="handle" className={handleError ? "text-red-500 font-semibold text-xs" : "text-slate-700 font-semibold text-xs"}>
-              BEXO URL <span className="text-indigo-500">*</span>
-            </Label>
-            <div className="flex h-12 w-full rounded-xl border border-slate-200 bg-white overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500 transition-colors">
-              <input
-                id="handle"
-                placeholder="priyasharma"
-                className="flex-1 bg-transparent pl-4 py-2 text-sm text-slate-900 focus-visible:outline-none placeholder:text-slate-400"
-                value={handle}
-                onChange={(e) => {
-                  setHandle(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''));
-                  if (e.target.value.trim()) setHandleError('');
-                }}
-              />
-              <div className="flex items-center px-4 bg-slate-50 border-l border-slate-200 text-slate-500 text-sm font-medium">
-                .mybexo.com
-              </div>
-            </div>
-            {handleAvailability === 'checking' && (
-              <p className="text-slate-400 text-xs mt-1 animate-pulse">Checking availability...</p>
-            )}
-            {handleAvailability === 'available' && (
-              <p className="text-emerald-500 text-xs mt-1 font-medium">✓ Handle is available!</p>
-            )}
-            {handleError && handleAvailability === 'taken' && (
-              <p className="text-red-500 text-xs mt-1">{handleError}</p>
-            )}
-          </div>
-
           {/* Name Fields */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -313,6 +282,37 @@ export default function Step3Info() {
                 />
               </div>
             </div>
+          </div>
+
+          {/* Handle Field */}
+          <div className="space-y-2 pb-2">
+            <Label htmlFor="handle" className={handleError ? "text-red-500 font-semibold text-xs" : "text-slate-700 font-semibold text-xs"}>
+              BEXO URL <span className="text-indigo-500">*</span>
+            </Label>
+            <div className="flex h-12 w-full rounded-xl border border-slate-200 bg-white overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500 transition-colors">
+              <input
+                id="handle"
+                placeholder="priyasharma"
+                className="flex-1 bg-transparent pl-4 py-2 text-sm text-slate-900 focus-visible:outline-none placeholder:text-slate-400"
+                value={handle}
+                onChange={(e) => {
+                  setHandle(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''));
+                  if (e.target.value.trim()) setHandleError('');
+                }}
+              />
+              <div className="flex items-center px-4 bg-slate-50 border-l border-slate-200 text-slate-500 text-sm font-medium">
+                .mybexo.com
+              </div>
+            </div>
+            {handleAvailability === 'checking' && (
+              <p className="text-slate-400 text-xs mt-1 animate-pulse">Checking availability...</p>
+            )}
+            {handleAvailability === 'available' && (
+              <p className="text-emerald-500 text-xs mt-1 font-medium">✓ Handle is available!</p>
+            )}
+            {handleError && handleAvailability === 'taken' && (
+              <p className="text-red-500 text-xs mt-1">{handleError}</p>
+            )}
           </div>
 
           {/* Date of Birth Field */}

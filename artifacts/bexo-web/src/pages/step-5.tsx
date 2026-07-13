@@ -1,8 +1,43 @@
 import React, { useState, useRef } from 'react';
 import { useOnboarding } from '../context/OnboardingContext';
 import { Button } from '../design-system/primitives';
-import { UploadCloud, FileText, CheckCircle2, Loader2, ArrowRight } from 'lucide-react';
+import { UploadCloud, FileText, CheckCircle2, Loader2, ArrowRight, Lightbulb } from 'lucide-react';
 import { cn } from '../design-system/primitives';
+
+const PARSING_STEPS = [
+  "Uploading your resume secure file...",
+  "Initializing Gemma 2B Parser model...",
+  "Analyzing text layouts and segments...",
+  "Extracting contact info & links...",
+  "Reading your school & university details...",
+  "Structuring experience & durations...",
+  "Identifying project skills & achievements...",
+  "Creating profile summary & headlines...",
+  "Compiling your portfolio database..."
+];
+
+const PORTFOLIO_TIPS = [
+  {
+    topic: "Showcase Proof of Work",
+    tip: "Link live demos and GitHub repos so recruiters can verify your coding skills instantly with a single click."
+  },
+  {
+    topic: "Tell the Story Behind Projects",
+    tip: "Write brief 'how-to' summaries. Hiring managers value your problem-solving process over just finished code."
+  },
+  {
+    topic: "Optimized for Mobile Viewports",
+    tip: "Test your site on mobile devices. Over 40% of initial portfolio views by hiring managers happen on-the-go."
+  },
+  {
+    topic: "Verifiable Supporting Media",
+    tip: "Upload PDFs of certificates or hackathon wins. Verifiable proof boosts profile credibility and trust."
+  },
+  {
+    topic: "Clear Call-to-Actions",
+    tip: "Add a prominent 'Download Resume' button at the top. Make finding your PDF resume effortless for recruiters."
+  }
+];
 
 export default function Step5Resume() {
   const { data, updateData, nextStep } = useOnboarding();
@@ -13,6 +48,32 @@ export default function Step5Resume() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isSwooshing, setIsSwooshing] = useState(false);
+  const [parsingStep, setParsingStep] = useState(0);
+  const [tipIndex, setTipIndex] = useState(0);
+
+  React.useEffect(() => {
+    let interval: number;
+    if (status === 'parsing') {
+      interval = window.setInterval(() => {
+        setParsingStep(idx => (idx + 1) % PARSING_STEPS.length);
+      }, 1800);
+    } else {
+      setParsingStep(0);
+    }
+    return () => clearInterval(interval);
+  }, [status]);
+
+  React.useEffect(() => {
+    let interval: number;
+    if (status === 'uploading' || status === 'parsing') {
+      interval = window.setInterval(() => {
+        setTipIndex(idx => (idx + 1) % PORTFOLIO_TIPS.length);
+      }, 5000);
+    } else {
+      setTipIndex(0);
+    }
+    return () => clearInterval(interval);
+  }, [status]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -70,9 +131,10 @@ export default function Step5Resume() {
         name: parsed.name || data.name,
         firstName: parsed.name ? parsed.name.split(' ')[0] : data.firstName,
         lastName: parsed.name ? parsed.name.split(' ').slice(1).join(' ') : data.lastName,
+        phone: parsed.phone || data.phone || '',
+        pronouns: parsed.pronouns || data.pronouns || 'He/Him',
         contactData: {
           email: parsed.email || data.contactData.email || '',
-          phone: parsed.phone || data.contactData.phone || data.phone || '',
           linkedin,
           github,
           portfolio,
@@ -80,23 +142,69 @@ export default function Step5Resume() {
         },
         resumeFileName: selectedFile.name,
         resumeFileSize: selectedFile.size,
-        aboutEntries: [
-          { id: '1', title: parsed.headline || 'Software Engineer Intern', description: parsed.bio || '' }
-        ],
-        educationEntries: (parsed.education || []).map((edu: any, idx: number) => ({
-          id: String(idx + 1),
-          institution: edu.institution || '',
-          degree: edu.degree || '',
-          year: edu.year || '',
-          grade: edu.grade || ''
-        })),
-        experienceEntries: (parsed.experience || []).map((exp: any, idx: number) => ({
-          id: String(idx + 1),
-          company: exp.company || '',
-          role: exp.role || '',
-          duration: exp.duration || '',
-          description: exp.description || ''
-        })),
+        resumeUrl: result.resumeUrl || '',
+        aboutEntries: (() => {
+          const latestEdu = parsed.education && parsed.education.length > 0 ? `${parsed.education[0].degree} at ${parsed.education[0].institution}` : '';
+          const latestExp = parsed.experience && parsed.experience.length > 0 ? `${parsed.experience[0].role} at ${parsed.experience[0].company}` : '';
+          const currentStatus = latestExp || latestEdu || '';
+          const candidateName = parsed.name || data.name || '';
+          let generatedSummary = parsed.bio || '';
+          if (!generatedSummary) {
+            generatedSummary = `${candidateName} is an aspiring professional`;
+            if (latestEdu) {
+              generatedSummary += ` studying ${parsed.education[0].degree} at ${parsed.education[0].institution}`;
+            }
+            if (latestExp) {
+              generatedSummary += ` with experience as a ${parsed.experience[0].role} at ${parsed.experience[0].company}`;
+            }
+            generatedSummary += '.';
+          }
+          return [
+            { id: '1', title: parsed.headline || 'Software Engineer Intern', description: generatedSummary, currentStatus }
+          ];
+        })(),
+        educationEntries: (parsed.education || []).map((edu: any, idx: number) => {
+          let startYear = '';
+          let endYear = '';
+          const yr = edu.year || '';
+          if (yr.includes('-')) {
+            const parts = yr.split('-');
+            startYear = parts[0]?.trim() || '';
+            endYear = parts[1]?.trim() || '';
+          } else {
+            endYear = yr;
+          }
+          return {
+            id: String(idx + 1),
+            institution: edu.institution || '',
+            degree: edu.degree || '',
+            startYear,
+            endYear,
+            year: yr,
+            grade: edu.grade || ''
+          };
+        }),
+        experienceEntries: (parsed.experience || []).map((exp: any, idx: number) => {
+          let startYear = '';
+          let endYear = '';
+          const dur = exp.duration || '';
+          if (dur.includes('-')) {
+            const parts = dur.split('-');
+            startYear = parts[0]?.trim() || '';
+            endYear = parts[1]?.trim() || '';
+          } else {
+            endYear = dur;
+          }
+          return {
+            id: String(idx + 1),
+            company: exp.company || '',
+            role: exp.role || '',
+            startYear,
+            endYear,
+            duration: dur,
+            description: exp.description || ''
+          };
+        }),
         projectEntries: (parsed.projects || []).map((proj: any, idx: number) => ({
           id: String(idx + 1),
           title: proj.title || '',
@@ -184,21 +292,57 @@ export default function Step5Resume() {
 
         {(status === 'uploading' || status === 'parsing') && (
           <div className="flex flex-col items-center animate-in fade-in zoom-in-95">
-            <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-4 relative">
-              <Loader2 className="w-8 h-8 animate-spin" />
+            {/* Custom Scanning Animation */}
+            <div className="relative w-28 h-36 bg-slate-50 border border-slate-200 rounded-2xl shadow-sm flex flex-col justify-between p-3.5 overflow-hidden mb-6 group bg-[linear-gradient(to_bottom,rgba(248,250,252,0.8),rgba(241,245,249,0.8))]">
+              {/* Laser line overlay */}
+              <div className="absolute left-0 right-0 h-0.5 bg-indigo-500 animate-scan-laser shadow-[0_0_8px_rgba(99,102,241,0.6)]" />
+              
+              {/* Simulated text lines */}
+              <div className="space-y-2 relative z-10">
+                <div className="h-2 w-3/4 bg-slate-200 rounded-full" />
+                <div className="h-1.5 w-full bg-slate-100 rounded-full" />
+                <div className="h-1.5 w-5/6 bg-slate-100 rounded-full" />
+                <div className="h-1.5 w-2/3 bg-slate-100 rounded-full" />
+              </div>
+              <div className="space-y-2 mt-4 relative z-10">
+                <div className="h-2 w-1/2 bg-slate-200 rounded-full" />
+                <div className="h-1.5 w-full bg-slate-100 rounded-full" />
+                <div className="h-1.5 w-4/5 bg-slate-100 rounded-full" />
+              </div>
             </div>
-            <h3 className="text-lg font-semibold text-slate-900 mb-1">
-              {status === 'uploading' ? 'Uploading resume...' : 'Parsing your details with Gemma AI...'}
+
+            <h3 className="text-lg font-semibold text-slate-800 mb-1 max-w-xs text-center transition-all duration-300 min-h-[56px] flex items-center justify-center">
+              {status === 'uploading' ? 'Uploading resume secure file...' : PARSING_STEPS[parsingStep]}
             </h3>
-            <p className="text-slate-500 text-sm">This takes just a moment.</p>
             
-            <div className="w-full max-w-xs mt-6 h-1.5 bg-blue-100 rounded-full overflow-hidden">
+            <div className="w-full max-w-xs mt-4 h-1.5 bg-indigo-50 rounded-full overflow-hidden">
               <div 
                 className={cn(
-                  "h-full bg-blue-600 rounded-full transition-all duration-1000 ease-out",
-                  status === 'uploading' ? "w-1/3" : "w-3/4"
+                  "h-full bg-indigo-600 rounded-full transition-all duration-1000 ease-out",
+                  status === 'uploading' ? "w-1/3" : "w-4/5"
                 )}
               />
+            </div>
+            <p className="text-slate-400 text-xs mt-3 flex items-center gap-1.5 mb-6">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-500" />
+              This takes just a moment...
+            </p>
+
+            {/* Creative Portfolio Tip Box */}
+            <div className="w-full max-w-sm bg-gradient-to-br from-indigo-50/60 to-purple-50/40 border border-indigo-100/80 rounded-2xl p-4 text-left shadow-sm animate-in fade-in duration-500">
+              <div className="flex gap-3 items-start">
+                <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center shrink-0 shadow-inner">
+                  <Lightbulb className="w-5 h-5" />
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[10px] uppercase font-bold tracking-wider text-indigo-500 block">
+                    💡 Portfolio Tip • {PORTFOLIO_TIPS[tipIndex].topic}
+                  </span>
+                  <p className="text-slate-600 text-xs leading-relaxed transition-all duration-300">
+                    {PORTFOLIO_TIPS[tipIndex].tip}
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         )}

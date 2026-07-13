@@ -25,6 +25,12 @@ const TEMPLATES = [
   }
 ];
 
+const TEMPLATE_PREVIEW_URLS: Record<string, string> = {
+  minimal: 'https://resilient-hummingbird-87fc89.netlify.app/',
+  creative: 'https://resilient-fenglisu-32c287.netlify.app/',
+  academic: 'https://mybexo.com/preview'
+};
+
 const THEMES = [
   { id: 'blue', label: 'Navy', hex: 'bg-blue-600', textHex: 'text-blue-600' },
   { id: 'emerald', label: 'Emerald', hex: 'bg-emerald-600', textHex: 'text-emerald-600' },
@@ -100,63 +106,30 @@ export default function Step7Theme() {
             onClick={() => setSelectedTemplate(tpl.id)}
           >
             {/* Mock Thumbnail Preview */}
-            <div className="h-48 bg-slate-50 border-b border-slate-100 relative overflow-hidden flex flex-col">
+            <div className="h-48 bg-slate-50 border-b border-slate-100 relative overflow-hidden flex flex-col pointer-events-none select-none">
               {/* Fake browser header */}
-              <div className="h-6 bg-white border-b border-slate-200 flex items-center px-2 gap-1.5 shrink-0">
-                <div className="w-2 h-2 rounded-full bg-slate-200" />
-                <div className="w-2 h-2 rounded-full bg-slate-200" />
-                <div className="w-2 h-2 rounded-full bg-slate-200" />
+              <div className="h-6 bg-white border-b border-slate-200 flex items-center px-2 gap-1.5 shrink-0 z-10">
+                <div className="w-2 h-2 rounded-full bg-red-400" />
+                <div className="w-2 h-2 rounded-full bg-amber-400" />
+                <div className="w-2 h-2 rounded-full bg-green-400" />
+                <span className="text-[9px] text-slate-400 font-mono ml-2 truncate">
+                  {TEMPLATE_PREVIEW_URLS[tpl.id].replace('https://', '')}
+                </span>
               </div>
               
-              {/* Fake content */}
-              <div className={cn("p-4 flex-1 flex gap-3", tpl.id === 'minimal' ? 'flex-col' : tpl.id === 'academic' ? 'flex-row' : 'grid grid-cols-2')}>
-                {tpl.id === 'minimal' && (
-                  <>
-                    <div className="flex justify-between items-center">
-                      <div className={cn("w-8 h-8 rounded-full opacity-20", getThemeClass())} />
-                      <div className="flex gap-2">
-                        <div className="w-6 h-1.5 rounded bg-slate-200" />
-                        <div className="w-6 h-1.5 rounded bg-slate-200" />
-                      </div>
-                    </div>
-                    <div className="mt-2">
-                      <div className={cn("w-2/3 h-3 rounded mb-2", getThemeClass())} />
-                      <div className="w-1/2 h-1.5 rounded bg-slate-200" />
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 mt-auto">
-                      <div className="h-8 rounded bg-white border border-slate-200" />
-                      <div className="h-8 rounded bg-white border border-slate-200" />
-                    </div>
-                  </>
-                )}
-                
-                {tpl.id === 'academic' && (
-                  <>
-                    <div className="w-1/3 border-r border-slate-200 pr-2 flex flex-col gap-2">
-                      <div className={cn("w-8 h-8 rounded-full mb-2", getThemeClass())} />
-                      <div className="w-full h-1.5 rounded bg-slate-200" />
-                      <div className="w-2/3 h-1.5 rounded bg-slate-200" />
-                    </div>
-                    <div className="flex-1 flex flex-col gap-2">
-                      <div className={cn("w-1/2 h-2 rounded", getThemeClass())} />
-                      <div className="w-full h-10 rounded bg-white border border-slate-200" />
-                      <div className="w-full h-10 rounded bg-white border border-slate-200" />
-                    </div>
-                  </>
-                )}
-
-                {tpl.id === 'creative' && (
-                  <>
-                    <div className={cn("col-span-2 h-12 rounded-lg opacity-20 mb-2", getThemeClass())} />
-                    <div className="h-16 bg-white border border-slate-200 rounded" />
-                    <div className="h-16 bg-white border border-slate-200 rounded" />
-                  </>
-                )}
+              {/* Miniature Website Iframe */}
+              <div className="w-[300%] h-[300%] origin-top-left scale-[0.333] pointer-events-none select-none shrink-0">
+                <iframe 
+                  src={TEMPLATE_PREVIEW_URLS[tpl.id]} 
+                  title={`${tpl.id} Thumbnail`}
+                  className="w-full h-full border-0"
+                  tabIndex={-1}
+                />
               </div>
 
               {/* Actions Overlay */}
               <div className={cn(
-                "absolute inset-0 bg-slate-900/5 flex flex-col items-center justify-center gap-3 transition-opacity backdrop-blur-[1px]",
+                "absolute inset-0 bg-slate-900/5 flex flex-col items-center justify-center gap-3 transition-opacity backdrop-blur-[1px] z-20 pointer-events-auto",
                 selectedTemplate === tpl.id ? "opacity-100" : "opacity-0 group-hover:opacity-100"
               )}>
                 {selectedTemplate === tpl.id && (
@@ -203,45 +176,31 @@ export default function Step7Theme() {
 
       {/* Custom Fullscreen Preview Modal */}
       {previewTemplate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-10 animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-6 animate-in fade-in">
           <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setPreviewTemplate(null)} />
-          <div className="bg-slate-100 w-full h-full max-w-5xl rounded-2xl shadow-2xl relative flex flex-col overflow-hidden animate-in zoom-in-95">
+          <div className="bg-slate-100 w-full h-[90vh] max-w-5xl rounded-2xl shadow-2xl relative flex flex-col overflow-hidden animate-in zoom-in-95">
             <div className="bg-white border-b border-slate-200 p-4 flex justify-between items-center shrink-0">
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-red-400" />
                 <div className="w-3 h-3 rounded-full bg-amber-400" />
                 <div className="w-3 h-3 rounded-full bg-green-400" />
-                <span className="ml-4 text-sm font-mono text-slate-500">preview.mybexo.com</span>
+                <span className="ml-4 text-xs font-mono text-slate-500">
+                  {TEMPLATE_PREVIEW_URLS[previewTemplate].replace('https://', '')}
+                </span>
               </div>
               <Button variant="ghost" size="sm" onClick={() => setPreviewTemplate(null)}>
                 <X className="w-5 h-5" />
               </Button>
             </div>
             
-            <div className="flex-1 overflow-y-auto p-8 md:p-12 flex justify-center">
-              {/* Dummy Live Preview Content mimicking the template structure */}
-              <div className="bg-white w-full max-w-3xl rounded-xl shadow-sm border border-slate-200 min-h-[600px] p-8 md:p-12 flex flex-col">
-                <h2 className={cn("text-3xl font-bold mb-4", getThemeClass(false))}>
-                  {data.name || 'Jane Doe'}
-                </h2>
-                <p className="text-slate-600 max-w-xl text-lg mb-8 leading-relaxed">
-                  {data.aboutEntries[0]?.description || 'I build thoughtful digital experiences with modern tools and clean design.'}
-                </p>
-                <div className="flex gap-4 border-b border-slate-100 pb-4 mb-8">
-                  <div className={cn("h-1 w-12 rounded", getThemeClass())} />
-                </div>
-                <div className="grid md:grid-cols-2 gap-8">
-                  <div className="space-y-4">
-                    <div className="h-4 w-1/3 bg-slate-200 rounded" />
-                    <div className="h-24 bg-slate-50 border border-slate-100 rounded-lg p-4" />
-                    <div className="h-24 bg-slate-50 border border-slate-100 rounded-lg p-4" />
-                  </div>
-                  <div className="space-y-4">
-                    <div className="h-4 w-1/4 bg-slate-200 rounded" />
-                    <div className="h-24 bg-slate-50 border border-slate-100 rounded-lg p-4" />
-                  </div>
-                </div>
-              </div>
+            <div className="flex-1 w-full h-full relative bg-slate-50">
+              <iframe 
+                src={TEMPLATE_PREVIEW_URLS[previewTemplate]} 
+                title={`${previewTemplate} Preview`}
+                className="w-full h-full border-0 absolute inset-0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                allowFullScreen
+              />
             </div>
           </div>
         </div>

@@ -10,6 +10,8 @@ export const users = pgTable("users", {
   oauthId: text("oauth_id"),
   name: text("name"),
   dob: date("dob"),
+  photoUrl: text("photo_url"),
+  resumeUrl: text("resume_url"),
   profilePhotoAssetId: uuid("profile_photo_asset_id"),
   storageUsedBytes: bigint("storage_used_bytes", { mode: "number" }).default(0),
   storageQuotaBytes: bigint("storage_quota_bytes", { mode: "number" }).default(52428800), // 50MB in bytes

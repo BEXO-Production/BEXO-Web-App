@@ -29,6 +29,14 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+app.get("/", (req, res) => {
+  res.json({
+    status: "ok",
+    message: "BEXO API Server is running.",
+    frontendUrl: "http://localhost:5173"
+  });
+});
+
 app.use("/api", router);
 
 export default app;

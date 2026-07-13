@@ -351,3 +351,17 @@
   0% { transform: translateX(-100%); }
   100% { transform: translateX(100%); }
 }
+
+@keyframes scan-laser {
+  0%, 100% {
+    top: 0%;
+  }
+  50% {
+    top: 100%;
+  }
+}
+
+.animate-scan-laser {
+  animation: scan-laser 2.5s infinite ease-in-out;
+}
+
