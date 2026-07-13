@@ -2,6 +2,9 @@ import { sendEmail } from './mailer';
 import { getBillingReceiptEmail, getActivationEmail } from './templates';
 import { generateInvoicePDF } from './invoice';
 import { logger } from './logger';
+import { uploadToR2 } from './r2';
+import { db, payments } from "@workspace/db";
+import { eq } from "drizzle-orm";
 
 export const sendBillingEmail = async (email: string, userName: string, plan: string, amount: number, transactionId: string) => {
   let subject = "Your Bexo Payment Receipt";
@@ -17,6 +20,22 @@ export const sendBillingEmail = async (email: string, userName: string, plan: st
   try {
     const pdfBuffer = await generateInvoicePDF(userName, plan, amount, transactionId);
     
+    // Upload invoice PDF to Cloudflare R2
+    let invoiceUrl = "";
+    try {
+      const filename = `Bexo_Invoice_${transactionId}.pdf`;
+      invoiceUrl = await uploadToR2(pdfBuffer, filename, 'application/pdf');
+      logger.info({ invoiceUrl }, "Invoice PDF successfully uploaded to R2");
+      
+      // Update payment record in database with invoice URL
+      await db.update(payments).set({ 
+        invoiceUrl 
+      }).where(eq(payments.razorpayPaymentId, transactionId));
+      logger.info("Successfully updated payment record with invoice URL reference");
+    } catch (r2Err) {
+      logger.error({ err: r2Err }, "Failed to upload invoice to R2 or save database reference");
+    }
+
     await sendEmail(email, subject, html, [
       {
         filename: `Bexo_Invoice_${transactionId}.pdf`,

@@ -210,6 +210,15 @@ router.post("/activation", async (req: any, res: any) => {
       storageQuotaBytes: 52428800
     }).where(eq(users.id, userId));
 
+    // Create a database payment record for this activation code
+    await db.insert(payments).values({
+      userId,
+      razorpayOrderId: `activation_${code}`,
+      razorpayPaymentId: code,
+      amount: 0,
+      status: 'success',
+    });
+
     // Get user details for billing
     const user = (await db.select().from(users).where(eq(users.id, userId)))[0];
 

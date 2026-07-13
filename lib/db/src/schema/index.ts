@@ -114,5 +114,6 @@ export const payments = pgTable("payments", {
   razorpayPaymentId: text("razorpay_payment_id").unique(),
   amount: integer("amount").notNull(), // in paise
   status: text("status").notNull(), // 'pending' | 'success' | 'failed'
+  invoiceUrl: text("invoice_url"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });

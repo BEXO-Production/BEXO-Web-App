@@ -2177,45 +2177,51 @@ export default function Dashboard() {
 
                 {settingsSubTab === 'design' && (
                   <div className="space-y-6 animate-in fade-in duration-200">
-                    {/* Theme selector */}
-                    <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-4">
-                      <div>
-                        <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                          <Palette className="w-4 h-4 text-indigo-500" /> Accent Color
-                        </h3>
-                        <p className="text-slate-500 text-xs mt-0.5">Select a brand color accent for your portfolio template layouts.</p>
-                      </div>
-                      <div className="flex gap-2.5 pt-1">
-                        {THEMES.map(theme => (
-                          <button
-                            key={theme.id}
-                            onClick={() => handleThemeSelect(theme.id)}
-                            className={cn(
-                              "w-9 h-9 rounded-full flex items-center justify-center transition-all hover:scale-105 shadow-sm ring-offset-2",
-                              theme.hex,
-                              data.themeColor === theme.id ? "ring-2 ring-slate-900 scale-105" : ""
-                            )}
-                            title={theme.label}
-                          >
-                            {data.themeColor === theme.id && <Check className="w-4 h-4 text-white" />}
-                          </button>
-                        ))}
-                      </div>
-                    </Card>
+                    {/* Theme selector - ONLY for Free users */}
+                    {!data.isPremium && (
+                      <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-4">
+                        <div>
+                          <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                            <Palette className="w-4 h-4 text-indigo-500" /> Accent Color
+                          </h3>
+                          <p className="text-slate-500 text-xs mt-0.5">Select a brand color accent for your portfolio template layouts.</p>
+                        </div>
+                        <div className="flex gap-2.5 pt-1">
+                          {THEMES.map(theme => (
+                            <button
+                              key={theme.id}
+                              onClick={() => handleThemeSelect(theme.id)}
+                              className={cn(
+                                "w-9 h-9 rounded-full flex items-center justify-center transition-all hover:scale-105 shadow-sm ring-offset-2",
+                                theme.hex,
+                                data.themeColor === theme.id ? "ring-2 ring-slate-900 scale-105" : ""
+                              )}
+                              title={theme.label}
+                            >
+                              {data.themeColor === theme.id && <Check className="w-4 h-4 text-white" />}
+                            </button>
+                          ))}
+                        </div>
+                      </Card>
+                    )}
 
                     {/* Visual Page Template + Live Preview — split layout */}
-                    <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 items-start">
+                    <div className={cn("grid grid-cols-1 gap-5 items-start", data.isPremium ? "lg:grid-cols-5" : "lg:grid-cols-1")}>
                       
-                      {/* Left: Template Selector */}
-                      <Card className="lg:col-span-2 p-5 bg-white border border-slate-200 shadow-sm space-y-4">
+                      {/* Template Selector */}
+                      <Card className={cn("p-5 bg-white border border-slate-200 shadow-sm space-y-4", data.isPremium ? "lg:col-span-2" : "w-full")}>
                         <div>
                           <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                             <Layout className="w-4 h-4 text-indigo-500" /> Page Template
                           </h3>
-                          <p className="text-slate-500 text-xs mt-0.5">Choose a layout. Live preview updates instantly.</p>
+                          <p className="text-slate-500 text-xs mt-0.5">
+                            {data.isPremium 
+                              ? "Choose a design layout. Live preview updates instantly."
+                              : "Choose a layout. Upgrade to Pro to unlock premium templates."}
+                          </p>
                         </div>
 
-                        <div className="flex flex-col gap-3">
+                        <div className={cn("flex flex-col gap-3", !data.isPremium && "md:grid md:grid-cols-3")}>
                           {TEMPLATES.map(tpl => {
                             const isSelected = data.templateId === tpl.id;
                             const accentBg = getThemeClass(true);
@@ -2265,7 +2271,7 @@ export default function Dashboard() {
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2">
                                     <h4 className="text-sm font-bold text-slate-900 capitalize">{tpl.name}</h4>
-                                    {isLocked && <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded uppercase tracking-wider">Pro</span>}
+                                    {isLocked && <span className="text-[9px] font-bold text-indigo-650 bg-indigo-50 px-1.5 py-0.5 rounded uppercase tracking-wider">Pro</span>}
                                   </div>
                                   <p className="text-[11px] text-slate-400 leading-normal mt-0.5 line-clamp-2">{tpl.description}</p>
                                 </div>
@@ -2284,61 +2290,63 @@ export default function Dashboard() {
                           href={`/${handleString}`}
                           target="_blank"
                           rel="noreferrer"
-                          className="flex items-center justify-center gap-1.5 w-full py-2.5 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-bold hover:bg-indigo-100 transition-colors mt-1"
+                          className="flex items-center justify-center gap-1.5 w-full py-2.5 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-755 text-xs font-bold hover:bg-indigo-100 transition-colors mt-1"
                         >
                           <ExternalLink className="w-3.5 h-3.5" /> Open Live Portfolio
                         </a>
                       </Card>
 
-                      {/* Right: Live iframe Preview */}
-                      <div className="lg:col-span-3 flex flex-col gap-2">
-                        <div className="flex items-center justify-between px-1">
-                          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Live Preview</span>
-                          <span className="text-[11px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full font-medium">
-                            mybexo.com/{handleString}
-                          </span>
-                        </div>
+                      {/* Right: Live iframe Preview - ONLY for Pro/Premium users */}
+                      {data.isPremium && (
+                        <div className="lg:col-span-3 flex flex-col gap-2">
+                          <div className="flex items-center justify-between px-1">
+                            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Live Preview</span>
+                            <span className="text-[11px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full font-medium">
+                              mybexo.com/{handleString}
+                            </span>
+                          </div>
 
-                        {/* Browser chrome frame */}
-                        <div className="rounded-2xl overflow-hidden border border-slate-200 shadow-lg bg-white">
-                          {/* Browser top bar */}
-                          <div className="h-9 bg-slate-100 border-b border-slate-200 flex items-center px-3 gap-2 shrink-0">
-                            <div className="flex items-center gap-1.5">
-                              <span className="w-2.5 h-2.5 rounded-full bg-red-400" />
-                              <span className="w-2.5 h-2.5 rounded-full bg-yellow-400" />
-                              <span className="w-2.5 h-2.5 rounded-full bg-green-400" />
-                            </div>
-                            <div className="flex-1 mx-2">
-                              <div className="h-5 bg-white rounded-md border border-slate-200 flex items-center px-2.5 gap-1.5">
-                                <Globe className="w-3 h-3 text-slate-400 shrink-0" />
-                                <span className="text-[11px] text-slate-500 font-medium truncate">mybexo.com/{handleString}</span>
+                          {/* Browser chrome frame */}
+                          <div className="rounded-2xl overflow-hidden border border-slate-200 shadow-lg bg-white">
+                            {/* Browser top bar */}
+                            <div className="h-9 bg-slate-100 border-b border-slate-200 flex items-center px-3 gap-2 shrink-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="w-2.5 h-2.5 rounded-full bg-red-400" />
+                                <span className="w-2.5 h-2.5 rounded-full bg-yellow-400" />
+                                <span className="w-2.5 h-2.5 rounded-full bg-green-400" />
+                              </div>
+                              <div className="flex-1 mx-2">
+                                <div className="h-5 bg-white rounded-md border border-slate-200 flex items-center px-2.5 gap-1.5">
+                                  <Globe className="w-3 h-3 text-slate-400 shrink-0" />
+                                  <span className="text-[11px] text-slate-500 font-medium truncate">mybexo.com/{handleString}</span>
+                                </div>
                               </div>
                             </div>
+
+                            {/* iframe */}
+                            <div className="relative w-full overflow-hidden" style={{ height: '520px' }}>
+                              <iframe
+                                key={`${data.templateId || 'minimal'}-${data.themeColor || 'indigo'}`}
+                                src={`/${handleString}`}
+                                title="Live Portfolio Preview"
+                                className="absolute top-0 left-0 border-0 bg-white"
+                                style={{
+                                  width: '1280px',
+                                  height: '900px',
+                                  transform: 'scale(0.65)',
+                                  transformOrigin: 'top left',
+                                  pointerEvents: 'none'
+                                }}
+                                sandbox="allow-scripts allow-same-origin"
+                              />
+                            </div>
                           </div>
 
-                          {/* iframe */}
-                          <div className="relative w-full overflow-hidden" style={{ height: '520px' }}>
-                            <iframe
-                              key={`${data.templateId || 'minimal'}-${data.themeColor || 'indigo'}`}
-                              src={`/${handleString}`}
-                              title="Live Portfolio Preview"
-                              className="absolute top-0 left-0 border-0 bg-white"
-                              style={{
-                                width: '1280px',
-                                height: '900px',
-                                transform: 'scale(0.65)',
-                                transformOrigin: 'top left',
-                                pointerEvents: 'none'
-                              }}
-                              sandbox="allow-scripts allow-same-origin"
-                            />
-                          </div>
+                          <p className="text-[11px] text-slate-400 text-center">
+                            This preview reflects your live portfolio. Changes to template or color take effect after saving.
+                          </p>
                         </div>
-
-                        <p className="text-[11px] text-slate-400 text-center">
-                          This preview reflects your live portfolio. Changes to template or color take effect after saving.
-                        </p>
-                      </div>
+                      )}
                     </div>
                   </div>
                 )}

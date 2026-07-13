@@ -204,8 +204,8 @@ const wrapHtml = (title: string, content: string) => `
       </tr>
       <tr>
         <td class="footer">
-          <p class="footer-text">&copy; ${new Date().getFullYear()} Bexo Inc. All rights reserved.</p>
-          <p class="footer-text" style="margin-top: 8px;">Elevating professional portfolios for the modern web.</p>
+          <p class="footer-text">&copy; ${new Date().getFullYear()} Ace Digital Private Limited. All rights reserved.</p>
+          <p class="footer-text" style="margin-top: 8px;">Bexo is a registered service owned and operated by Ace Digital Private Limited, Coimbatore, Tamil Nadu, India.</p>
         </td>
       </tr>
     </table>

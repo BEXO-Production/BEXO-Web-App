@@ -243,94 +243,252 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
       </div>
     );
   };
-
   const accentClass = getThemeAccentClass();
   const textAccent = getThemeTextClass();
   const badgeAccent = getThemeBadgeBg();
 
-  return (
-    <div className="min-h-screen pb-20 font-sans relative overflow-x-hidden transition-colors duration-300 bg-gradient-to-tr from-slate-50 via-slate-100/50 to-indigo-50/30 text-slate-800">
-      {/* Grid overlay background */}
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#8080800a_1px,transparent_1px),linear-gradient(to_bottom,#8080800a_1px,transparent_1px)] bg-[size:14px_24px] pointer-events-none opacity-100" />
+  const templateId = user.templateId || 'minimal';
 
-      {/* Decorative background glows */}
-      <div className="absolute top-[-10%] left-[-5%] w-[500px] h-[500px] rounded-full blur-[120px] pointer-events-none bg-indigo-200/10" />
-      <div className="absolute bottom-[20%] right-[-5%] w-[450px] h-[450px] rounded-full blur-[100px] pointer-events-none bg-blue-200/10" />
+  const renderMinimalLayout = () => {
+    return (
+      <div className="max-w-3xl mx-auto px-4 pt-12 md:pt-16 space-y-10 relative z-10 font-sans">
+        {/* Profile Header */}
+        <div className="text-center space-y-4">
+          <div className="w-24 h-24 rounded-full bg-slate-100 overflow-hidden border border-slate-200 shadow-inner flex items-center justify-center mx-auto">
+            {user.photoUrl ? (
+              <img src={user.photoUrl} alt={user.name} className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-4xl font-bold text-slate-400 capitalize">{user.name?.charAt(0)}</span>
+            )}
+          </div>
+          <div className="space-y-1">
+            <h1 className="text-3xl font-extrabold text-slate-905 tracking-tight">{user.name}</h1>
+            {profile.headline && <p className="text-md font-medium text-slate-600">{profile.headline}</p>}
+            {user.openToHire && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-100 mt-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Available for Hire
+              </span>
+            )}
+          </div>
+          {profile.bio && <p className="text-sm text-slate-500 leading-relaxed max-w-lg mx-auto">{profile.bio}</p>}
+          
+          <div className="flex justify-center gap-3 pt-2">
+            {user.resumeUrl && (
+              <a href={user.resumeUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-650 hover:text-indigo-800 transition-colors">
+                View Resume <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            )}
+            {user.openToHire && (
+              <a 
+                href={`mailto:${contactData.email || user.email}?subject=Hiring inquiry for ${user.name}`}
+                className={cn("inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold text-white transition-all shadow-sm border-none hover:shadow-md", accentClass.split(' ')[0])}
+              >
+                <Mail className="w-3.5 h-3.5" /> Hire Me
+              </a>
+            )}
+          </div>
+        </div>
 
-      {/* Portfolio Header Accent Bar */}
-      <div className={cn("h-2.5 w-full sticky top-0 z-50", accentClass.split(' ')[0])} />
+        {/* Contact Info Header Bar */}
+        <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-xs text-slate-500 py-3.5 border-y border-slate-200/60">
+          {contactData.email && (
+            <div className="flex items-center gap-1.5">
+              <Mail className="w-3.5 h-3.5 text-slate-450" />
+              <a href={`mailto:${contactData.email}`} className="hover:text-slate-900">{contactData.email}</a>
+            </div>
+          )}
+          {contactData.phone && (
+            <div className="flex items-center gap-1.5">
+              <Phone className="w-3.5 h-3.5 text-slate-450" />
+              <span>{contactData.phone}</span>
+            </div>
+          )}
+          {contactData.linkedin && (
+            <div className="flex items-center gap-1.5">
+              <Linkedin className="w-3.5 h-3.5 text-slate-455" />
+              <a href={getHref(contactData.linkedin, 'linkedin')} target="_blank" rel="noreferrer" className="hover:text-slate-900">
+                {formatUrlText(contactData.linkedin, 'linkedin')}
+              </a>
+            </div>
+          )}
+          {contactData.github && (
+            <div className="flex items-center gap-1.5">
+              <Github className="w-3.5 h-3.5 text-slate-455" />
+              <a href={getHref(contactData.github, 'github')} target="_blank" rel="noreferrer" className="hover:text-slate-900">
+                {formatUrlText(contactData.github, 'github')}
+              </a>
+            </div>
+          )}
+        </div>
 
+        {/* Stacked content */}
+        <div className="space-y-8">
+          {/* About */}
+          {aboutEntries.length > 0 && (
+            <div className="space-y-2">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">About Me</h3>
+              {aboutEntries.map((ab: any) => (
+                <p key={ab.id} className="text-sm text-slate-650 leading-relaxed">{ab.description}</p>
+              ))}
+            </div>
+          )}
 
+          {/* Experience */}
+          {experienceEntries.length > 0 && (
+            <div className="space-y-4">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Experience</h3>
+              <div className="space-y-5">
+                {experienceEntries.map((exp: any) => (
+                  <div key={exp.id} className="space-y-1">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-900">{exp.role}</h4>
+                        <p className="text-xs font-semibold text-slate-500">{exp.company}</p>
+                      </div>
+                      {exp.duration && <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded">{exp.duration}</span>}
+                    </div>
+                    {exp.description && <p className="text-xs text-slate-505 leading-relaxed pt-0.5">{exp.description}</p>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
-      {/* Main Container */}
-      <div className="max-w-4xl mx-auto px-4 pt-12 md:pt-16 space-y-8 relative z-10">
-        
+          {/* Education */}
+          {educationEntries.length > 0 && (
+            <div className="space-y-4">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Education</h3>
+              <div className="space-y-4">
+                {educationEntries.map((edu: any) => (
+                  <div key={edu.id} className="flex justify-between items-start">
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-900">{edu.degree}</h4>
+                      <p className="text-xs font-semibold text-slate-500">{edu.school}</p>
+                      {edu.grade && <span className="text-[10px] font-bold text-indigo-650 mt-1 block">Grade: {edu.grade}</span>}
+                    </div>
+                    {edu.duration && <span className="text-[10px] font-bold text-slate-400">{edu.duration}</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Projects */}
+          {projectEntries.length > 0 && (
+            <div className="space-y-4">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Projects</h3>
+              <div className="grid grid-cols-1 gap-4">
+                {projectEntries.map((proj: any) => (
+                  <div key={proj.id} className="border border-slate-200 rounded-xl p-4 bg-white/50 space-y-1.5">
+                    <div className="flex justify-between items-start">
+                      <h4 className="text-sm font-bold text-slate-905">{proj.title}</h4>
+                      {proj.link && (
+                        <a href={proj.link} target="_blank" rel="noreferrer" className="text-indigo-650 hover:text-indigo-850">
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      )}
+                    </div>
+                    {proj.description && <p className="text-xs text-slate-500 leading-relaxed">{proj.description}</p>}
+                    {renderEntryAssets(proj.assets)}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Certifications & Achievements */}
+          {(certificateEntries.length > 0 || achievementEntries.length > 0) && (
+            <div className="grid md:grid-cols-2 gap-8 pt-2">
+              {certificateEntries.length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Certifications</h3>
+                  <div className="space-y-3.5">
+                    {certificateEntries.map((cert: any) => (
+                      <div key={cert.id} className="space-y-0.5">
+                        <h4 className="text-xs font-bold text-slate-900 leading-snug">{cert.name}</h4>
+                        <p className="text-[11px] text-slate-550 leading-normal">{cert.issuer}</p>
+                        {cert.date && <p className="text-[10px] text-slate-400">{cert.date}</p>}
+                        {renderEntryAssets(cert.assets)}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {achievementEntries.length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Achievements</h3>
+                  <div className="space-y-3.5">
+                    {achievementEntries.map((ach: any) => (
+                      <div key={ach.id} className="space-y-0.5">
+                        <h4 className="text-xs font-bold text-slate-900 leading-snug">{ach.title}</h4>
+                        <p className="text-[11px] text-slate-550 leading-normal">{ach.organization}</p>
+                        {ach.date && <p className="text-[10px] text-slate-400">{ach.date}</p>}
+                        {renderEntryAssets(ach.assets)}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderAcademicLayout = () => {
+    return (
+      <div className="max-w-5xl mx-auto px-4 pt-12 md:pt-16 space-y-8 relative z-10 font-serif">
         {/* Profile Card */}
-        <Card className="p-6 md:p-8 border shadow-sm flex flex-col md:flex-row items-center md:items-start justify-between gap-6 relative overflow-hidden transition-all duration-300 hover:shadow-md animate-in fade-in slide-in-from-bottom-6 duration-700 bg-white/90 border-slate-200/60 text-slate-800 hover:border-slate-300/80">
+        <div className="bg-white border border-slate-200/80 shadow-sm p-8 rounded-2xl flex flex-col md:flex-row items-center md:items-start justify-between gap-6">
           <div className="flex flex-col md:flex-row items-center md:items-start gap-6">
-            {/* Profile Photo */}
             <div className="w-24 h-24 rounded-2xl bg-slate-100 overflow-hidden border border-slate-200 shadow-inner flex items-center justify-center shrink-0">
               {user.photoUrl ? (
                 <img src={user.photoUrl} alt={user.name} className="w-full h-full object-cover" />
               ) : (
-                <span className="text-4xl font-bold text-slate-400 capitalize">{user.name?.charAt(0)}</span>
+                <span className="text-4xl font-bold text-slate-400 capitalize font-sans">{user.name?.charAt(0)}</span>
               )}
             </div>
 
-            {/* Profile Details */}
-            <div className="text-center md:text-left space-y-2">
+            <div className="text-center md:text-left space-y-2 font-sans">
               <div className="flex flex-col md:flex-row items-center gap-3">
-                <h1 className="text-2.5xl font-serif font-extrabold tracking-tight text-slate-900">{user.name}</h1>
-                
-                {/* Available for Hire Badge */}
+                <h1 className="text-3xl font-serif font-extrabold tracking-tight text-slate-900">{user.name}</h1>
                 {user.openToHire && (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full select-none flex items-center gap-1 text-emerald-700 bg-emerald-50 border border-emerald-100">
+                  <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full select-none flex items-center gap-1 text-emerald-700 bg-emerald-50 border border-emerald-100">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Available for Hire
                   </span>
                 )}
               </div>
-
-              {profile.headline && (
-                <p className="text-md font-medium text-slate-700 leading-normal">{profile.headline}</p>
-              )}
-
-              {/* Bio details */}
-              {profile.bio && (
-                <p className="text-xs text-slate-500 leading-relaxed max-w-xl">{profile.bio}</p>
-              )}
-
-              {/* Action buttons (Resume, etc.) */}
+              {profile.headline && <p className="text-md font-medium text-slate-700 leading-normal">{profile.headline}</p>}
+              {profile.bio && <p className="text-xs text-slate-500 leading-relaxed max-w-xl">{profile.bio}</p>}
+              
               <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 pt-2">
                 {user.resumeUrl && (
                   <a href={user.resumeUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-650 hover:text-indigo-800 transition-colors">
-                    View Resume <ExternalLink className="w-3.5 h-3.5" />
+                    View CV / Resume <ExternalLink className="w-3.5 h-3.5" />
                   </a>
                 )}
                 {user.openToHire && (
                   <a 
                     href={`mailto:${contactData.email || user.email}?subject=Hiring inquiry for ${user.name}`}
-                    className={cn(
-                      "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white transition-all shadow-sm hover:shadow-md hover:scale-102 active:scale-98 select-none border-none",
-                      accentClass.split(' ')[0]
-                    )}
+                    className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 transition-all shadow-sm border-none"
                   >
-                    <Mail className="w-3.5 h-3.5" /> Hire Me
+                    <Mail className="w-3.5 h-3.5" /> Contact Candidate
                   </a>
                 )}
               </div>
             </div>
           </div>
-        </Card>
+        </div>
 
-        {/* Portfolio Body Columns */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 animate-in fade-in slide-in-from-bottom-8 duration-700 delay-150 fill-mode-both">
-          
-          {/* Sidebar (About, Certificates, Contact) */}
-          <div className="md:col-span-1 space-y-6">
-            
+        {/* Two Columns Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          {/* Sidebar */}
+          <div className="md:col-span-1 space-y-6 font-sans">
             {/* Contact Details Card */}
-            <Card className="p-5 border shadow-sm space-y-4 hover:shadow-md transition-all duration-300 hover:-translate-y-0.5 bg-white/95 border-slate-200/60 hover:border-slate-300 text-slate-800">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Contact Info</h3>
+            <Card className="p-5 border border-slate-200/60 shadow-sm space-y-4 bg-white">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Contact Information</h3>
               <div className="space-y-3.5 text-xs text-slate-600">
                 {contactData.email && (
                   <div className="flex items-center gap-2.5">
@@ -363,20 +521,18 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
               </div>
             </Card>
 
-            {/* Certificates Card */}
+            {/* Certifications Card */}
             {certificateEntries.length > 0 && (
-              <Card className="p-5 border shadow-sm space-y-4 hover:shadow-md transition-all duration-300 hover:-translate-y-0.5 bg-white/95 border-slate-200/60 hover:border-slate-300 text-slate-800">
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                  <Award className="w-4 h-4 text-indigo-500" /> Certifications
+              <Card className="p-5 border border-slate-200/60 shadow-sm space-y-4 bg-white">
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <Award className="w-4 h-4 text-slate-500" /> Certifications
                 </h3>
                 <div className="space-y-4">
                   {certificateEntries.map((cert: any) => (
                     <div key={cert.id} className="space-y-0.5">
                       <h4 className="text-xs font-bold text-slate-900 leading-snug">{cert.name}</h4>
-                      <p className="text-[11px] text-slate-500 leading-normal">{cert.issuer}</p>
-                      {cert.date && (
-                        <p className="text-[10px] text-slate-450 font-medium">{cert.date}</p>
-                      )}
+                      <p className="text-[11px] text-slate-550 leading-normal">{cert.issuer}</p>
+                      {cert.date && <p className="text-[10px] text-slate-400">{cert.date}</p>}
                       {renderEntryAssets(cert.assets)}
                     </div>
                   ))}
@@ -386,18 +542,16 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
 
             {/* Achievements Card */}
             {achievementEntries.length > 0 && (
-              <Card className="p-5 border shadow-sm space-y-4 hover:shadow-md transition-all duration-300 hover:-translate-y-0.5 bg-white/95 border-slate-200/60 hover:border-slate-300 text-slate-800">
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                  <Sparkles className="w-4 h-4 text-indigo-500" /> Achievements
+              <Card className="p-5 border border-slate-200/60 shadow-sm space-y-4 bg-white">
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-slate-500" /> Achievements
                 </h3>
                 <div className="space-y-4">
                   {achievementEntries.map((ach: any) => (
                     <div key={ach.id} className="space-y-0.5">
                       <h4 className="text-xs font-bold text-slate-900 leading-snug">{ach.title}</h4>
-                      <p className="text-[11px] text-slate-500 leading-normal">{ach.organization}</p>
-                      {ach.date && (
-                        <p className="text-[10px] text-slate-450 font-medium">{ach.date}</p>
-                      )}
+                      <p className="text-[11px] text-slate-550 leading-normal">{ach.organization}</p>
+                      {ach.date && <p className="text-[10px] text-slate-400">{ach.date}</p>}
                       {renderEntryAssets(ach.assets)}
                     </div>
                   ))}
@@ -406,45 +560,15 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
             )}
           </div>
 
-          {/* Main Body (Education, Experience, Projects) */}
+          {/* Main Body */}
           <div className="md:col-span-2 space-y-6">
-            
-            {/* About Me Section */}
+            {/* About */}
             {aboutEntries.length > 0 && (
-              <Card className="p-6 border shadow-sm space-y-3 hover:shadow-md transition-all duration-300 hover:-translate-y-0.5 bg-white/95 border-slate-200/60 hover:border-slate-300 text-slate-850">
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">About Me</h3>
-                <div className="space-y-3">
+              <Card className="p-6 border border-slate-200/60 shadow-sm space-y-3 bg-white">
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider font-sans">Biography</h3>
+                <div className="space-y-3 text-sm text-slate-700 leading-relaxed">
                   {aboutEntries.map((ab: any) => (
-                    <p key={ab.id} className="text-xs text-slate-650 leading-relaxed">{ab.description}</p>
-                  ))}
-                </div>
-              </Card>
-            )}
-
-            {/* Experience Section */}
-            {experienceEntries.length > 0 && (
-              <Card className="p-6 border shadow-sm space-y-6 hover:shadow-md transition-all duration-300 hover:-translate-y-0.5 bg-white/95 border-slate-200/60 hover:border-slate-300 text-slate-850">
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <Briefcase className="w-4.5 h-4.5 text-indigo-500" /> Work Experience
-                </h3>
-                <div className="space-y-6 border-l pl-4 ml-2 border-slate-150">
-                  {experienceEntries.map((exp: any) => (
-                    <div key={exp.id} className="relative space-y-1">
-                      {/* Timeline dot */}
-                      <span className={cn("absolute -left-[21px] top-1.5 w-2 h-2 rounded-full border border-white", accentClass.split(' ')[0])} />
-                      <div className="flex justify-between items-start gap-4">
-                        <div>
-                          <h4 className="text-sm font-bold text-slate-900 leading-tight">{exp.role}</h4>
-                          <p className="text-xs font-semibold text-slate-600 mt-0.5">{exp.company}</p>
-                        </div>
-                        {exp.duration && (
-                          <span className="text-[10px] font-bold text-slate-400 whitespace-nowrap bg-slate-50 px-2 py-0.5 rounded border border-slate-100">{exp.duration}</span>
-                        )}
-                      </div>
-                      {exp.description && (
-                        <p className="text-xs text-slate-505 leading-relaxed pt-1">{exp.description}</p>
-                      )}
-                    </div>
+                    <p key={ab.id}>{ab.description}</p>
                   ))}
                 </div>
               </Card>
@@ -452,52 +576,86 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
 
             {/* Education Section */}
             {educationEntries.length > 0 && (
-              <Card className="p-6 border shadow-sm space-y-6 hover:shadow-md transition-all duration-300 hover:-translate-y-0.5 bg-white/95 border-slate-200/60 hover:border-slate-300 text-slate-850">
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <GraduationCap className="w-5 h-5 text-indigo-500" /> Education
+              <Card className="p-6 border border-slate-200/60 shadow-sm space-y-6 bg-white">
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2 font-sans">
+                  <GraduationCap className="w-5 h-5 text-slate-550" /> Academic Background
                 </h3>
-                <div className="space-y-6 border-l pl-4 ml-2 border-slate-150">
+                <div className="space-y-6 border-l pl-4 ml-2 border-slate-200">
                   {educationEntries.map((edu: any) => (
                     <div key={edu.id} className="relative space-y-1">
-                      <span className={cn("absolute -left-[21px] top-1.5 w-2 h-2 rounded-full border border-white", accentClass.split(' ')[0])} />
-                      <div className="flex justify-between items-start gap-4">
+                      <span className="absolute -left-[21px] top-1.5 w-2 h-2 rounded-full border border-white bg-slate-900" />
+                      <div className="flex justify-between items-start gap-4 font-serif">
                         <div>
-                          <h4 className="text-sm font-bold text-slate-900 leading-tight">{edu.degree}</h4>
-                          <p className="text-xs font-semibold text-slate-600 mt-0.5">{edu.school}</p>
+                          <h4 className="text-sm font-bold text-slate-905 leading-tight">{edu.degree}</h4>
+                          <p className="text-xs font-semibold text-slate-600 font-sans mt-0.5">{edu.school}</p>
                         </div>
                         {edu.duration && (
-                          <span className="text-[10px] font-bold text-slate-400 whitespace-nowrap bg-slate-50 px-2 py-0.5 rounded border border-slate-100">{edu.duration}</span>
+                          <span className="text-[10px] font-bold text-slate-400 whitespace-nowrap bg-slate-50 px-2 py-0.5 rounded border border-slate-100 font-sans">{edu.duration}</span>
                         )}
                       </div>
-                      {edu.grade && (
-                        <p className="text-xs font-bold text-indigo-650">{edu.grade}</p>
-                      )}
+                      {edu.grade && <p className="text-xs font-bold text-slate-750 font-sans mt-1">Grade: {edu.grade}</p>}
                     </div>
                   ))}
                 </div>
               </Card>
             )}
 
-            {/* Projects Section */}
-            {projectEntries.length > 0 && (
-              <Card className="p-6 border shadow-sm space-y-4 hover:shadow-md transition-all duration-300 hover:-translate-y-0.5 bg-white/95 border-slate-200/60 hover:border-slate-300 text-slate-850">
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <BookOpen className="w-4.5 h-4.5 text-indigo-500" /> Academic & Personal Projects
+            {/* Experience Section */}
+            {experienceEntries.length > 0 && (
+              <Card className="p-6 border border-slate-200/60 shadow-sm space-y-6 bg-white">
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2 font-sans">
+                  <Briefcase className="w-4.5 h-4.5 text-slate-550" /> Professional Experience
                 </h3>
-                <div className="grid grid-cols-1 gap-4 pt-1">
-                  {projectEntries.map((proj: any) => (
-                    <div key={proj.id} className="p-4 rounded-xl border space-y-1 border-slate-150 bg-slate-50/20">
+                <div className="space-y-6 border-l pl-4 ml-2 border-slate-200">
+                  {experienceEntries.map((exp: any) => (
+                    <div key={exp.id} className="relative space-y-1">
+                      <span className="absolute -left-[21px] top-1.5 w-2 h-2 rounded-full border border-white bg-slate-900" />
                       <div className="flex justify-between items-start gap-4">
-                        <h4 className="text-sm font-bold text-slate-900">{proj.title}</h4>
+                        <div>
+                          <h4 className="text-sm font-bold text-slate-905 leading-tight">{exp.role}</h4>
+                          <p className="text-xs font-semibold text-slate-600 font-sans mt-0.5">{exp.company}</p>
+                        </div>
+                        {exp.duration && (
+                          <span className="text-[10px] font-bold text-slate-400 whitespace-nowrap bg-slate-50 px-2 py-0.5 rounded border border-slate-100 font-sans">{exp.duration}</span>
+                        )}
+                      </div>
+                      {exp.description && <p className="text-xs text-slate-600 leading-relaxed pt-1 font-sans">{exp.description}</p>}
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+
+            {/* Projects & Research Section */}
+            {(projectEntries.length > 0 || researchEntries.length > 0) && (
+              <Card className="p-6 border border-slate-200/60 shadow-sm space-y-6 bg-white">
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2 font-sans">
+                  <BookOpen className="w-4.5 h-4.5 text-slate-550" /> Projects & Research Papers
+                </h3>
+                <div className="space-y-5">
+                  {/* Research list */}
+                  {researchEntries?.map((res: any) => (
+                    <div key={res.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50/10 space-y-1">
+                      <h4 className="text-sm font-bold text-slate-950">{res.title || 'Research Paper'}</h4>
+                      <p className="text-[11px] font-semibold text-slate-500 font-sans">{res.journal || 'Publication Journal'}</p>
+                      {res.date && <p className="text-[10px] text-slate-400 font-sans">{res.date}</p>}
+                      {res.description && <p className="text-xs text-slate-600 pt-1 font-sans leading-relaxed">{res.description}</p>}
+                      {renderEntryAssets(res.assets)}
+                    </div>
+                  ))}
+
+                  {/* Project list */}
+                  {projectEntries.map((proj: any) => (
+                    <div key={proj.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50/10 space-y-1">
+                      <div className="flex justify-between items-start gap-4">
+                        <h4 className="text-sm font-bold text-slate-950">{proj.title}</h4>
                         {proj.link && (
-                          <a href={proj.link} target="_blank" rel="noreferrer" className="text-indigo-650 hover:text-indigo-850 shrink-0">
+                          <a href={proj.link} target="_blank" rel="noreferrer" className="text-slate-500 hover:text-slate-905 shrink-0 font-sans">
                             <ExternalLink className="w-3.5 h-3.5" />
                           </a>
                         )}
                       </div>
-                      {proj.description && (
-                        <p className="text-xs text-slate-500 leading-relaxed">{proj.description}</p>
-                      )}
+                      {proj.description && <p className="text-xs text-slate-600 pt-1 font-sans leading-relaxed">{proj.description}</p>}
                       {renderEntryAssets(proj.assets)}
                     </div>
                   ))}
@@ -506,21 +664,223 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
             )}
           </div>
         </div>
+      </div>
+    );
+  };
 
-        {/* Footer */}
-        <footer className="pt-16 border-t border-slate-200/80 text-center space-y-2 animate-in fade-in duration-1000 delay-500 fill-mode-both">
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Student Portfolio Network</p>
-          <p className="text-xs text-slate-400">
-            © 2026 Bexo. All rights reserved. Registered to Bexo.
-          </p>
-          <div className="flex justify-center gap-4 pt-2 text-[11px] font-bold text-slate-400">
-            <a href="https://mybexo.com" className="hover:text-indigo-600 transition-colors">About Bexo</a>
-            <span>•</span>
-            <a href="https://mybexo.com" className="hover:text-indigo-600 transition-colors">Privacy Policy</a>
-            <span>•</span>
-            <a href="https://mybexo.com" className="hover:text-indigo-600 transition-colors">Terms of Service</a>
+  const renderCreativeLayout = () => {
+    return (
+      <div className="max-w-5xl mx-auto px-4 pt-12 md:pt-16 space-y-6 relative z-10 font-sans">
+        {/* Bento Hero Card */}
+        <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-slate-800 text-white p-8 rounded-3xl shadow-xl flex flex-col md:flex-row items-center md:items-start justify-between gap-6 relative overflow-hidden">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,#4f46e520,transparent_50%)]" />
+          
+          <div className="flex flex-col md:flex-row items-center md:items-start gap-6 relative z-10">
+            {/* Profile Photo */}
+            <div className="w-28 h-28 rounded-2xl bg-white/10 overflow-hidden border border-white/20 shadow-lg flex items-center justify-center shrink-0">
+              {user.photoUrl ? (
+                <img src={user.photoUrl} alt={user.name} className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-5xl font-extrabold text-white/40 capitalize">{user.name?.charAt(0)}</span>
+              )}
+            </div>
+
+            {/* Profile Details */}
+            <div className="text-center md:text-left space-y-2.5">
+              <div className="flex flex-col md:flex-row items-center gap-3">
+                <h1 className="text-3.5xl font-black tracking-tight text-white">{user.name}</h1>
+                {user.openToHire && (
+                  <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full select-none flex items-center gap-1.5 text-indigo-200 bg-indigo-500/20 border border-indigo-500/30">
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" /> Available for Hire
+                  </span>
+                )}
+              </div>
+              {profile.headline && <p className="text-lg font-bold text-indigo-200">{profile.headline}</p>}
+              {profile.bio && <p className="text-xs text-slate-300 leading-relaxed max-w-xl">{profile.bio}</p>}
+              
+              <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 pt-1.5">
+                {user.resumeUrl && (
+                  <a href={user.resumeUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-400 hover:text-indigo-300 transition-colors">
+                    View Portfolio CV <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                )}
+                {user.openToHire && (
+                  <a 
+                    href={`mailto:${contactData.email || user.email}?subject=Hiring inquiry for ${user.name}`}
+                    className="inline-flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-bold text-slate-900 bg-white hover:bg-slate-100 transition-all shadow-md hover:scale-102 select-none border-none"
+                  >
+                    <Mail className="w-3.5 h-3.5" /> Work With Me
+                  </a>
+                )}
+              </div>
+            </div>
           </div>
-        </footer>
+        </div>
+
+        {/* Bento Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Main content grid - span 2 */}
+          <div className="lg:col-span-2 space-y-6">
+            
+            {/* Experience Section */}
+            {experienceEntries.length > 0 && (
+              <Card className="p-6 border border-slate-200 shadow-sm space-y-4 bg-white rounded-2xl">
+                <h3 className="text-xs font-black uppercase tracking-wider text-slate-450 flex items-center gap-1.5">
+                  <Briefcase className="w-4 h-4 text-indigo-650" /> Professional Journeys
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {experienceEntries.map((exp: any) => (
+                    <div key={exp.id} className="border border-slate-100 p-4 rounded-xl space-y-1 bg-slate-50/50 hover:border-slate-250 transition-colors">
+                      <span className="text-[10px] font-bold text-indigo-650">{exp.duration}</span>
+                      <h4 className="text-sm font-bold text-slate-900">{exp.role}</h4>
+                      <p className="text-xs font-semibold text-slate-500">{exp.company}</p>
+                      {exp.description && <p className="text-xs text-slate-505 leading-relaxed pt-1.5">{exp.description}</p>}
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+
+            {/* Projects Bento Card */}
+            {projectEntries.length > 0 && (
+              <Card className="p-6 border border-slate-200 shadow-sm space-y-4 bg-white rounded-2xl">
+                <h3 className="text-xs font-black uppercase tracking-wider text-slate-450 flex items-center gap-1.5">
+                  <BookOpen className="w-4.5 h-4.5 text-indigo-650" /> Showcase Projects
+                </h3>
+                <div className="grid grid-cols-1 gap-4">
+                  {projectEntries.map((proj: any) => (
+                    <div key={proj.id} className="p-4 rounded-xl border border-slate-100 space-y-1 bg-slate-50/20">
+                      <div className="flex justify-between items-start gap-4">
+                        <h4 className="text-sm font-bold text-slate-900">{proj.title}</h4>
+                        {proj.link && (
+                          <a href={proj.link} target="_blank" rel="noreferrer" className="text-indigo-650 hover:text-indigo-850 shrink-0">
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        )}
+                      </div>
+                      {proj.description && <p className="text-xs text-slate-500 leading-relaxed">{proj.description}</p>}
+                      {renderEntryAssets(proj.assets)}
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+          </div>
+
+          {/* Right sidebar - span 1 */}
+          <div className="lg:col-span-1 space-y-6">
+            
+            {/* Contact Details Card */}
+            <Card className="p-6 border border-slate-200 shadow-sm space-y-4 bg-white rounded-2xl">
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-450">Get In Touch</h3>
+              <div className="space-y-3.5 text-xs text-slate-600">
+                {contactData.email && (
+                  <div className="flex items-center gap-2.5">
+                    <Mail className="w-4 h-4 text-slate-400 shrink-0" />
+                    <a href={`mailto:${contactData.email}`} className="hover:text-slate-900 hover:underline truncate">{contactData.email}</a>
+                  </div>
+                )}
+                {contactData.phone && (
+                  <div className="flex items-center gap-2.5">
+                    <Phone className="w-4 h-4 text-slate-400 shrink-0" />
+                    <span className="truncate">{contactData.phone}</span>
+                  </div>
+                )}
+                {contactData.linkedin && (
+                  <div className="flex items-center gap-2.5">
+                    <Linkedin className="w-4 h-4 text-slate-400 shrink-0" />
+                    <a href={getHref(contactData.linkedin, 'linkedin')} target="_blank" rel="noreferrer" className="hover:text-slate-900 hover:underline truncate">
+                      {formatUrlText(contactData.linkedin, 'linkedin')}
+                    </a>
+                  </div>
+                )}
+                {contactData.github && (
+                  <div className="flex items-center gap-2.5">
+                    <Github className="w-4 h-4 text-slate-400 shrink-0" />
+                    <a href={getHref(contactData.github, 'github')} target="_blank" rel="noreferrer" className="hover:text-slate-900 hover:underline truncate">
+                      {formatUrlText(contactData.github, 'github')}
+                    </a>
+                  </div>
+                )}
+              </div>
+            </Card>
+
+            {/* Education Card */}
+            {educationEntries.length > 0 && (
+              <Card className="p-6 border border-slate-200 shadow-sm space-y-4 bg-white rounded-2xl">
+                <h3 className="text-xs font-black uppercase tracking-wider text-slate-450 flex items-center gap-1.5">
+                  <GraduationCap className="w-4.5 h-4.5 text-indigo-650" /> Education
+                </h3>
+                <div className="space-y-4">
+                  {educationEntries.map((edu: any) => (
+                    <div key={edu.id} className="space-y-0.5">
+                      <h4 className="text-xs font-bold text-slate-900 leading-snug">{edu.degree}</h4>
+                      <p className="text-[11px] text-slate-500 leading-normal">{edu.school}</p>
+                      {edu.grade && <p className="text-[10px] text-slate-400 mt-0.5">Grade: {edu.grade}</p>}
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+
+            {/* Achievements & Certifications */}
+            {(certificateEntries.length > 0 || achievementEntries.length > 0) && (
+              <Card className="p-6 border border-slate-200 shadow-sm space-y-4 bg-white rounded-2xl">
+                <h3 className="text-xs font-black uppercase tracking-wider text-slate-450">Accomplishments</h3>
+                <div className="space-y-4">
+                  {certificateEntries.map((cert: any) => (
+                    <div key={cert.id} className="space-y-0.5">
+                      <h4 className="text-xs font-bold text-slate-900 leading-snug">{cert.name}</h4>
+                      <p className="text-[11px] text-slate-550">{cert.issuer}</p>
+                    </div>
+                  ))}
+                  {achievementEntries.map((ach: any) => (
+                    <div key={ach.id} className="space-y-0.5">
+                      <h4 className="text-xs font-bold text-slate-900 leading-snug">{ach.title}</h4>
+                      <p className="text-[11px] text-slate-550">{ach.organization}</p>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="min-h-screen pb-20 font-sans relative overflow-x-hidden transition-colors duration-300 bg-gradient-to-tr from-slate-50 via-slate-100/50 to-indigo-50/30 text-slate-800">
+      {/* Grid overlay background */}
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,#8080800a_1px,transparent_1px),linear-gradient(to_bottom,#8080800a_1px,transparent_1px)] bg-[size:14px_24px] pointer-events-none opacity-100" />
+
+      {/* Decorative background glows */}
+      <div className="absolute top-[-10%] left-[-5%] w-[500px] h-[500px] rounded-full blur-[120px] pointer-events-none bg-indigo-200/10" />
+      <div className="absolute bottom-[20%] right-[-5%] w-[450px] h-[450px] rounded-full blur-[100px] pointer-events-none bg-blue-200/10" />
+
+      {/* Portfolio Header Accent Bar (only for free minimal template) */}
+      {templateId === 'minimal' && (
+        <div className={cn("h-2.5 w-full sticky top-0 z-50", accentClass.split(' ')[0])} />
+      )}
+
+      {/* Render selected template layout */}
+      {templateId === 'minimal' && renderMinimalLayout()}
+      {templateId === 'academic' && renderAcademicLayout()}
+      {templateId === 'creative' && renderCreativeLayout()}
+
+      {/* Footer */}
+      <div className="max-w-4xl mx-auto px-4 pt-16 border-t border-slate-200/80 text-center space-y-2 relative z-10">
+        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Student Portfolio Network</p>
+        <p className="text-xs text-slate-450">
+          &copy; {new Date().getFullYear()} Bexo. All rights reserved. Bexo is owned and operated by Ace Digital Private Limited.
+        </p>
+        <div className="flex justify-center gap-4 pt-2 text-[11px] font-bold text-slate-400">
+          <a href="https://mybexo.com" className="hover:text-indigo-600 transition-colors">About Bexo</a>
+          <span>•</span>
+          <a href="https://mybexo.com" className="hover:text-indigo-600 transition-colors">Privacy Policy</a>
+          <span>•</span>
+          <a href="https://mybexo.com" className="hover:text-indigo-600 transition-colors">Terms of Service</a>
+        </div>
       </div>
 
       {/* Floating Replit-style Watermark */}
