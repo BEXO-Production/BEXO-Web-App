@@ -6,7 +6,7 @@ WORKDIR /app
 RUN npm install -g pnpm
 
 # Copy lockfile and configs
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.json tsconfig.base.json ./
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.json tsconfig.base.json .npmrc ./
 
 # Copy all packages/apps
 COPY artifacts ./artifacts
