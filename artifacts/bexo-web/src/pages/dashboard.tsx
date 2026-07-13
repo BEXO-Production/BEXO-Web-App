@@ -1296,7 +1296,33 @@ export default function Dashboard() {
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-xs font-semibold text-slate-500">Pronouns</Label>
-                    <Input value={settingsPronouns} onChange={e => setSettingsPronouns(e.target.value)} placeholder="e.g. He/Him" />
+                    <select
+                      value={['She/Her', 'He/Him', 'They/Them', 'Prefer not to say'].includes(settingsPronouns) ? settingsPronouns : (settingsPronouns ? 'Custom' : '')}
+                      onChange={e => {
+                        const val = e.target.value;
+                        if (val === 'Custom') {
+                          setSettingsPronouns('');
+                        } else {
+                          setSettingsPronouns(val);
+                        }
+                      }}
+                      className="flex h-12 w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                    >
+                      <option value="" disabled>Select Pronouns</option>
+                      <option value="She/Her">She/Her</option>
+                      <option value="He/Him">He/Him</option>
+                      <option value="They/Them">They/Them</option>
+                      <option value="Prefer not to say">Prefer not to say</option>
+                      <option value="Custom">Custom (Type manually)</option>
+                    </select>
+                    {(!['She/Her', 'He/Him', 'They/Them', 'Prefer not to say'].includes(settingsPronouns) || settingsPronouns === '') && (
+                      <Input
+                        placeholder="Enter custom pronouns"
+                        value={settingsPronouns}
+                        onChange={e => setSettingsPronouns(e.target.value)}
+                        className="mt-2"
+                      />
+                    )}
                   </div>
                 </div>
 

@@ -766,7 +766,33 @@ export default function Step6Review() {
                     </div>
                     <div className="space-y-2">
                       <Label>Pronouns</Label>
-                      <Input value={editForm.pronouns || ''} onChange={e => setEditForm({...editForm, pronouns: e.target.value})} />
+                      <select
+                        value={['She/Her', 'He/Him', 'They/Them', 'Prefer not to say'].includes(editForm.pronouns || '') ? (editForm.pronouns || '') : (editForm.pronouns ? 'Custom' : '')}
+                        onChange={e => {
+                          const val = e.target.value;
+                          if (val === 'Custom') {
+                            setEditForm({...editForm, pronouns: ''});
+                          } else {
+                            setEditForm({...editForm, pronouns: val});
+                          }
+                        }}
+                        className="flex h-12 w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                      >
+                        <option value="" disabled>Select Pronouns</option>
+                        <option value="She/Her">She/Her</option>
+                        <option value="He/Him">He/Him</option>
+                        <option value="They/Them">They/Them</option>
+                        <option value="Prefer not to say">Prefer not to say</option>
+                        <option value="Custom">Custom (Type manually)</option>
+                      </select>
+                      {(!['She/Her', 'He/Him', 'They/Them', 'Prefer not to say'].includes(editForm.pronouns || '') || editForm.pronouns === '') && (
+                        <Input
+                          placeholder="Enter custom pronouns"
+                          value={editForm.pronouns || ''}
+                          onChange={e => setEditForm({...editForm, pronouns: e.target.value})}
+                          className="mt-2"
+                        />
+                      )}
                     </div>
                   </div>
 
