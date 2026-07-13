@@ -1,11 +1,12 @@
 import { Router } from "express";
 import { requireAuth, AuthenticatedRequest } from "../middlewares/auth";
-import { db, users, profiles, profileSections } from "@workspace/db";
+import { db, users, profiles, profileSections, subscriptions } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import multer from "multer";
 import { createRequire } from "module";
 import { uploadToR2 } from "../lib/r2";
+import { generateATSResume } from "../lib/resumeEngine";
 
 const require = createRequire(import.meta.url);
 const pdf = require("pdf-parse");
@@ -53,6 +54,20 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<voi
     const getEntries = (type: string) => sections.find(s => s.type === type)?.entries || [];
     const contactEntries = sections.find(s => s.type === "contact")?.entries as any;
 
+    const activeSub = await db.select().from(subscriptions).where(
+      and(
+        eq(subscriptions.userId, userId),
+        eq(subscriptions.status, 'active')
+      )
+    ).limit(1);
+    const plan = activeSub[0]?.plan || null;
+    const isPremium = !!plan && plan !== 'free';
+
+    const expectedQuota = isPremium ? 52428800 : 10485760;
+    if (Number(user.storageQuotaBytes) !== expectedQuota) {
+      await db.update(users).set({ storageQuotaBytes: expectedQuota }).where(eq(users.id, userId));
+    }
+
     res.json({
       profile,
       user: {
@@ -65,8 +80,13 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<voi
         resumeUrl: user.resumeUrl,
         profilePhotoAssetId: user.profilePhotoAssetId,
         storageUsedBytes: user.storageUsedBytes,
-        storageQuotaBytes: user.storageQuotaBytes
+        storageQuotaBytes: expectedQuota,
+        openToHire: user.openToHire ?? false,
+        templateId: user.templateId ?? 'minimal',
+        themeColor: user.themeColor ?? 'blue'
       },
+      plan,
+      isPremium,
       aboutEntries: getEntries("about"),
       educationEntries: getEntries("education"),
       experienceEntries: getEntries("experience"),
@@ -87,9 +107,23 @@ router.patch("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<v
   const userId = req.user!.id;
   const { 
     name, dob, photoUrl, resumeUrl, handle, headline, careerGoal, bio, completionPct, profilePhotoAssetId,
+    openToHire, templateId, themeColor,
     aboutEntries, educationEntries, experienceEntries, projectEntries, certificateEntries, achievementEntries, researchEntries, contactData
   } = req.body;
   try {
+    // Resolve premium status for gating
+    const activeSub = await db.select().from(subscriptions).where(
+      and(eq(subscriptions.userId, userId), eq(subscriptions.status, 'active'))
+    ).limit(1);
+    const currentPlan = activeSub[0]?.plan || null;
+    const isPremium = !!currentPlan && currentPlan !== 'free';
+
+    // Gate template selection for free users
+    if (templateId !== undefined && templateId !== 'minimal' && !isPremium) {
+      res.status(403).json({ error: "Premium templates require a Pro subscription. Upgrade to unlock Academic and Creative layouts." });
+      return;
+    }
+
     // Update user info if name, dob, etc. is provided
     const userUpdates: Partial<typeof users.$inferInsert> = {};
     if (name !== undefined) userUpdates.name = name;
@@ -97,6 +131,9 @@ router.patch("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<v
     if (photoUrl !== undefined) userUpdates.photoUrl = photoUrl;
     if (resumeUrl !== undefined) userUpdates.resumeUrl = resumeUrl;
     if (profilePhotoAssetId !== undefined) userUpdates.profilePhotoAssetId = profilePhotoAssetId;
+    if (openToHire !== undefined) userUpdates.openToHire = !!openToHire;
+    if (templateId !== undefined) userUpdates.templateId = templateId;
+    if (themeColor !== undefined) userUpdates.themeColor = themeColor;
 
     if (Object.keys(userUpdates).length > 0) {
       await db.update(users).set(userUpdates).where(eq(users.id, userId));
@@ -149,6 +186,9 @@ router.patch("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<v
         });
       }
     }
+    
+    // Auto-generate resume PDF if needed
+    await autoGenerateResumeIfNeeded(userId);
 
     res.json({ success: true, message: "Profile updated successfully" });
   } catch (err) {
@@ -215,6 +255,9 @@ router.patch("/sections/:type", requireAuth, async (req: AuthenticatedRequest, r
       target: [profileSections.profileId, profileSections.type],
       set: { entries, reviewedAt: new Date() }
     });
+
+    // Auto-generate resume PDF if needed
+    await autoGenerateResumeIfNeeded(userId);
 
     res.json({ success: true, message: `Profile section ${type} updated successfully` });
   } catch (err) {
@@ -316,7 +359,8 @@ router.post("/resume", requireAuth, upload.single("resume"), async (req: Authent
 
     try {
       resumeUrl = await uploadToR2(file.buffer, file.originalname, file.mimetype);
-      logger.info({ userId, resumeUrl }, "Successfully uploaded resume to R2");
+      await db.update(users).set({ resumeUrl }).where(eq(users.id, userId));
+      logger.info({ userId, resumeUrl }, "Successfully uploaded resume to R2 and updated user record");
     } catch (r2Err) {
       logger.error({ r2Err, userId }, "Failed to upload resume to R2");
     }
@@ -605,6 +649,7 @@ router.post("/resume", requireAuth, upload.single("resume"), async (req: Authent
 
 // POST /profile/upload
 router.post("/upload", requireAuth, upload.single("file"), async (req: AuthenticatedRequest, res): Promise<void> => {
+  const userId = req.user!.id;
   const file = req.file;
   if (!file) {
     res.status(400).json({ error: "No file uploaded" });
@@ -612,7 +657,36 @@ router.post("/upload", requireAuth, upload.single("file"), async (req: Authentic
   }
 
   try {
+    // Enforce storage quota
+    const userList = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+    const user = userList[0];
+    if (user) {
+      const activeSub = await db.select().from(subscriptions).where(
+        and(eq(subscriptions.userId, userId), eq(subscriptions.status, 'active'))
+      ).limit(1);
+      const isPremium = activeSub.length > 0 && activeSub[0].plan !== 'free';
+      const quota = isPremium ? 52428800 : 10485760;
+
+      const currentUsed = Number(user.storageUsedBytes) || 0;
+      if (currentUsed + file.size > quota) {
+        const usedMB = (currentUsed / 1024 / 1024).toFixed(1);
+        const quotaMB = (quota / 1024 / 1024).toFixed(0);
+        const fileMB = (file.size / 1024 / 1024).toFixed(1);
+        res.status(403).json({ 
+          error: `Storage limit exceeded. You've used ${usedMB}MB of ${quotaMB}MB. This file is ${fileMB}MB. Upgrade to Pro for more storage.` 
+        });
+        return;
+      }
+    }
+
     const url = await uploadToR2(file.buffer, file.originalname, file.mimetype);
+
+    // Update storage usage tracking
+    if (user) {
+      const newUsed = (Number(user.storageUsedBytes) || 0) + file.size;
+      await db.update(users).set({ storageUsedBytes: newUsed }).where(eq(users.id, userId));
+    }
+
     res.json({
       success: true,
       url,
@@ -622,6 +696,171 @@ router.post("/upload", requireAuth, upload.single("file"), async (req: Authentic
   } catch (err: any) {
     logger.error({ err }, "Error uploading to R2");
     res.status(500).json({ error: err.message || "Failed to upload file to R2" });
+  }
+});
+
+// GET /profile/public/:handle
+router.get("/public/:handle", async (req, res): Promise<void> => {
+  const { handle } = req.params;
+  try {
+    const profileList = await db.select().from(profiles).where(eq(profiles.handle, handle)).limit(1);
+    const profile = profileList[0];
+    if (!profile) {
+      res.status(404).json({ error: "Portfolio not found" });
+      return;
+    }
+
+    const userList = await db.select().from(users).where(eq(users.id, profile.userId)).limit(1);
+    const user = userList[0];
+    if (!user) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    const sections = await db.select().from(profileSections).where(eq(profileSections.profileId, profile.id));
+    const getEntries = (type: string) => sections.find(s => s.type === type)?.entries || [];
+    const contactEntries = sections.find(s => s.type === "contact")?.entries as any;
+
+    const activeSub = await db.select().from(subscriptions).where(
+      and(
+        eq(subscriptions.userId, user.id),
+        eq(subscriptions.status, 'active')
+      )
+    ).limit(1);
+    const plan = activeSub[0]?.plan || null;
+    const isPremium = !!plan && plan !== 'free';
+
+    // Enforce tier design limits:
+    // If not premium, override template and theme to minimal blue.
+    const templateId = isPremium ? (user.templateId || 'minimal') : 'minimal';
+    const themeColor = isPremium ? (user.themeColor || 'blue') : 'blue';
+
+    res.json({
+      profile: {
+        ...profile,
+      },
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        photoUrl: user.photoUrl,
+        resumeUrl: user.resumeUrl,
+        templateId,
+        themeColor,
+        openToHire: user.openToHire ?? false,
+      },
+      isPremium,
+      aboutEntries: getEntries("about"),
+      educationEntries: getEntries("education"),
+      experienceEntries: getEntries("experience"),
+      projectEntries: getEntries("projects"),
+      certificateEntries: getEntries("certificates"),
+      achievementEntries: getEntries("achievements"),
+      researchEntries: getEntries("research"),
+      contactData: contactEntries || { email: user.email || "", phone: user.phone || "", linkedin: "", github: "", portfolio: "" }
+    });
+  } catch (err) {
+    logger.error({ err, handle }, "Error fetching public profile");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Helper to auto-generate resume PDF if user does not have a custom uploaded resume
+async function autoGenerateResumeIfNeeded(userId: string): Promise<void> {
+  try {
+    const userList = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+    const user = userList[0];
+    if (!user) return;
+
+    // Check if resumeUrl is empty OR is auto-generated (ends with _resume.pdf)
+    const isAutoGenerated = !user.resumeUrl || user.resumeUrl.endsWith('_resume.pdf') || user.resumeUrl.includes('_resume.pdf');
+    if (!isAutoGenerated) {
+      return; // Do not overwrite custom uploaded resumes
+    }
+
+    const profileList = await db.select().from(profiles).where(eq(profiles.userId, userId)).limit(1);
+    const profile = profileList[0];
+    if (!profile) return;
+
+    const sections = await db.select().from(profileSections).where(eq(profileSections.profileId, profile.id));
+    const getEntries = (type: string) => (sections.find(s => s.type === type)?.entries || []) as any[];
+    const contactEntries = sections.find(s => s.type === "contact")?.entries as any;
+
+    const resumeBuffer = await generateATSResume({
+      name: user.name || "Portfolio Owner",
+      email: contactEntries?.email || user.email || undefined,
+      phone: contactEntries?.phone || user.phone || undefined,
+      linkedin: contactEntries?.linkedin || undefined,
+      github: contactEntries?.github || undefined,
+      headline: profile.headline || undefined,
+      bio: profile.bio || undefined,
+      aboutEntries: getEntries("about"),
+      educationEntries: getEntries("education"),
+      experienceEntries: getEntries("experience"),
+      projectEntries: getEntries("projects"),
+      certificateEntries: getEntries("certificates"),
+      achievementEntries: getEntries("achievements"),
+      researchEntries: getEntries("research")
+    });
+
+    const filename = `${user.name?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'portfolio'}_resume.pdf`;
+    const resumeUrl = await uploadToR2(resumeBuffer, filename, "application/pdf");
+
+    await db.update(users).set({ resumeUrl }).where(eq(users.id, userId));
+    logger.info({ userId, resumeUrl }, "Successfully auto-generated and updated ATS resume");
+  } catch (err) {
+    logger.error({ err, userId }, "Failed in autoGenerateResumeIfNeeded helper");
+  }
+}
+
+// POST /profile/generate-resume
+router.post("/generate-resume", requireAuth, async (req: AuthenticatedRequest, res): Promise<void> => {
+  const userId = req.user!.id;
+  try {
+    const userList = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+    const user = userList[0];
+    if (!user) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    const profileList = await db.select().from(profiles).where(eq(profiles.userId, userId)).limit(1);
+    const profile = profileList[0];
+    if (!profile) {
+      res.status(404).json({ error: "Profile not found" });
+      return;
+    }
+
+    const sections = await db.select().from(profileSections).where(eq(profileSections.profileId, profile.id));
+    const getEntries = (type: string) => (sections.find(s => s.type === type)?.entries || []) as any[];
+    const contactEntries = sections.find(s => s.type === "contact")?.entries as any;
+
+    const resumeBuffer = await generateATSResume({
+      name: user.name || "Portfolio Owner",
+      email: contactEntries?.email || user.email || undefined,
+      phone: contactEntries?.phone || user.phone || undefined,
+      linkedin: contactEntries?.linkedin || undefined,
+      github: contactEntries?.github || undefined,
+      headline: profile.headline || undefined,
+      bio: profile.bio || undefined,
+      aboutEntries: getEntries("about"),
+      educationEntries: getEntries("education"),
+      experienceEntries: getEntries("experience"),
+      projectEntries: getEntries("projects"),
+      certificateEntries: getEntries("certificates"),
+      achievementEntries: getEntries("achievements"),
+      researchEntries: getEntries("research")
+    });
+
+    const filename = `${user.name?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'portfolio'}_resume.pdf`;
+    const resumeUrl = await uploadToR2(resumeBuffer, filename, "application/pdf");
+
+    await db.update(users).set({ resumeUrl }).where(eq(users.id, userId));
+
+    res.json({ success: true, url: resumeUrl });
+  } catch (err: any) {
+    logger.error({ err, userId }, "Error compiling ATS PDF resume");
+    res.status(500).json({ error: err.message || "Failed to generate professional resume PDF" });
   }
 });
 

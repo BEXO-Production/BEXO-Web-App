@@ -60,6 +60,10 @@ export type OnboardingData = {
   templateId: string;
   themeColor: string;
   visitedTabs: string[];
+  openToHire: boolean;
+  storageQuotaBytes: number;
+  isPremium: boolean;
+  hasCompletedOnboarding: boolean;
 };
 
 interface OnboardingContextType {
@@ -102,6 +106,10 @@ const defaultData: OnboardingData = {
   templateId: 'minimal',
   themeColor: 'blue',
   visitedTabs: [],
+  openToHire: false,
+  storageQuotaBytes: 10485760, // 10MB default
+  isPremium: false,
+  hasCompletedOnboarding: false,
 };
 
 const OnboardingContext = createContext<OnboardingContextType | undefined>(undefined);
@@ -231,7 +239,14 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
         'Authorization': `Bearer ${token}`
       }
     })
-      .then(res => res.json())
+      .then(res => {
+        if (res.status === 401) {
+          localStorage.removeItem('token');
+          setToken(null);
+          throw new Error("Session expired");
+        }
+        return res.json();
+      })
       .then(result => {
         if (result.profile && result.user) {
           setData(prev => ({
@@ -251,7 +266,14 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
             certificateEntries: result.certificateEntries !== undefined ? ensureIdsAndDefaults(result.certificateEntries, 'certificates') : prev.certificateEntries,
             achievementEntries: result.achievementEntries !== undefined ? ensureIdsAndDefaults(result.achievementEntries, 'achievements') : prev.achievementEntries,
             researchEntries: result.researchEntries !== undefined ? ensureIdsAndDefaults(result.researchEntries, 'research') : prev.researchEntries,
-            contactData: result.contactData || prev.contactData
+            contactData: result.contactData || prev.contactData,
+            plan: result.plan !== undefined ? result.plan : prev.plan,
+            openToHire: result.user?.openToHire !== undefined ? result.user.openToHire : prev.openToHire,
+            storageQuotaBytes: result.user?.storageQuotaBytes !== undefined ? result.user.storageQuotaBytes : prev.storageQuotaBytes,
+            isPremium: result.isPremium !== undefined ? result.isPremium : prev.isPremium,
+            templateId: result.user?.templateId || prev.templateId,
+            themeColor: result.user?.themeColor || prev.themeColor,
+            hasCompletedOnboarding: !!result.profile?.handle
           }));
         }
       })

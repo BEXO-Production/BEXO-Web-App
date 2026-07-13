@@ -2,9 +2,19 @@ import React, { useState, useEffect } from 'react';
 import { useOnboarding } from '../context/OnboardingContext';
 import { Input, Label } from '../design-system/primitives';
 import { Loader2, ArrowRight } from 'lucide-react';
+import { useLocation } from 'wouter';
 
 export default function Step1Phone() {
   const { data, updateData, nextStep, setToken } = useOnboarding();
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      setLocation('/step/2');
+    }
+  }, [setLocation]);
+
   const [phone, setPhone] = useState(data.phone);
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
   const [otp, setOtp] = useState(['', '', '', '', '', '']);

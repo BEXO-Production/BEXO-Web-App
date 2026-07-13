@@ -135,15 +135,22 @@ router.post("/verify", async (req: any, res: any) => {
       });
     }
 
+    // Upgrade storage limit to 50MB (52428800 bytes)
+    await db.update(users).set({
+      storageQuotaBytes: 52428800
+    }).where(eq(users.id, userId));
+
     // Get user details for billing
     const user = (await db.select().from(users).where(eq(users.id, userId)))[0];
 
-    // Send bills
+    // Send bills (backgrounded to prevent request timeout)
     if (user.email) {
-      await sendBillingEmail(user.email, user.name || 'User', plan, amountPaid, razorpay_payment_id || 'mock_tx_id');
+      sendBillingEmail(user.email, user.name || 'User', plan, amountPaid, razorpay_payment_id || 'mock_tx_id')
+        .catch(err => logger.error({ err }, "Background billing email failed"));
     }
     if (user.phone) {
-      await sendBillingWhatsApp(user.phone, user.name || 'User', plan, amountPaid);
+      sendBillingWhatsApp(user.phone, user.name || 'User', plan, amountPaid)
+        .catch(err => logger.error({ err }, "Background billing WhatsApp failed"));
     }
 
     res.json({ success: true, message: "Payment verified successfully" });
@@ -164,21 +171,12 @@ router.post("/activation", async (req: any, res: any) => {
   try {
     const keyRecords = await db.select().from(activationKeys).where(eq(activationKeys.code, code));
     if (keyRecords.length === 0) {
-      // For demo purposes, we will accept the mock format BEXO-XXXX-XXXX
-      // Let's insert it if it doesn't exist just so testing works without a seeder
-      if (/^BEXO-[A-Z0-9]{4}-[A-Z0-9]{4}$/i.test(code)) {
-         await db.insert(activationKeys).values({
-            code,
-            status: 'unused'
-         });
-      } else {
-         return res.status(400).json({ error: "Invalid activation code" });
-      }
-    } else {
-      const key = keyRecords[0];
-      if (key.status !== 'unused') {
-        return res.status(400).json({ error: "Activation code has already been used or is expired" });
-      }
+      return res.status(400).json({ error: "Invalid activation code. Please check and try again." });
+    }
+    
+    const key = keyRecords[0];
+    if (key.status !== 'unused') {
+      return res.status(400).json({ error: "This activation code has already been used." });
     }
 
     // Mark key as redeemed
@@ -207,15 +205,22 @@ router.post("/activation", async (req: any, res: any) => {
       });
     }
 
+    // Upgrade storage limit to 50MB (52428800 bytes)
+    await db.update(users).set({
+      storageQuotaBytes: 52428800
+    }).where(eq(users.id, userId));
+
     // Get user details for billing
     const user = (await db.select().from(users).where(eq(users.id, userId)))[0];
 
-    // Send bills
+    // Send bills (backgrounded to prevent request timeout)
     if (user.email) {
-      await sendBillingEmail(user.email, user.name || 'User', 'activation_code', 0, code);
+      sendBillingEmail(user.email, user.name || 'User', 'activation_code', 0, code)
+        .catch(err => logger.error({ err }, "Background billing email failed"));
     }
     if (user.phone) {
-      await sendBillingWhatsApp(user.phone, user.name || 'User', 'activation_code', 0);
+      sendBillingWhatsApp(user.phone, user.name || 'User', 'activation_code', 0)
+        .catch(err => logger.error({ err }, "Background billing WhatsApp failed"));
     }
 
     res.json({ success: true, message: "Account activated successfully" });

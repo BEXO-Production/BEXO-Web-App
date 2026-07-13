@@ -14,7 +14,10 @@ export const users = pgTable("users", {
   resumeUrl: text("resume_url"),
   profilePhotoAssetId: uuid("profile_photo_asset_id"),
   storageUsedBytes: bigint("storage_used_bytes", { mode: "number" }).default(0),
-  storageQuotaBytes: bigint("storage_quota_bytes", { mode: "number" }).default(52428800), // 50MB in bytes
+  storageQuotaBytes: bigint("storage_quota_bytes", { mode: "number" }).default(10485760), // 10MB free tier default
+  openToHire: boolean("open_to_hire").default(false),
+  templateId: text("template_id").default("minimal"),
+  themeColor: text("theme_color").default("blue"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });
 

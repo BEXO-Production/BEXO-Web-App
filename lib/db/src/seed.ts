@@ -1,5 +1,5 @@
 import { db } from "./index";
-import { templates } from "./schema";
+import { templates, activationKeys } from "./schema";
 
 async function main(): Promise<void> {
   console.log("Seeding templates...");
@@ -10,8 +10,16 @@ async function main(): Promise<void> {
       { id: "creative", name: "Creative", description: "Bold layout for designers, developers, and creatives" },
     ]).onConflictDoNothing();
     console.log("Templates seeded successfully!");
+
+    console.log("Seeding activation keys...");
+    await db.insert(activationKeys).values([
+      { code: "BEXO-KAVIN-2026", status: "unused" },
+      { code: "BEXO-PRO-LIFETIME", status: "unused" },
+      { code: "BEXO-TEST-1234", status: "unused" },
+    ]).onConflictDoNothing();
+    console.log("Activation keys seeded successfully!");
   } catch (err) {
-    console.error("Error seeding templates:", err);
+    console.error("Error seeding database:", err);
   }
 }
 

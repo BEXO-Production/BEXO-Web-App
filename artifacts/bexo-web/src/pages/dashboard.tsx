@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../design-system/primitives';
 import logo from '../assets/bexo-logo.png';
+import { supabase } from '../lib/supabase';
 
 const TABS = [
   { id: 'about', label: 'About' },
@@ -72,17 +73,124 @@ const TEMPLATES = [
 ];
 
 export default function Dashboard() {
-  const { data, updateData } = useOnboarding();
+  const { data, updateData, setToken } = useOnboarding();
   const { toast } = useToast();
   const [currentView, setCurrentView] = useState<'overview' | 'edit-profile' | 'resume' | 'settings'>('overview');
+  const [settingsSubTab, setSettingsSubTab] = useState<'profile' | 'design' | 'storage'>('profile');
+  const [showLoginToast, setShowLoginToast] = useState(false);
+
+  useEffect(() => {
+    let timer: number | undefined;
+    if (sessionStorage.getItem('showLoginToast') === 'true') {
+      setShowLoginToast(true);
+      sessionStorage.removeItem('showLoginToast');
+      timer = window.setTimeout(() => {
+        setShowLoginToast(false);
+      }, 4000);
+    }
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
   
+  // Dropdown & modal states
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    localStorage.removeItem('bexo_dashboard_dark');
+    document.documentElement.classList.remove('dark');
+  }, []);
+
+  // Click outside listener for profile menu
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
+        setShowProfileMenu(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      console.error("Supabase logout error:", e);
+    }
+    localStorage.removeItem('token');
+    setToken(null);
+    window.location.href = '/';
+  };
+
+  const handleUploadPhoto = async (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch("/api/profile/upload", {
+        method: "POST",
+        headers: {
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: formData
+      });
+      if (!res.ok) throw new Error("Upload failed");
+      const result = await res.json();
+      if (result.url) {
+        updateData({ photoUrl: result.url });
+        toast({ title: "Photo Updated", description: "Profile photo uploaded successfully." });
+      }
+    } catch (err) {
+      console.error(err);
+      toast({ title: "Upload Failed", description: "Failed to upload profile photo.", variant: "destructive" });
+    }
+  };
+
+  const handleUploadResume = async (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch("/api/profile/upload", {
+        method: "POST",
+        headers: {
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: formData
+      });
+      if (!res.ok) throw new Error("Upload failed");
+      const result = await res.json();
+      if (result.url) {
+        updateData({ 
+          resumeUrl: result.url,
+          resumeFileName: file.name,
+          resumeFileSize: file.size
+        });
+        toast({ title: "Resume Updated", description: "Resume uploaded successfully." });
+      }
+    } catch (err) {
+      console.error(err);
+      toast({ title: "Upload Failed", description: "Failed to upload resume.", variant: "destructive" });
+    }
+  };
   // Storage limit and simulation states
-  const [storageLimit, setStorageLimit] = useState(50 * 1024 * 1024); // 50MB
+  const [storageLimit, setStorageLimit] = useState(data.storageQuotaBytes || 10 * 1024 * 1024); // 10MB free tier default
   const [simulatedUsage, setSimulatedUsage] = useState<number | null>(null);
 
+  useEffect(() => {
+    if (data.storageQuotaBytes) {
+      setStorageLimit(data.storageQuotaBytes);
+    }
+  }, [data.storageQuotaBytes]);
+
   // URL management
-  const handleString = data.name ? data.name.toLowerCase().replace(/[^a-z0-9]/g, '') : 'portfolio';
-  const url = `${handleString}.mybexo.com`;
+  const handleString = data.handle || (data.name ? data.name.toLowerCase().replace(/[^a-z0-9]/g, '') : 'portfolio');
+  const url = data.isPremium 
+    ? `${handleString}.mybexo.com` 
+    : `mybexo.com/${handleString}`;
   const [copied, setCopied] = useState(false);
 
   // Compute storage dynamically
@@ -497,8 +605,7 @@ export default function Dashboard() {
       name: settingsName,
       pronouns: settingsPronouns,
       nationality: settingsNationality,
-      phone: settingsPhone,
-      plan: settingsPlan as any
+      phone: settingsPhone
     });
     toast({
       title: 'Settings Saved',
@@ -507,6 +614,14 @@ export default function Dashboard() {
   };
 
   const handleTemplateSelect = (id: string) => {
+    if (id !== 'minimal' && !data.isPremium) {
+      toast({
+        title: 'Feature Locked',
+        description: 'Academic and Creative layouts are premium templates. Upgrade to Pro to unlock them.',
+        variant: 'destructive',
+      });
+      return;
+    }
     updateData({ templateId: id });
     toast({
       title: 'Template Selected',
@@ -834,25 +949,213 @@ export default function Dashboard() {
     return null;
   };
 
+  const renderMinimalMockup = (accentBg: string) => (
+    <div className="w-full h-full bg-slate-50 border border-slate-200/60 rounded-lg p-2.5 flex flex-col items-center justify-center relative overflow-hidden select-none">
+      {/* Circle avatar */}
+      <div className={`w-8 h-8 rounded-full ${accentBg} opacity-20 flex items-center justify-center mb-1.5 border border-slate-350`}>
+        <User className="w-4 h-4 text-slate-700" />
+      </div>
+      {/* Title */}
+      <div className={`h-2.5 w-16 ${accentBg} rounded mb-1`} />
+      {/* Description lines */}
+      <div className="h-1.5 w-24 bg-slate-300/60 rounded mb-1" />
+      <div className="h-1.5 w-20 bg-slate-300/40 rounded mb-2.5" />
+      {/* Single full column list items */}
+      <div className="w-full space-y-1">
+        <div className="h-2 w-full bg-white border border-slate-200 rounded-sm" />
+        <div className="h-2 w-full bg-white border border-slate-200 rounded-sm" />
+      </div>
+    </div>
+  );
+
+  const renderAcademicMockup = (accentBg: string) => (
+    <div className="w-full h-full bg-slate-50 border border-slate-200/60 rounded-lg p-2 flex gap-2 relative overflow-hidden select-none">
+      {/* Left side info column */}
+      <div className="w-1/3 border-r border-slate-200/80 pr-1.5 flex flex-col items-center pt-1">
+        <div className={`w-5 h-5 rounded-full ${accentBg} opacity-25 mb-1 flex items-center justify-center`}>
+          <User className="w-2.5 h-2.5 text-slate-600" />
+        </div>
+        <div className="h-1.5 w-8 bg-slate-400/85 rounded mb-1" />
+        <div className="space-y-0.5 w-full mt-1.5">
+          <div className="h-1 w-full bg-slate-300/40 rounded" />
+          <div className="h-1 w-full bg-slate-300/40 rounded" />
+          <div className="h-1 w-4/5 bg-slate-300/40 rounded" />
+        </div>
+      </div>
+      {/* Right list column */}
+      <div className="w-2/3 flex flex-col justify-between py-1">
+        <div className={`h-2.5 w-12 ${accentBg} rounded mb-1.5`} />
+        <div className="space-y-1">
+          <div className="p-1 bg-white border border-slate-200/60 rounded-sm flex items-center justify-between">
+            <div className="h-1 w-10 bg-slate-400 rounded-sm" />
+            <div className="h-1 w-6 bg-slate-300 rounded-sm" />
+          </div>
+          <div className="p-1 bg-white border border-slate-200/60 rounded-sm flex items-center justify-between">
+            <div className="h-1 w-12 bg-slate-400 rounded-sm" />
+            <div className="h-1 w-5 bg-slate-300 rounded-sm" />
+          </div>
+          <div className="p-1 bg-white border border-slate-200/60 rounded-sm flex items-center justify-between">
+            <div className="h-1 w-8 bg-slate-400 rounded-sm" />
+            <div className="h-1 w-7 bg-slate-300 rounded-sm" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderCreativeMockup = (accentBg: string) => (
+    <div className="w-full h-full bg-slate-50 border border-slate-200/60 rounded-lg p-2 flex flex-col gap-2 relative overflow-hidden select-none">
+      {/* Top half: featured block */}
+      <div className={`w-full h-1/2 rounded-md ${accentBg} p-1.5 flex flex-col justify-between relative overflow-hidden text-[9px] font-bold text-white`}>
+        {/* Glow overlay */}
+        <div className="absolute inset-0 bg-gradient-to-tr from-black/40 via-transparent to-transparent z-0" />
+        <div className="relative z-10 flex justify-between items-start">
+          <div className="w-4 h-4 rounded-full bg-white/20" />
+          <div className="h-1 w-6 bg-white/40 rounded-sm" />
+        </div>
+        <div className="relative z-10 h-1.5 w-16 bg-white/90 rounded-sm" />
+      </div>
+      {/* Bottom half: cards row */}
+      <div className="w-full h-1/2 flex gap-1.5">
+        <div className="w-1/2 bg-white border border-slate-200/60 rounded-sm p-1 flex flex-col justify-between">
+          <div className="h-1.5 w-6 bg-slate-400 rounded-sm" />
+          <div className="h-1 w-8 bg-slate-300 rounded-sm" />
+        </div>
+        <div className="w-1/2 bg-white border border-slate-200/60 rounded-sm p-1 flex flex-col justify-between">
+          <div className="h-1.5 w-5 bg-slate-400 rounded-sm" />
+          <div className="h-1 w-8 bg-slate-300 rounded-sm" />
+        </div>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="min-h-[100dvh] bg-slate-50">
-      {/* Top Navbar */}
-      <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 px-6 py-4 flex items-center justify-between sticky top-0 z-20">
+    <div className="min-h-screen flex flex-col transition-colors duration-300 bg-slate-50 text-slate-800">
+      {/* Premium custom top-right "Successfully Logged In" toast */}
+      {showLoginToast && (
+        <div className="fixed top-6 right-6 z-[100] animate-in slide-in-from-top-4 md:slide-in-from-right-4 duration-500">
+          <div className="bg-slate-900 text-white rounded-2xl shadow-2xl p-4 pr-12 flex items-center gap-3.5 border border-slate-800 max-w-sm relative">
+            <div className="w-9 h-9 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center shrink-0">
+              <CheckCircle2 className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-sm font-bold tracking-tight">Successfully logged in</p>
+              <p className="text-[11px] text-slate-400 leading-normal mt-0.5">Welcome back! Manage your digital portfolio credentials here.</p>
+            </div>
+            <button 
+              onClick={() => setShowLoginToast(false)}
+              className="absolute right-3 top-3 text-slate-500 hover:text-white transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Navigation bar */}
+      <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 px-6 py-4 flex items-center justify-between sticky top-0 z-20 transition-colors duration-300">
         <div className="flex items-center gap-2 cursor-pointer" onClick={() => setCurrentView('overview')}>
           <img src={logo} alt="BEXO" className="w-7 h-7 object-contain animate-pulse" />
           <span className="font-serif font-bold text-xl text-slate-900 tracking-tight">BEXO</span>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="text-sm font-semibold text-slate-700 hidden md:block">
+        <div className="flex items-center gap-4 relative" ref={profileMenuRef}>
+          <div className="text-sm font-semibold text-slate-700 hidden md:block select-none transition-colors">
             {data.name || 'User'}
           </div>
-          <div className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold text-sm border-2 border-indigo-200 shadow-sm overflow-hidden">
+          <button 
+            onClick={() => setShowProfileMenu(!showProfileMenu)}
+            className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold text-sm border-2 border-indigo-200 hover:border-indigo-400 hover:shadow-sm focus:outline-none overflow-hidden transition-all shrink-0"
+            aria-label="Toggle profile menu"
+          >
             {data.photoUrl ? (
               <img src={data.photoUrl} alt="Profile" className="w-full h-full object-cover" />
             ) : (
               (data.name ? data.name.charAt(0) : 'U')
             )}
-          </div>
+          </button>
+          
+          {showProfileMenu && (
+            <div className="absolute right-0 top-full mt-2 w-72 bg-white rounded-2xl border border-slate-200 shadow-xl py-3 z-30 animate-in fade-in slide-in-from-top-2 duration-200">
+              {/* Header with user info */}
+              <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold border border-indigo-105 overflow-hidden shrink-0">
+                  {data.photoUrl ? <img src={data.photoUrl} alt="Profile" className="w-full h-full object-cover" /> : (data.name ? data.name.charAt(0) : 'U')}
+                </div>
+                <div className="truncate">
+                  <h4 className="font-semibold text-slate-850 text-sm truncate">{data.name || 'Bexo User'}</h4>
+                  <p className="text-xs text-slate-400 truncate">{data.contactData?.email || 'No email set'}</p>
+                </div>
+              </div>
+              
+              {/* Plan details */}
+              <div className="mx-3 my-2 px-3 py-2 bg-slate-50 rounded-xl border border-slate-100">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-slate-500 font-medium">Workspace Plan</span>
+                  <span className="font-bold text-indigo-650 bg-indigo-50 px-2 py-0.5 rounded-full capitalize">
+                    {data.plan === 'activation_code' ? 'Activated Pro' : data.plan || 'Free'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Quick Toggle for Hiring Availability */}
+              <div className="mx-3 my-1.5 px-3 py-2 bg-slate-50/50 rounded-xl border border-slate-100/85 flex items-center justify-between">
+                <div className="flex flex-col">
+                  <span className="text-[11px] font-bold text-slate-700">Willing to Work</span>
+                  <span className="text-[9px] text-slate-450">{data.openToHire ? '🟢 Actively Looking' : '⚪ Not looking'}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newStatus = !data.openToHire;
+                    updateData({ openToHire: newStatus });
+                  }}
+                  className={cn(
+                    "w-9 h-5 rounded-full transition-colors relative focus:outline-none focus:ring-1 focus:ring-indigo-500 shrink-0",
+                    data.openToHire ? "bg-emerald-555" : "bg-slate-200"
+                  )}
+                >
+                  <span 
+                    className={cn(
+                      "absolute left-0.5 top-0.5 bg-white w-4 h-4 rounded-full shadow-sm transition-transform duration-200",
+                      data.openToHire ? "translate-x-4" : "translate-x-0"
+                    )}
+                  />
+                </button>
+              </div>
+              
+              {/* Menu items */}
+              <div className="px-1.5 py-1">
+                <button 
+                  onClick={() => { setCurrentView('overview'); setShowProfileMenu(false); }} 
+                  className="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-900 transition-colors flex items-center gap-2.5"
+                >
+                  <Layout className="w-4 h-4 text-slate-400" /> Dashboard Overview
+                </button>
+                <button 
+                  onClick={() => { setCurrentView('edit-profile'); setShowProfileMenu(false); }} 
+                  className="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-900 transition-colors flex items-center gap-2.5"
+                >
+                  <User className="w-4 h-4 text-slate-400" /> Edit Profile Info
+                </button>
+                <button 
+                  onClick={() => { setCurrentView('settings'); setShowProfileMenu(false); }} 
+                  className="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-900 transition-colors flex items-center gap-2.5"
+                >
+                  <Settings className="w-4 h-4 text-slate-400" /> Appearance & Settings
+                </button>
+              </div>
+              
+              {/* Sign out */}
+              <div className="border-t border-slate-105 px-3 pt-2 mt-2">
+                <button 
+                  onClick={handleLogout}
+                  className="w-full text-center px-4 py-2 bg-red-50 text-red-650 hover:bg-red-100 rounded-xl text-xs font-bold transition-all duration-200 select-none"
+                >
+                  Sign Out
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </header>
 
@@ -907,24 +1210,77 @@ export default function Dashboard() {
 
             {/* Metrics cards row */}
             <div className="grid md:grid-cols-3 gap-6">
-              {/* Profile Completion Card */}
-              <Card className="p-6 bg-white border border-slate-200 shadow-sm flex flex-col justify-between">
-                <div>
-                  <div className="flex justify-between items-center mb-4">
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Completeness</p>
-                    <span className="text-sm font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">{completionScore}%</span>
+              {/* Profile Completion / Status Card */}
+              {completionScore >= 90 ? (
+                data.isPremium ? (
+                  <Card className="p-6 bg-white border border-slate-200 shadow-sm flex flex-col justify-between hover:border-emerald-200 hover:shadow-md transition-all duration-300">
+                    <div>
+                      <div className="flex justify-between items-center mb-4">
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Portfolio Status</p>
+                        <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-full flex items-center gap-1 select-none">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> LIVE & ACTIVE
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600">
+                          <Sparkles className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-bold text-slate-900">SEO Optimized</h4>
+                          <p className="text-xs text-slate-500">All core details are configured.</p>
+                        </div>
+                      </div>
+                      <p className="text-xs text-slate-400 leading-normal">
+                        Your portfolio structure is fully optimized and search engines can index it properly.
+                      </p>
+                    </div>
+                  </Card>
+                ) : (
+                  <Card className="p-6 bg-white border border-slate-200 shadow-sm flex flex-col justify-between hover:border-indigo-105 hover:shadow-md transition-all duration-300">
+                    <div>
+                      <div className="flex justify-between items-center mb-4">
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Portfolio Status</p>
+                        <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full flex items-center gap-1 select-none">
+                          ⚪ Basic Portfolio
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500">
+                          <AlertCircle className="w-5 h-5 text-slate-600" />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-bold text-slate-900">SEO Disabled (Free)</h4>
+                          <p className="text-xs text-slate-500">Upgrade to index on search engines.</p>
+                        </div>
+                      </div>
+                      <p className="text-xs text-slate-400 leading-normal">
+                        Your details are complete! Upgrade to Pro to enable search engine optimization and go live.
+                      </p>
+                    </div>
+                  </Card>
+                )
+              ) : (
+                <Card 
+                  onClick={() => setShowCompletionModal(true)}
+                  className="p-6 bg-white border border-slate-200 shadow-sm flex flex-col justify-between cursor-pointer hover:border-indigo-300 hover:shadow-md transition-all duration-300 group"
+                >
+                  <div>
+                    <div className="flex justify-between items-center mb-4">
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider group-hover:text-indigo-600 transition-colors">Completeness</p>
+                      <span className="text-sm font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">{completionScore}%</span>
+                    </div>
+                    <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden mb-3">
+                      <div 
+                        className="h-full bg-gradient-to-r from-indigo-500 to-indigo-700 rounded-full transition-all duration-700" 
+                        style={{ width: `${completionScore}%` }} 
+                      />
+                    </div>
+                    <p className="text-xs text-slate-500 flex items-center gap-1 font-semibold group-hover:text-indigo-600 transition-colors">
+                      Click to complete missing details &rarr;
+                    </p>
                   </div>
-                  <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden mb-3">
-                    <div 
-                      className="h-full bg-gradient-to-r from-indigo-500 to-indigo-700 rounded-full transition-all duration-700" 
-                      style={{ width: `${completionScore}%` }} 
-                    />
-                  </div>
-                  <p className="text-xs text-slate-500">
-                    {completionScore < 100 ? 'Complete all sections for maximum SEO visibility.' : 'Your profile is 100% complete! Good job!'}
-                  </p>
-                </div>
-              </Card>
+                </Card>
+              )}
 
               {/* Accent & Style Card */}
               <Card className="p-6 bg-white border border-slate-200 shadow-sm flex flex-col justify-between">
@@ -938,24 +1294,94 @@ export default function Dashboard() {
                     </div>
                   </div>
                 </div>
-                <button onClick={() => setCurrentView('settings')} className="text-xs font-bold text-indigo-600 hover:text-indigo-800 text-left transition-colors">
-                  Customize look &rarr;
+                <button 
+                  onClick={() => {
+                    setCurrentView('settings');
+                    setSettingsSubTab('design');
+                  }} 
+                  className="text-xs font-bold text-indigo-600 hover:text-indigo-800 text-left transition-colors"
+                >
+                  {data.isPremium ? "Customize look" : "Customize look (Free)"} &rarr;
                 </button>
               </Card>
 
               {/* Plan Status Card */}
-              <Card className="p-6 bg-gradient-to-br from-indigo-600 to-indigo-900 text-white border-0 shadow-md flex flex-col justify-between">
+              <Card className={cn(
+                "p-6 text-white border-0 shadow-md flex flex-col justify-between transition-all duration-300",
+                data.isPremium 
+                  ? "bg-gradient-to-br from-indigo-600 to-indigo-900" 
+                  : "bg-gradient-to-br from-slate-700 to-slate-900"
+              )}>
                 <div>
                   <p className="text-indigo-100 text-xs font-bold uppercase tracking-wider mb-2">Workspace tier</p>
                   <h3 className="text-2xl font-bold capitalize flex items-center gap-2">
-                    {data.plan === 'activation_code' ? 'Activated Pro' : data.plan || 'Free Plan'}
+                    {data.plan === 'activation_code' ? 'Activated Pro' : data.plan === 'lifetime' ? 'Lifetime Pro' : data.plan === 'annual' ? 'Annual Pro' : 'Free Plan'}
                   </h3>
                 </div>
-                <div className="flex items-center text-xs font-semibold text-indigo-50 bg-white/10 w-fit px-3 py-1 rounded-full backdrop-blur-sm mt-4">
-                  <CheckCircle2 className="w-3.5 h-3.5 mr-1.5 text-indigo-200" /> Pro Features Unlocked
-                </div>
+                {data.isPremium ? (
+                  <div className="flex items-center text-xs font-semibold text-indigo-50 bg-white/10 w-fit px-3 py-1 rounded-full backdrop-blur-sm mt-4">
+                    <CheckCircle2 className="w-3.5 h-3.5 mr-1.5 text-indigo-200" /> Pro Features Unlocked
+                  </div>
+                ) : (
+                  <div className="flex items-center text-xs font-semibold text-slate-300 bg-white/10 w-fit px-3 py-1 rounded-full backdrop-blur-sm mt-4">
+                    <AlertCircle className="w-3.5 h-3.5 mr-1.5 text-slate-400" /> Free Limits Applied
+                  </div>
+                )}
               </Card>
             </div>
+
+            {/* Hiring Availability Card */}
+            {!data.openToHire && (
+              <Card className="p-6 bg-white border border-slate-200 shadow-sm animate-in slide-in-from-bottom duration-300">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg shrink-0">
+                        <Sparkles className="w-4 h-4" />
+                      </span>
+                      <h3 className="font-bold text-slate-900 text-sm">Hiring Availability</h3>
+                    </div>
+                    <p className="text-xs text-slate-500 max-w-xl">
+                      Enable this option to display an "Available for Hire" badge on your public portfolio and receive professional inquiry leads.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <span className={cn(
+                      "text-xs font-bold px-2.5 py-0.5 rounded-full select-none transition-colors",
+                      data.openToHire 
+                        ? "text-emerald-700 bg-emerald-50" 
+                        : "text-slate-500 bg-slate-100"
+                    )}>
+                      {data.openToHire ? '🟢 Actively Looking' : '⚪ Not looking for opportunities'}
+                    </span>
+                    {/* Custom Toggle Switch */}
+                    <button
+                      onClick={() => {
+                        const newStatus = !data.openToHire;
+                        updateData({ openToHire: newStatus });
+                        toast({
+                          title: newStatus ? "Open for Opportunities" : "Status Changed",
+                          description: newStatus 
+                            ? "Recruiters can now reach out with job leads." 
+                            : "Hiring inquiries will be deactivated."
+                        });
+                      }}
+                      className={cn(
+                        "w-11 h-6 rounded-full transition-colors relative focus:outline-none focus:ring-2 focus:ring-indigo-500 shrink-0",
+                        data.openToHire ? "bg-indigo-600" : "bg-slate-200"
+                      )}
+                    >
+                      <span 
+                        className={cn(
+                          "absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full shadow-sm transition-transform duration-200",
+                          data.openToHire ? "translate-x-5" : "translate-x-0"
+                        )}
+                      />
+                    </button>
+                  </div>
+                </div>
+              </Card>
+            )}
 
             {/* Public URL Box */}
             <Card className="p-6 bg-white border border-slate-200 shadow-sm">
@@ -1056,7 +1482,7 @@ export default function Dashboard() {
 
             <div className="flex flex-col lg:flex-row gap-6">
               {/* Sidebar */}
-              <div className="w-full lg:w-48 shrink-0 flex flex-col gap-4">
+              <div className="w-full lg:w-48 shrink-0 lg:sticky lg:top-24 flex flex-col gap-4 self-start">
                 <div className="flex gap-1.5 lg:flex-col overflow-x-auto pb-2 lg:pb-0 hide-scrollbar">
                   {TABS.map((tab) => (
                     <button
@@ -1074,33 +1500,31 @@ export default function Dashboard() {
                   ))}
                 </div>
 
-                {/* Buried storage meter in profile (only visible here when storage is under 90% full) */}
-                {!isStorageExhausted90 && (
-                  <Card className="p-4 bg-white border border-slate-200 shadow-sm hidden lg:block">
-                    <div className="flex justify-between items-center mb-1.5">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Cloud Storage</span>
-                      <span className="text-[10px] font-bold text-slate-700">
-                        {(usedStorage / 1024 / 1024).toFixed(1)} / {(storageLimit / 1024 / 1024).toFixed(0)} MB
-                      </span>
-                    </div>
-                    <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                      <div 
-                        className={cn("h-full rounded-full transition-all duration-500", isStorageFull ? "bg-red-500" : "bg-indigo-500")}
-                        style={{ width: `${storagePercentage}%` }}
-                      />
-                    </div>
-                    <button 
-                      onClick={handleBuyStorage}
-                      className="text-[10px] font-bold text-indigo-500 hover:text-indigo-700 mt-2.5 text-left flex items-center gap-0.5 hover:underline cursor-pointer"
-                    >
-                      Upgrade Storage &rarr;
-                    </button>
-                  </Card>
-                )}
+                {/* Cloud Storage (always visible) */}
+                <Card className="p-4 bg-white border border-slate-200 shadow-sm hidden lg:block">
+                  <div className="flex justify-between items-center mb-1.5">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Cloud Storage</span>
+                    <span className="text-[10px] font-bold text-slate-700">
+                      {(usedStorage / 1024 / 1024).toFixed(1)} / {(storageLimit / 1024 / 1024).toFixed(0)} MB
+                    </span>
+                  </div>
+                  <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                    <div 
+                      className={cn("h-full rounded-full transition-all duration-500", isStorageFull ? "bg-red-500" : "bg-indigo-500")}
+                      style={{ width: `${storagePercentage}%` }}
+                    />
+                  </div>
+                  <button 
+                    onClick={handleBuyStorage}
+                    className="text-[10px] font-bold text-indigo-500 hover:text-indigo-700 mt-2.5 text-left flex items-center gap-0.5 hover:underline cursor-pointer"
+                  >
+                    Upgrade Storage &rarr;
+                  </button>
+                </Card>
               </div>
 
               {/* Editor panel */}
-              <div className="flex-1 bg-white p-5 md:p-6 rounded-2xl border border-slate-200 shadow-sm min-h-[400px] min-w-0">
+              <div className="flex-1 max-w-3xl bg-white p-5 md:p-6 rounded-2xl border border-slate-200 shadow-sm min-h-[450px] min-w-0 transition-colors duration-300">
                 {activeEditorTab === 'contact' ? (
                   <div className="space-y-6 max-w-xl">
                     <h3 className="text-lg font-bold text-slate-900 border-b pb-2">Contact Details</h3>
@@ -1137,10 +1561,231 @@ export default function Dashboard() {
                           />
                         </div>
                       </div>
+
+                      {/* Hiring Availability Toggle */}
+                      <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <Label className="font-bold text-slate-800 text-sm">Hiring Availability</Label>
+                          <p className="text-[11px] text-slate-500 max-w-sm">
+                            Show an "Available for Hire" badge on your public portfolio so recruiters can contact you.
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={cn(
+                            "text-[10px] font-bold px-2 py-0.5 rounded-full select-none",
+                            data.openToHire 
+                              ? "text-emerald-700 bg-emerald-50" 
+                              : "text-slate-500 bg-slate-100"
+                          )}>
+                            {data.openToHire ? '🟢 Active' : '⚪ Off'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newStatus = !data.openToHire;
+                              updateData({ openToHire: newStatus });
+                              toast({
+                                title: newStatus ? "Open for Opportunities" : "Status Changed",
+                                description: newStatus 
+                                  ? "Recruiters can now reach out with job leads." 
+                                  : "Hiring inquiries will be deactivated."
+                              });
+                            }}
+                            className={cn(
+                              "w-11 h-6 rounded-full transition-colors relative focus:outline-none focus:ring-2 focus:ring-indigo-500 shrink-0",
+                              data.openToHire ? "bg-indigo-600" : "bg-slate-200"
+                            )}
+                          >
+                            <span 
+                              className={cn(
+                                "absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full shadow-sm transition-transform duration-200",
+                                data.openToHire ? "translate-x-5" : "translate-x-0"
+                              )}
+                            />
+                          </button>
+                        </div>
+                      </div>
                     </div>
                     <Button onClick={handleSaveContact} className="h-10 text-xs px-4">
                       Save Contact
                     </Button>
+                  </div>
+                ) : activeEditorTab === 'about' ? (
+                  <div className="space-y-6 animate-in fade-in">
+                    <div className="flex justify-between items-center border-b pb-3 mb-4">
+                      <h3 className="text-lg font-bold text-slate-900">About Details</h3>
+                      {editingId !== 'about-form' && (
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="h-9 px-3 text-xs flex gap-1 border-slate-200 text-slate-700 hover:bg-slate-50"
+                          onClick={() => {
+                            setEditingId('about-form');
+                            setEditForm({
+                              name: data.name || '',
+                              title: sections.about[0]?.title || '',
+                              description: sections.about[0]?.description || '',
+                              currentStatus: sections.about[0]?.currentStatus || '',
+                              nationality: data.nationality || 'India',
+                              pronouns: data.pronouns || 'She/Her'
+                            });
+                          }}
+                        >
+                          <Pencil className="w-3.5 h-3.5 mr-1" /> Edit About Info
+                        </Button>
+                      )}
+                    </div>
+
+                    {editingId === 'about-form' ? (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="space-y-1.5">
+                            <Label>Full Name</Label>
+                            <Input 
+                              value={editForm.name || ''} 
+                              onChange={e => setEditForm({...editForm, name: e.target.value})} 
+
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label>Title / Role</Label>
+                            <Input 
+                              value={editForm.title || ''} 
+                              onChange={e => setEditForm({...editForm, title: e.target.value})} 
+                              placeholder="e.g. Frontend Developer Intern" 
+
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <Label>Summary / Bio</Label>
+                          <textarea 
+                            value={editForm.description || ''} 
+                            onChange={e => setEditForm({...editForm, description: e.target.value})} 
+                            className="flex min-h-[120px] w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 resize-none" 
+                            placeholder="Write a professional summary..."
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <Label>Current Education or Work</Label>
+                          <Input 
+                            value={editForm.currentStatus || ''} 
+                            onChange={e => setEditForm({...editForm, currentStatus: e.target.value})} 
+                            placeholder="e.g. Studying BS Statistics at PSG College" 
+
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="space-y-1.5">
+                            <Label>Nationality</Label>
+                            <Input 
+                              value={editForm.nationality || ''} 
+                              onChange={e => setEditForm({...editForm, nationality: e.target.value})} 
+
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label>Pronouns</Label>
+                            <select
+                              value={['She/Her', 'He/Him', 'They/Them', 'Prefer not to say'].includes(editForm.pronouns || '') ? (editForm.pronouns || '') : (editForm.pronouns ? 'Custom' : '')}
+                              onChange={e => {
+                                const val = e.target.value;
+                                if (val === 'Custom') {
+                                  setEditForm({...editForm, pronouns: ''});
+                                } else {
+                                  setEditForm({...editForm, pronouns: val});
+                                }
+                              }}
+                              className="flex h-10 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                            >
+                              <option value="" disabled>Select Pronouns</option>
+                              <option value="She/Her">She/Her</option>
+                              <option value="He/Him">He/Him</option>
+                              <option value="They/Them">They/Them</option>
+                              <option value="Prefer not to say">Prefer not to say</option>
+                              <option value="Custom">Custom (Type manually)</option>
+                            </select>
+                            {(!['She/Her', 'He/Him', 'They/Them', 'Prefer not to say'].includes(editForm.pronouns || '') || editForm.pronouns === '') && (
+                              <Input
+                                placeholder="Enter custom pronouns"
+                                value={editForm.pronouns || ''}
+                                onChange={e => setEditForm({...editForm, pronouns: e.target.value})}
+                                className="mt-2"
+                              />
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex justify-end gap-2 pt-4 border-t border-slate-105 mt-4">
+                          <Button variant="ghost" onClick={() => setEditingId(null)}>Cancel</Button>
+                          <Button onClick={() => {
+                            updateData({
+                              name: editForm.name,
+                              firstName: editForm.name ? editForm.name.split(' ')[0] : '',
+                              lastName: editForm.name ? editForm.name.split(' ').slice(1).join(' ') : '',
+                              nationality: editForm.nationality,
+                              pronouns: editForm.pronouns,
+                              aboutEntries: [{ id: '1', title: editForm.title, description: editForm.description, currentStatus: editForm.currentStatus }]
+                            });
+                            setSections(prev => ({
+                              ...prev,
+                              about: [{ id: '1', title: editForm.title, description: editForm.description, currentStatus: editForm.currentStatus }]
+                            }));
+                            setEditingId(null);
+                            toast({
+                              title: "Profile Updated",
+                              description: "Your about details have been saved."
+                            });
+                          }}>Save Changes</Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-6">
+                        <div className="bg-slate-50 border border-slate-150 rounded-2xl p-5 relative overflow-hidden">
+                          <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-50 rounded-full blur-xl translate-x-4 -translate-y-4 opacity-50"></div>
+                          <div className="relative z-10 space-y-4">
+                            <div>
+                              <span className="text-[10px] uppercase tracking-wider text-indigo-550 font-bold bg-indigo-50 px-2.5 py-1 rounded-full">Name</span>
+                              <h4 className="text-xl font-bold mt-2">{data.name || <span className="text-slate-400 italic">No name provided</span>}</h4>
+                            </div>
+                            
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                              <div>
+                                <span className="text-[10px] uppercase tracking-wider text-indigo-550 font-bold bg-indigo-50 px-2.5 py-1 rounded-full">Title / Role</span>
+                                <p className="text-sm font-semibold text-slate-800 mt-2">{sections.about[0]?.title || <span className="text-slate-400 italic">No title provided</span>}</p>
+                              </div>
+                              <div>
+                                <span className="text-[10px] uppercase tracking-wider text-indigo-550 font-bold bg-indigo-50 px-2.5 py-1 rounded-full">Current Education / Work</span>
+                                <p className="text-sm font-semibold text-slate-800 mt-2">{sections.about[0]?.currentStatus || <span className="text-slate-400 italic">No current education or work details</span>}</p>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                              <div>
+                                <span className="text-[10px] uppercase tracking-wider text-indigo-550 font-bold bg-indigo-50 px-2.5 py-1 rounded-full">Nationality</span>
+                                <p className="text-sm font-semibold text-slate-800 mt-2">{data.nationality || 'India'}</p>
+                              </div>
+                              <div>
+                                <span className="text-[10px] uppercase tracking-wider text-indigo-550 font-bold bg-indigo-50 px-2.5 py-1 rounded-full">Pronouns</span>
+                                <p className="text-sm font-semibold text-slate-800 mt-2">{data.pronouns || 'She/Her'}</p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <span className="text-[10px] uppercase tracking-wider text-indigo-550 font-bold bg-indigo-50 px-2.5 py-1 rounded-full">Summary of Fetched Data</span>
+                          <div className="p-4 bg-white border border-slate-200 rounded-xl mt-2">
+                            <p className="text-sm text-slate-650 leading-relaxed whitespace-pre-wrap">
+                              {sections.about[0]?.description || <span className="text-slate-400 italic">No summary provided. Upload your resume or click Edit to add one.</span>}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -1313,6 +1958,74 @@ export default function Dashboard() {
                 )}
               </div>
             </Card>
+
+            {/* Generated PDF Resume Panel */}
+            {data.resumeUrl && (
+              <Card className="p-6 bg-white border border-slate-200 shadow-sm flex flex-col gap-4 animate-in slide-in-from-bottom duration-300">
+                <div className="flex items-center justify-between border-b border-slate-150 pb-3">
+                  <div className="space-y-0.5">
+                    <h3 className="text-sm font-bold text-slate-900">Your Current Resume PDF</h3>
+                    <p className="text-xs text-slate-500">Your resume is parsed and synchronized with your digital portfolio details.</p>
+                  </div>
+                  <a 
+                    href={data.resumeUrl} 
+                    target="_blank" 
+                    rel="noreferrer" 
+                    className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-650 hover:text-indigo-850 hover:underline"
+                  >
+                    View / Download <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 bg-slate-50 p-4 rounded-xl border border-slate-150">
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-indigo-500 shrink-0" />
+                    <span className="text-xs font-medium text-slate-800">
+                      ATS Professional Resume PDF
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button 
+                      onClick={async () => {
+                        try {
+                          const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+                          const token = localStorage.getItem('token');
+                          const res = await fetch(`${apiUrl}/api/profile/generate-resume`, {
+                            method: 'POST',
+                            headers: {
+                              'Authorization': `Bearer ${token}`
+                            }
+                          });
+                          if (!res.ok) throw new Error('Generation failed');
+                          const result = await res.json();
+                          updateData({ resumeUrl: result.url });
+                          toast({
+                            title: "Resume Compiled",
+                            description: "ATS Professional Resume compiled successfully from current details."
+                          });
+                        } catch (err: any) {
+                          toast({
+                            title: "Error",
+                            description: err.message || "Failed to compile resume",
+                            variant: "destructive"
+                          });
+                        }
+                      }}
+                      variant="secondary" 
+                      size="sm" 
+                      className="text-xs h-9 px-3 flex gap-1 bg-white hover:bg-slate-100 border-slate-200"
+                    >
+                      Re-Compile PDF
+                    </Button>
+                    <a href={data.resumeUrl} target="_blank" rel="noreferrer">
+                      <Button size="sm" className="text-xs h-9 px-3 flex gap-1">
+                        Download PDF
+                      </Button>
+                    </a>
+                  </div>
+                </div>
+              </Card>
+            )}
           </div>
         )}
 
@@ -1321,194 +2034,612 @@ export default function Dashboard() {
           <div className="space-y-6 animate-in slide-in-from-bottom duration-300">
             <button 
               onClick={() => setCurrentView('overview')}
-              className="inline-flex items-center gap-1 text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors"
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-slate-800 transition-colors uppercase tracking-wider select-none"
             >
               <ChevronLeft className="w-4 h-4" /> Back to Dashboard
             </button>
 
             <div>
-              <h1 className="text-2.5xl font-serif font-bold text-slate-900 mb-1">Appearance & Settings</h1>
-              <p className="text-slate-500 text-sm">Customize template designs, color theme accents, and custom domain names.</p>
+              <h1 className="text-3xl font-serif font-bold text-slate-900 tracking-tight">Appearance & Settings</h1>
+              <p className="text-slate-500 text-sm mt-0.5">Customize template designs, color theme accents, and personal settings.</p>
             </div>
 
-            <div className="grid md:grid-cols-3 gap-6">
-              {/* Left Column: Personal details */}
-              <Card className="p-5 bg-white border border-slate-200 shadow-sm md:col-span-2 space-y-4">
-                <h3 className="text-base font-bold text-slate-900 border-b pb-2 flex items-center gap-1.5">
-                  <User className="w-4 h-4 text-indigo-500" /> Personal Settings
-                </h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-slate-500">Full Name</Label>
-                    <Input value={settingsName} onChange={e => setSettingsName(e.target.value)} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-slate-500">Pronouns</Label>
-                    <select
-                      value={['She/Her', 'He/Him', 'They/Them', 'Prefer not to say'].includes(settingsPronouns) ? settingsPronouns : (settingsPronouns ? 'Custom' : '')}
-                      onChange={e => {
-                        const val = e.target.value;
-                        if (val === 'Custom') {
-                          setSettingsPronouns('');
-                        } else {
-                          setSettingsPronouns(val);
-                        }
-                      }}
-                      className="flex h-12 w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
-                    >
-                      <option value="" disabled>Select Pronouns</option>
-                      <option value="She/Her">She/Her</option>
-                      <option value="He/Him">He/Him</option>
-                      <option value="They/Them">They/Them</option>
-                      <option value="Prefer not to say">Prefer not to say</option>
-                      <option value="Custom">Custom (Type manually)</option>
-                    </select>
-                    {(!['She/Her', 'He/Him', 'They/Them', 'Prefer not to say'].includes(settingsPronouns) || settingsPronouns === '') && (
-                      <Input
-                        placeholder="Enter custom pronouns"
-                        value={settingsPronouns}
-                        onChange={e => setSettingsPronouns(e.target.value)}
-                        className="mt-2"
-                      />
-                    )}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-slate-500">Nationality</Label>
-                    <Input value={settingsNationality} onChange={e => setSettingsNationality(e.target.value)} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-slate-500">Phone</Label>
-                    <div className="flex relative">
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-medium">+91</span>
-                      <Input 
-                        value={settingsPhone.replace(/^\+?91/, '').trim()} 
-                        onChange={e => {
-                          const val = e.target.value.replace(/\D/g, '').slice(0, 10);
-                          setSettingsPhone(val ? `+91${val}` : '');
-                        }} 
-                        className="pl-12 text-sm font-medium tracking-wide h-10 rounded-xl"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-500">Workspace Tier Plan</Label>
-                  <select 
-                    value={settingsPlan} 
-                    onChange={e => setSettingsPlan(e.target.value)}
-                    className="flex h-12 w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
-                  >
-                    <option value="Free">Free</option>
-                    <option value="annual">Annual Pro</option>
-                    <option value="lifetime">Lifetime Pro</option>
-                    <option value="activation_code">Activation Code Pro</option>
-                  </select>
-                </div>
-
-                <Button onClick={handleSaveSettings} className="h-10 text-xs px-4">
-                  Save Settings
-                </Button>
+            {/* Premium Tabbed Layout */}
+            <div className="grid md:grid-cols-4 gap-6 items-start">
+              {/* Tab Navigation Card */}
+              <Card className="p-2.5 bg-white border border-slate-200 shadow-sm flex flex-col gap-1 md:col-span-1">
+                <button
+                  onClick={() => setSettingsSubTab('profile')}
+                  className={cn(
+                    "flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all text-left w-full",
+                    settingsSubTab === 'profile' 
+                      ? "bg-indigo-50 text-indigo-900 shadow-sm border-l-4 border-indigo-650" 
+                      : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                  )}
+                >
+                  <User className="w-4 h-4 shrink-0" /> Personal Details
+                </button>
+                
+                <button
+                  onClick={() => setSettingsSubTab('design')}
+                  className={cn(
+                    "flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all text-left w-full",
+                    settingsSubTab === 'design' 
+                      ? "bg-indigo-50 text-indigo-900 shadow-sm border-l-4 border-indigo-650" 
+                      : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                  )}
+                >
+                  <Palette className="w-4 h-4 shrink-0" /> Design & Theme
+                </button>
+                
+                <button
+                  onClick={() => setSettingsSubTab('storage')}
+                  className={cn(
+                    "flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all text-left w-full",
+                    settingsSubTab === 'storage' 
+                      ? "bg-indigo-50 text-indigo-900 shadow-sm border-l-4 border-indigo-650" 
+                      : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                  )}
+                >
+                  <FileText className="w-4 h-4 shrink-0" /> Cloud Storage
+                </button>
               </Card>
 
-              {/* Right Column: Theme selection */}
-              <div className="space-y-6">
-                {/* Theme Selector */}
-                <Card className="p-5 bg-white border border-slate-200 shadow-sm space-y-3">
-                  <h3 className="text-base font-bold text-slate-900 border-b pb-2 flex items-center gap-1.5">
-                    <Palette className="w-4 h-4 text-indigo-500" /> Accent Color
-                  </h3>
-                  <div className="flex gap-2.5 pt-1">
-                    {THEMES.map(theme => (
-                      <button
-                        key={theme.id}
-                        onClick={() => handleThemeSelect(theme.id)}
-                        className={cn(
-                          "w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-105 shadow-sm ring-offset-2",
-                          theme.hex,
-                          data.themeColor === theme.id ? "ring-2 ring-slate-900" : ""
-                        )}
-                        title={theme.label}
-                      >
-                        {data.themeColor === theme.id && <Check className="w-4 h-4 text-white" />}
-                      </button>
-                    ))}
-                  </div>
-                </Card>
+              {/* Tab Content Cards */}
+              <div className="md:col-span-3">
+                {settingsSubTab === 'profile' && (
+                  <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-6 animate-in fade-in duration-200">
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                        <User className="w-4 h-4 text-indigo-500" /> Personal Settings
+                      </h3>
+                      <p className="text-slate-500 text-xs mt-0.5">Update your basic onboarding and contact information.</p>
+                    </div>
 
-                {/* Template Selector */}
-                <Card className="p-5 bg-white border border-slate-200 shadow-sm space-y-3">
-                  <h3 className="text-base font-bold text-slate-900 border-b pb-2 flex items-center gap-1.5">
-                    <Layout className="w-4 h-4 text-indigo-500" /> Page Template
-                  </h3>
-                  <div className="space-y-2 pt-1">
-                    {TEMPLATES.map(tpl => (
-                      <button
-                        key={tpl.id}
-                        onClick={() => handleTemplateSelect(tpl.id)}
-                        className={cn(
-                          "w-full text-left p-3 rounded-xl border border-slate-200 hover:bg-slate-50 transition-all flex items-center justify-between",
-                          data.templateId === tpl.id ? "border-indigo-600 bg-indigo-50/20 shadow-sm" : ""
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold text-slate-500">Full Name</Label>
+                        <Input value={settingsName} onChange={e => setSettingsName(e.target.value)} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold text-slate-500">Pronouns</Label>
+                        <select
+                          value={['She/Her', 'He/Him', 'They/Them', 'Prefer not to say'].includes(settingsPronouns) ? settingsPronouns : (settingsPronouns ? 'Custom' : '')}
+                          onChange={e => {
+                            const val = e.target.value;
+                            if (val === 'Custom') {
+                              setSettingsPronouns('');
+                            } else {
+                              setSettingsPronouns(val);
+                            }
+                          }}
+                          className="flex h-12 w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                        >
+                          <option value="" disabled>Select Pronouns</option>
+                          <option value="She/Her">She/Her</option>
+                          <option value="He/Him">He/Him</option>
+                          <option value="They/Them">They/Them</option>
+                          <option value="Prefer not to say">Prefer not to say</option>
+                          <option value="Custom">Custom (Type manually)</option>
+                        </select>
+                        {(!['She/Her', 'He/Him', 'They/Them', 'Prefer not to say'].includes(settingsPronouns) || settingsPronouns === '') && (
+                          <Input
+                            placeholder="Enter custom pronouns"
+                            value={settingsPronouns}
+                            onChange={e => setSettingsPronouns(e.target.value)}
+                            className="mt-2"
+                          />
                         )}
-                      >
-                        <div>
-                          <h4 className="text-xs font-bold text-slate-900 capitalize">{tpl.name}</h4>
-                          <p className="text-[10px] text-slate-400 mt-0.5 line-clamp-1">{tpl.description}</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold text-slate-500">Nationality</Label>
+                        <Input value={settingsNationality} onChange={e => setSettingsNationality(e.target.value)} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold text-slate-500">Phone</Label>
+                        <div className="flex relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-medium">+91</span>
+                          <Input 
+                            value={settingsPhone.replace(/^\+?91/, '').trim()} 
+                            onChange={e => {
+                              const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                              setSettingsPhone(val ? `+91${val}` : '');
+                            }} 
+                            className="pl-12 text-sm font-medium tracking-wide h-10 rounded-xl"
+                          />
                         </div>
-                        {data.templateId === tpl.id && <CheckCircle2 className="w-4 h-4 text-indigo-600" />}
-                      </button>
-                    ))}
-                  </div>
-                </Card>
+                      </div>
+                    </div>
 
-                {/* Buried storage card in Settings */}
-                <Card className="p-5 bg-white border border-slate-200 shadow-sm space-y-3">
-                  <h3 className="text-base font-bold text-slate-900 border-b pb-2 flex items-center gap-1.5">
-                    <FileText className="w-4 h-4 text-indigo-500" /> Cloud Storage
-                  </h3>
-                  <div className="pt-1">
-                    <div className="flex justify-between items-center mb-1.5 text-xs font-semibold text-slate-700">
-                      <span>Usage Details</span>
-                      <span>{(usedStorage / 1024 / 1024).toFixed(1)}MB / {(storageLimit / 1024 / 1024).toFixed(0)}MB</span>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold text-slate-500">Workspace Tier Plan</Label>
+                      <div className="flex items-center justify-between h-12 w-full rounded-xl border border-slate-100 bg-slate-50 px-4 py-2 text-sm text-slate-700">
+                        <span className="font-semibold capitalize text-slate-900">
+                          {settingsPlan === 'activation_code' ? 'Activated Pro (Code)' : settingsPlan === 'lifetime' ? 'Lifetime Pro' : settingsPlan === 'annual' ? 'Annual Pro' : 'Free Plan'}
+                        </span>
+                        <span className="text-xs text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded-full font-bold">
+                          {settingsPlan && settingsPlan !== 'Free' ? 'Premium active' : 'Standard'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 leading-normal">
+                        Workspace tier plans are securely managed via billing. You cannot change your subscription tier here.
+                      </p>
                     </div>
-                    <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                      <div 
-                        className={cn("h-full rounded-full transition-all duration-500", isStorageFull ? "bg-red-500" : "bg-indigo-500")}
-                        style={{ width: `${storagePercentage}%` }}
+
+                    <Button onClick={handleSaveSettings} className="h-10 text-xs px-4">
+                      Save Settings
+                    </Button>
+                  </Card>
+                )}
+
+                {settingsSubTab === 'design' && (
+                  <div className="space-y-6 animate-in fade-in duration-200">
+                    {/* Theme selector */}
+                    <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-4">
+                      <div>
+                        <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                          <Palette className="w-4 h-4 text-indigo-500" /> Accent Color
+                        </h3>
+                        <p className="text-slate-500 text-xs mt-0.5">Select a brand color accent for your portfolio template layouts.</p>
+                      </div>
+                      <div className="flex gap-2.5 pt-1">
+                        {THEMES.map(theme => (
+                          <button
+                            key={theme.id}
+                            onClick={() => handleThemeSelect(theme.id)}
+                            className={cn(
+                              "w-9 h-9 rounded-full flex items-center justify-center transition-all hover:scale-105 shadow-sm ring-offset-2",
+                              theme.hex,
+                              data.themeColor === theme.id ? "ring-2 ring-slate-900 scale-105" : ""
+                            )}
+                            title={theme.label}
+                          >
+                            {data.themeColor === theme.id && <Check className="w-4 h-4 text-white" />}
+                          </button>
+                        ))}
+                      </div>
+                    </Card>
+
+                    {/* Visual Page Template + Live Preview — split layout */}
+                    <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 items-start">
+                      
+                      {/* Left: Template Selector */}
+                      <Card className="lg:col-span-2 p-5 bg-white border border-slate-200 shadow-sm space-y-4">
+                        <div>
+                          <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                            <Layout className="w-4 h-4 text-indigo-500" /> Page Template
+                          </h3>
+                          <p className="text-slate-500 text-xs mt-0.5">Choose a layout. Live preview updates instantly.</p>
+                        </div>
+
+                        <div className="flex flex-col gap-3">
+                          {TEMPLATES.map(tpl => {
+                            const isSelected = data.templateId === tpl.id;
+                            const accentBg = getThemeClass(true);
+                            const isLocked = !data.isPremium && tpl.id !== 'minimal';
+                            return (
+                              <button
+                                key={tpl.id}
+                                onClick={() => {
+                                  if (isLocked) {
+                                    toast({
+                                      title: "Premium Template Locked",
+                                      description: "Academic and Creative layouts are premium Pro templates. Upgrade to unlock.",
+                                      variant: "destructive"
+                                    });
+                                    return;
+                                  }
+                                  handleTemplateSelect(tpl.id);
+                                }}
+                                className={cn(
+                                  "group text-left rounded-xl border-2 transition-all hover:shadow-md flex items-center gap-3 p-2.5 relative overflow-hidden",
+                                  isSelected ? "border-indigo-600 bg-indigo-50/30 shadow-sm" : "border-slate-200 bg-white hover:border-slate-300",
+                                  isLocked ? "opacity-80" : ""
+                                )}
+                              >
+                                {/* Mini thumbnail mockup */}
+                                <div className="w-20 h-14 bg-slate-100 rounded-lg overflow-hidden border border-slate-200/60 shrink-0 relative flex flex-col shadow-inner">
+                                  <div className="h-3 bg-slate-200 border-b border-slate-300 flex items-center px-1 gap-0.5 shrink-0">
+                                    <span className="w-1 h-1 rounded-full bg-red-400" />
+                                    <span className="w-1 h-1 rounded-full bg-yellow-400" />
+                                    <span className="w-1 h-1 rounded-full bg-green-400" />
+                                  </div>
+                                  <div className={cn("flex-1 p-1", isLocked ? "blur-[1.5px] grayscale-[40%] opacity-60" : "")}>
+                                    {tpl.id === 'minimal' && renderMinimalMockup(accentBg)}
+                                    {tpl.id === 'academic' && renderAcademicMockup(accentBg)}
+                                    {tpl.id === 'creative' && renderCreativeMockup(accentBg)}
+                                  </div>
+                                  {isLocked && (
+                                    <div className="absolute inset-0 bg-slate-900/30 backdrop-blur-[1px] flex items-center justify-center">
+                                      <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                      </svg>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Text */}
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <h4 className="text-sm font-bold text-slate-900 capitalize">{tpl.name}</h4>
+                                    {isLocked && <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded uppercase tracking-wider">Pro</span>}
+                                  </div>
+                                  <p className="text-[11px] text-slate-400 leading-normal mt-0.5 line-clamp-2">{tpl.description}</p>
+                                </div>
+
+                                {/* Selected indicator */}
+                                {isSelected && !isLocked && (
+                                  <CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0" />
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Open portfolio link */}
+                        <a
+                          href={`/${handleString}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex items-center justify-center gap-1.5 w-full py-2.5 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-bold hover:bg-indigo-100 transition-colors mt-1"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" /> Open Live Portfolio
+                        </a>
+                      </Card>
+
+                      {/* Right: Live iframe Preview */}
+                      <div className="lg:col-span-3 flex flex-col gap-2">
+                        <div className="flex items-center justify-between px-1">
+                          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Live Preview</span>
+                          <span className="text-[11px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full font-medium">
+                            mybexo.com/{handleString}
+                          </span>
+                        </div>
+
+                        {/* Browser chrome frame */}
+                        <div className="rounded-2xl overflow-hidden border border-slate-200 shadow-lg bg-white">
+                          {/* Browser top bar */}
+                          <div className="h-9 bg-slate-100 border-b border-slate-200 flex items-center px-3 gap-2 shrink-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="w-2.5 h-2.5 rounded-full bg-red-400" />
+                              <span className="w-2.5 h-2.5 rounded-full bg-yellow-400" />
+                              <span className="w-2.5 h-2.5 rounded-full bg-green-400" />
+                            </div>
+                            <div className="flex-1 mx-2">
+                              <div className="h-5 bg-white rounded-md border border-slate-200 flex items-center px-2.5 gap-1.5">
+                                <Globe className="w-3 h-3 text-slate-400 shrink-0" />
+                                <span className="text-[11px] text-slate-500 font-medium truncate">mybexo.com/{handleString}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* iframe */}
+                          <div className="relative w-full overflow-hidden" style={{ height: '520px' }}>
+                            <iframe
+                              key={`${data.templateId || 'minimal'}-${data.themeColor || 'indigo'}`}
+                              src={`/${handleString}`}
+                              title="Live Portfolio Preview"
+                              className="absolute top-0 left-0 border-0 bg-white"
+                              style={{
+                                width: '1280px',
+                                height: '900px',
+                                transform: 'scale(0.65)',
+                                transformOrigin: 'top left',
+                                pointerEvents: 'none'
+                              }}
+                              sandbox="allow-scripts allow-same-origin"
+                            />
+                          </div>
+                        </div>
+
+                        <p className="text-[11px] text-slate-400 text-center">
+                          This preview reflects your live portfolio. Changes to template or color take effect after saving.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {settingsSubTab === 'storage' && (
+                  <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-6 animate-in fade-in duration-200">
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-indigo-500" /> Cloud Storage
+                      </h3>
+                      <p className="text-slate-500 text-xs mt-0.5">Manage files, resume storage limits, and active server capacity.</p>
+                    </div>
+
+                    <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 space-y-4">
+                      <div>
+                        <div className="flex justify-between items-center mb-1.5 text-xs font-bold text-slate-700">
+                          <span>Usage Details</span>
+                          <span>{(usedStorage / 1024 / 1024).toFixed(1)}MB / {(storageLimit / 1024 / 1024).toFixed(0)}MB</span>
+                        </div>
+                        <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden">
+                          <div 
+                            className={cn("h-full rounded-full transition-all duration-500", isStorageFull ? "bg-red-500" : "bg-indigo-650")}
+                            style={{ width: `${storagePercentage}%` }}
+                          />
+                        </div>
+                      </div>
+                      
+                      <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                        {data.isPremium ? (
+                          <Button 
+                            onClick={() => {
+                              toast({
+                                title: 'Cloud Storage Limit',
+                                description: 'You are on the premium Pro tier with 50MB quota. To purchase extra storage, please contact support.',
+                              });
+                            }} 
+                            size="sm" 
+                            className="h-10 text-xs px-4 bg-indigo-50 text-indigo-900 hover:bg-indigo-100 flex-1 border border-indigo-200 shadow-none"
+                          >
+                            Request Extra Storage
+                          </Button>
+                        ) : (
+                          <Button 
+                            onClick={() => {
+                              toast({
+                                title: 'Upgrade to Pro',
+                                description: 'Upgrade during onboarding or active payment flows to increase your quota to 50MB.',
+                              });
+                            }} 
+                            size="sm" 
+                            className="h-10 text-xs px-4 bg-indigo-600 text-white hover:bg-indigo-700 flex-1 border-none shadow-md font-semibold"
+                          >
+                            Upgrade to Pro (50MB Limit)
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </Card>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+        {showCompletionModal && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white w-full max-w-lg rounded-2xl border border-slate-200 shadow-2xl p-6 relative flex flex-col max-h-[90vh]">
+              <button 
+                onClick={() => setShowCompletionModal(false)}
+                className="absolute right-4 top-4 text-slate-400 hover:text-slate-600 transition-colors p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              
+              <div className="mb-5">
+                <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-indigo-500" /> Complete Your Profile
+                </h2>
+                <p className="text-xs text-slate-500 mt-1">Fill in the missing details to fully optimize your portfolio and increase SEO visibility.</p>
+              </div>
+
+              {/* Progress */}
+              <div className="mb-6 bg-slate-50 border border-slate-100 p-4 rounded-xl">
+                <div className="flex justify-between items-center text-xs font-semibold text-slate-700 mb-2">
+                  <span>Completion Status</span>
+                  <span>{completionScore}%</span>
+                </div>
+                <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-gradient-to-r from-indigo-500 to-indigo-700 rounded-full transition-all duration-500" 
+                    style={{ width: `${completionScore}%` }} 
+                  />
+                </div>
+              </div>
+
+              {/* List of sections */}
+              <div className="space-y-4 overflow-y-auto pr-1 flex-1">
+                {/* 1. Profile Picture */}
+                <div className="border border-slate-100 rounded-xl p-4 bg-white shadow-sm flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {data.photoUrl ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                      ) : (
+                        <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
+                      )}
+                      <span className="text-xs font-bold text-slate-850">Profile Picture</span>
+                    </div>
+                    {data.photoUrl && (
+                      <span className="text-[10px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-semibold">Done</span>
+                    )}
+                  </div>
+                  {!data.photoUrl && (
+                    <div className="flex items-center gap-3">
+                      <input 
+                        type="file" 
+                        id="modal-photo-upload" 
+                        accept="image/*"
+                        className="hidden" 
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleUploadPhoto(file);
+                        }}
                       />
+                      <label 
+                        htmlFor="modal-photo-upload"
+                        className="cursor-pointer inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold border border-indigo-200 transition-colors"
+                      >
+                        <Upload className="w-3.5 h-3.5" /> Select Photo
+                      </label>
+                      <span className="text-[10px] text-slate-400">Supported formats: JPG, PNG</span>
                     </div>
-                    <div className="mt-4 flex flex-col sm:flex-row gap-2">
-                      <Button onClick={handleBuyStorage} size="sm" className="h-9 text-xs px-3 bg-indigo-50 text-indigo-750 hover:bg-indigo-100 flex-1">
-                        Upgrade Storage
-                      </Button>
+                  )}
+                </div>
+
+                {/* 2. Resume PDF */}
+                <div className="border border-slate-100 rounded-xl p-4 bg-white shadow-sm flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {data.resumeFileName ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                      ) : (
+                        <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
+                      )}
+                      <span className="text-xs font-bold text-slate-850">PDF Resume</span>
+                    </div>
+                    {data.resumeFileName && (
+                      <span className="text-[10px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-semibold truncate max-w-[150px]">
+                        {data.resumeFileName}
+                      </span>
+                    )}
+                  </div>
+                  {!data.resumeFileName && (
+                    <div className="flex items-center gap-3">
+                      <input 
+                        type="file" 
+                        id="modal-resume-upload" 
+                        accept="application/pdf"
+                        className="hidden" 
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleUploadResume(file);
+                        }}
+                      />
+                      <label 
+                        htmlFor="modal-resume-upload"
+                        className="cursor-pointer inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold border border-indigo-200 transition-colors"
+                      >
+                        <Upload className="w-3.5 h-3.5" /> Upload PDF
+                      </label>
+                      <span className="text-[10px] text-slate-400">Required for auto-parsing</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. About / Bio */}
+                <div className="border border-slate-100 rounded-xl p-4 bg-white shadow-sm flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {data.aboutEntries && data.aboutEntries.length > 0 ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                      ) : (
+                        <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
+                      )}
+                      <span className="text-xs font-bold text-slate-855">Biography / About Me</span>
+                    </div>
+                    {data.aboutEntries && data.aboutEntries.length > 0 && (
+                      <span className="text-[10px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-semibold">Done</span>
+                    )}
+                  </div>
+                  {(!data.aboutEntries || data.aboutEntries.length === 0) && (
+                    <div className="space-y-2">
+                      <textarea
+                        id="modal-bio-text"
+                        placeholder="Introduce yourself, write a short bio..."
+                        className="w-full h-20 rounded-lg border border-slate-200 p-2 text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
                       <Button 
-                        variant="outline"
                         size="sm" 
-                        className="h-9 text-xs px-3 border-dashed flex-1"
+                        className="h-8 text-[11px] px-3 font-semibold"
                         onClick={() => {
-                          if (simulatedUsage !== null) {
-                            setSimulatedUsage(null);
-                            toast({
-                              title: 'Simulation Reset',
-                              description: 'Showing actual storage usage.'
-                            });
-                          } else {
-                            setSimulatedUsage(0.95 * storageLimit);
-                            toast({
-                              title: 'Simulating 95% Storage',
-                              description: 'Warning banner is now active on Home Screen.'
-                            });
+                          const text = (document.getElementById('modal-bio-text') as HTMLTextAreaElement)?.value?.trim();
+                          if (text) {
+                            const newAbout = {
+                              id: `about-${Date.now()}`,
+                              title: 'Professional Bio',
+                              description: text,
+                              currentStatus: 'Active'
+                            };
+                            updateData({ aboutEntries: [newAbout] });
+                            toast({ title: "Bio Saved", description: "About me section updated." });
                           }
                         }}
                       >
-                        {simulatedUsage !== null ? 'Reset Simulation' : 'Simulate 95%'}
+                        Save Bio
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                {/* 4. Contact Email */}
+                <div className="border border-slate-100 rounded-xl p-4 bg-white shadow-sm flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {data.contactData?.email ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                      ) : (
+                        <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
+                      )}
+                      <span className="text-xs font-bold text-slate-855">Contact Email</span>
+                    </div>
+                    {data.contactData?.email && (
+                      <span className="text-[10px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-semibold">
+                        {data.contactData.email}
+                      </span>
+                    )}
+                  </div>
+                  {!data.contactData?.email && (
+                    <div className="flex gap-2">
+                      <Input
+                        id="modal-email-input"
+                        type="email"
+                        placeholder="email@example.com"
+                        className="h-9 text-xs rounded-lg flex-1"
+                      />
+                      <Button 
+                        size="sm" 
+                        className="h-9 text-xs px-3 font-semibold"
+                        onClick={() => {
+                          const email = (document.getElementById('modal-email-input') as HTMLInputElement)?.value?.trim();
+                          if (email) {
+                            updateData({ contactData: { ...data.contactData, email } });
+                            toast({ title: "Email Saved", description: "Contact email updated." });
+                          }
+                        }}
+                      >
+                        Save
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                {/* 5. Education & Projects redirects */}
+                {(!data.educationEntries || data.educationEntries.length === 0 || !data.projectEntries || data.projectEntries.length === 0) && (
+                  <div className="border border-slate-100 rounded-xl p-4 bg-slate-50 flex flex-col gap-2.5">
+                    <p className="text-[11px] text-slate-500 font-medium">To complete other sections like education, projects, or work history, use the main profile editor.</p>
+                    <div className="flex gap-2">
+                      <Button 
+                        size="sm" 
+                        className="h-8 text-[11px] px-3 bg-white border border-slate-200 text-slate-850 hover:bg-slate-50 flex-1 shadow-none"
+                        onClick={() => {
+                          setCurrentView('edit-profile');
+                          setActiveEditorTab('education');
+                          setShowCompletionModal(false);
+                        }}
+                      >
+                        Add Education
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        className="h-8 text-[11px] px-3 bg-white border border-slate-200 text-slate-850 hover:bg-slate-50 flex-1 shadow-none"
+                        onClick={() => {
+                          setCurrentView('edit-profile');
+                          setActiveEditorTab('projects');
+                          setShowCompletionModal(false);
+                        }}
+                      >
+                        Add Project
                       </Button>
                     </div>
                   </div>
-                </Card>
+                )}
+              </div>
+
+              <div className="mt-5 border-t border-slate-150 pt-4 flex justify-end">
+                <Button 
+                  size="sm" 
+                  className="h-9 text-xs px-4"
+                  onClick={() => setShowCompletionModal(false)}
+                >
+                  Close Window
+                </Button>
               </div>
             </div>
           </div>

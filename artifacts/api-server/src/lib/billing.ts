@@ -1,56 +1,33 @@
-import nodemailer from 'nodemailer';
+import { sendEmail } from './mailer';
+import { getBillingReceiptEmail, getActivationEmail } from './templates';
+import { generateInvoicePDF } from './invoice';
 import { logger } from './logger';
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: parseInt(process.env.SMTP_PORT || '587'),
-  secure: process.env.SMTP_PORT === '465',
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-});
-
 export const sendBillingEmail = async (email: string, userName: string, plan: string, amount: number, transactionId: string) => {
-  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
-    logger.warn("SMTP credentials not configured. Skipping billing email.");
-    return;
+  let subject = "Your Bexo Payment Receipt";
+  let html = "";
+  
+  if (plan === 'activation_code') {
+    subject = "Bexo Account Activated";
+    html = getActivationEmail(userName, transactionId);
+  } else {
+    html = getBillingReceiptEmail(userName, plan, amount, transactionId);
   }
 
-  const html = `
-    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 10px;">
-      <h2 style="color: #0f172a;">Bexo - Payment Receipt</h2>
-      <p>Hi ${userName},</p>
-      <p>Thank you for subscribing to Bexo! Your payment was successful.</p>
-      <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
-        <tr>
-          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;"><strong>Plan:</strong></td>
-          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right;">${plan === 'annual' ? 'Annual Plan' : plan === 'lifetime' ? 'Lifetime Access' : 'Activation Code'}</td>
-        </tr>
-        <tr>
-          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;"><strong>Transaction ID:</strong></td>
-          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right;">${transactionId}</td>
-        </tr>
-        <tr>
-          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;"><strong>Amount Paid:</strong></td>
-          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: bold;">₹${amount}</td>
-        </tr>
-      </table>
-      <p style="margin-top: 20px;">You can now access all premium features in your dashboard.</p>
-      <p style="color: #64748b; font-size: 12px; margin-top: 30px;">If you have any questions, please contact support.</p>
-    </div>
-  `;
-
   try {
-    await transporter.sendMail({
-      from: `"Bexo Support" <${process.env.SMTP_USER}>`,
-      to: email,
-      subject: "Your Bexo Payment Receipt",
-      html,
-    });
-    logger.info({ email }, "Billing email sent successfully");
-  } catch (error) {
-    logger.error({ error }, "Failed to send billing email");
+    const pdfBuffer = await generateInvoicePDF(userName, plan, amount, transactionId);
+    
+    await sendEmail(email, subject, html, [
+      {
+        filename: `Bexo_Invoice_${transactionId}.pdf`,
+        content: pdfBuffer,
+        contentType: 'application/pdf',
+      }
+    ]);
+  } catch (err) {
+    logger.error({ err }, "Failed to generate or send invoice email");
+    // Fallback to sending without PDF if generation fails
+    await sendEmail(email, subject, html);
   }
 };
 

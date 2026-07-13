@@ -18,12 +18,35 @@ import Step7Theme from './pages/step-7';
 import Step8Publish from './pages/step-8';
 import Step9Plan from './pages/step-9';
 
+import Login from './pages/login';
 import Dashboard from './pages/dashboard';
+import PublicPortfolio from './pages/public-portfolio';
+import { useToast } from './hooks/use-toast';
 
 const queryClient = new QueryClient();
 
+const getSubdomain = () => {
+  const hostname = window.location.hostname;
+  const parts = hostname.split('.');
+  
+  if (hostname.endsWith('localhost')) {
+    if (parts.length > 1 && parts[0] !== 'localhost' && parts[0] !== 'www') {
+      return parts[0];
+    }
+    return null;
+  }
+  
+  if (parts.length > 2 && parts[0] !== 'www') {
+    return parts[0];
+  }
+  
+  return null;
+};
+
 function Router() {
   const { data, isLoading } = useOnboarding();
+  const subdomain = getSubdomain();
+  const { toast } = useToast();
   const [sessionLoading, setSessionLoading] = useState(true);
   const [hasGoogleSession, setHasGoogleSession] = useState(false);
 
@@ -49,6 +72,10 @@ function Router() {
       subscription.unsubscribe();
     };
   }, []);
+
+  if (subdomain) {
+    return <PublicPortfolio handleOverride={subdomain} />;
+  }
 
   if (isLoading || sessionLoading) {
     return (
@@ -100,14 +127,27 @@ function Router() {
 
   return (
     <Switch>
-      <Route path="/" component={() => <Redirect to="/step/1" />} />
-      <Route path="/dashboard" component={Dashboard} />
+      <Route path="/">
+        {hasToken ? (
+          data.hasCompletedOnboarding ? <Redirect to="/dashboard" /> : <Redirect to={`/step/${maxAllowedStep}`} />
+        ) : (
+          <Login />
+        )}
+      </Route>
+      <Route path="/dashboard">
+        {hasToken ? <Dashboard /> : <Redirect to="/" />}
+      </Route>
       <Route path="/step/:id">
         {params => {
           const stepId = parseInt(params.id, 10);
           
           if (stepId < 1 || stepId > 9) {
-            return <Redirect to="/step/1" />;
+            return <Redirect to="/" />;
+          }
+
+          // If the user has already completed onboarding, block access to onboarding steps
+          if (hasToken && data.hasCompletedOnboarding) {
+            return <Redirect to="/dashboard" />;
           }
 
           // If trying to access a step beyond what is allowed, redirect to maxAllowedStep
@@ -131,6 +171,9 @@ function Router() {
             </OnboardingLayout>
           );
         }}
+      </Route>
+      <Route path="/:handle">
+        <PublicPortfolio />
       </Route>
       <Route component={NotFound} />
     </Switch>

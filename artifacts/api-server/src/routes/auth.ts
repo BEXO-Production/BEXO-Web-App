@@ -1,7 +1,7 @@
 import { Router } from "express";
 import Redis from "ioredis";
 import jwt from "jsonwebtoken";
-import { db, users } from "@workspace/db";
+import { db, users, profiles } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
 
@@ -194,8 +194,11 @@ router.post("/phone/otp/verify", async (req, res): Promise<void> => {
     // Find or create user
     let userList = await db.select().from(users).where(eq(users.phone, phone)).limit(1);
     let user = userList[0];
+    let isNewUser = false;
+    let hasCompletedOnboarding = false;
 
     if (!user) {
+      isNewUser = true;
       const inserted = await db.insert(users).values({
         phone,
         phoneVerifiedAt: new Date(),
@@ -207,6 +210,12 @@ router.post("/phone/otp/verify", async (req, res): Promise<void> => {
       await db.update(users).set({
         phoneVerifiedAt: new Date()
       }).where(eq(users.id, user.id));
+
+      // Check if they completed onboarding (profile exists and has a handle)
+      const userProfile = await db.select().from(profiles).where(eq(profiles.userId, user.id)).limit(1);
+      if (userProfile.length > 0 && userProfile[0].handle) {
+        hasCompletedOnboarding = true;
+      }
     }
 
     // Generate JWT token
@@ -215,6 +224,8 @@ router.post("/phone/otp/verify", async (req, res): Promise<void> => {
 
     res.json({
       accessToken,
+      isNewUser,
+      hasCompletedOnboarding,
       user: {
         id: user.id,
         phone: user.phone,
