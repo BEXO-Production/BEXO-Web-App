@@ -1,6 +1,7 @@
 import { Router } from "express";
 import Redis from "ioredis";
 import jwt from "jsonwebtoken";
+import { randomUUID } from "crypto";
 import { db, users, profiles } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
@@ -80,6 +81,14 @@ class RedisOrMemoryStore {
 }
 
 const store = new RedisOrMemoryStore();
+
+const phonePattern = /^\d{10,15}$/;
+const otpPattern = /^\d{6}$/;
+
+function isDatabaseUnavailable(error: unknown): boolean {
+  const code = (error as { code?: string } | undefined)?.code;
+  return ["ECONNREFUSED", "ETIMEDOUT", "ENOTFOUND", "57P01", "57P03"].includes(code ?? "");
+}
 
 // POST /auth/phone/otp
 router.post("/phone/otp", async (req, res): Promise<void> => {
@@ -191,40 +200,48 @@ router.post("/phone/otp", async (req, res): Promise<void> => {
 
 // POST /auth/phone/otp/verify
 router.post("/phone/otp/verify", async (req, res): Promise<void> => {
-  const { phone, otp } = req.body;
-  if (!phone || !otp) {
-    res.status(400).json({ error: "Phone number and OTP are required" });
+  const requestId = randomUUID();
+  const rawPhone = req.body?.phone;
+  const rawOtp = req.body?.otp;
+  const phone = typeof rawPhone === "string" ? rawPhone.replace(/\D/g, "") : "";
+  const otp = typeof rawOtp === "string" ? rawOtp.replace(/\D/g, "") : "";
+
+  if (!phonePattern.test(phone) || !otpPattern.test(otp)) {
+    res.status(400).json({ error: "Enter a valid phone number and 6-digit verification code." });
     return;
   }
-
-  // Check if OTP exists and is correct
-  const cachedOtp = await store.get(`otp:${phone}`);
-
-  // Bypass verification for developer testing if OTP is 111111 or matches cached value
-  const isValid = (otp === "111111" || otp === cachedOtp);
-
-  if (!isValid) {
-    res.status(400).json({ error: "Invalid or expired OTP" });
-    return;
-  }
-
-  // Clear the verified OTP
-  await store.del(`otp:${phone}`);
 
   try {
+    // Check the code before touching account records. The development bypass is
+    // deliberately restricted to non-production environments.
+    const cachedOtp = await store.get(`otp:${phone}`);
+    const isDevelopmentBypass = process.env.NODE_ENV !== "production" && otp === "111111";
+    if (!isDevelopmentBypass && otp !== cachedOtp) {
+      res.status(400).json({ error: "This code is invalid or has expired. Request a new code and try again." });
+      return;
+    }
+
     // Find or create user
-    let userList = await db.select().from(users).where(eq(users.phone, phone)).limit(1);
-    let user = userList[0];
+    let user = (await db.select().from(users).where(eq(users.phone, phone)).limit(1))[0];
     let isNewUser = false;
     let hasCompletedOnboarding = false;
 
     if (!user) {
       isNewUser = true;
-      const inserted = await db.insert(users).values({
-        phone,
-        phoneVerifiedAt: new Date(),
-      }).returning();
-      user = inserted[0];
+      try {
+        const inserted = await db.insert(users).values({
+          phone,
+          phoneVerifiedAt: new Date(),
+        }).returning();
+        user = inserted[0];
+      } catch (error) {
+        // Two verification requests can complete together. In that case, reuse
+        // the account created by the other request instead of returning a 500.
+        if ((error as { code?: string }).code !== "23505") throw error;
+        user = (await db.select().from(users).where(eq(users.phone, phone)).limit(1))[0];
+        if (!user) throw error;
+        isNewUser = false;
+      }
       logger.info({ userId: user.id, phone }, "Created new user on verification");
     } else {
       // Update verification timestamp
@@ -238,6 +255,10 @@ router.post("/phone/otp/verify", async (req, res): Promise<void> => {
         hasCompletedOnboarding = true;
       }
     }
+
+    // Consume the code only after the account operation succeeds. A temporary
+    // database fault should not force the user to request another OTP.
+    await store.del(`otp:${phone}`);
 
     // Generate JWT token
     const secret = process.env.JWT_SECRET || "super_secret_jwt_key";
@@ -255,8 +276,12 @@ router.post("/phone/otp/verify", async (req, res): Promise<void> => {
       }
     });
   } catch (err) {
-    logger.error({ err }, "Error during verification transaction");
-    res.status(500).json({ error: "Internal server error" });
+    logger.error({ err, requestId, phone }, "OTP verification failed");
+    const status = isDatabaseUnavailable(err) ? 503 : 500;
+    res.status(status).json({
+      error: "We couldn't complete verification right now. Please try again in a moment.",
+      requestId,
+    });
   }
 });
 

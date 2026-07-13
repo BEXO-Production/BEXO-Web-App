@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useOnboarding } from '../context/OnboardingContext';
 import { Input, Label } from '../design-system/primitives';
 import { Loader2, ArrowRight } from 'lucide-react';
@@ -26,6 +26,7 @@ export default function Step1Phone() {
   const [otpError, setOtpError] = useState('');
   const [isSwooshingSend, setIsSwooshingSend] = useState(false);
   const [isSwooshingVerify, setIsSwooshingVerify] = useState(false);
+  const isSubmittingOtp = useRef(false);
 
   useEffect(() => {
     let timer: number;
@@ -69,7 +70,10 @@ export default function Step1Phone() {
   };
 
   const verifyOtpCode = async (otpCode: string) => {
+    if (isSubmittingOtp.current || !/^\d{6}$/.test(otpCode)) return;
+    isSubmittingOtp.current = true;
     setOtpError('');
+    setIsVerifying(true);
     setIsSwooshingVerify(true);
     
     try {
@@ -99,8 +103,11 @@ export default function Step1Phone() {
         nextStep(1);
       }
     } catch (err: any) {
-      setIsSwooshingVerify(false);
       setOtpError(err.message || 'Verification failed. Please check your OTP.');
+    } finally {
+      isSubmittingOtp.current = false;
+      setIsVerifying(false);
+      setIsSwooshingVerify(false);
     }
   };
 
@@ -121,16 +128,18 @@ export default function Step1Phone() {
   };
 
   const handleOtpChange = (index: number, value: string) => {
-    if (!/^\d*$/.test(value)) return;
+    const digits = value.replace(/\D/g, '');
+    if (value && !digits) return;
     const newOtp = [...otp];
-    newOtp[index] = value;
+    digits.slice(0, 6 - index).split('').forEach((digit, offset) => {
+      newOtp[index + offset] = digit;
+    });
+    if (!digits) newOtp[index] = '';
     setOtp(newOtp);
     setOtpError('');
-    
-    if (value && index < 5) {
-      const nextInput = document.getElementById(`otp-${index + 1}`);
-      nextInput?.focus();
-    }
+
+    const nextIndex = Math.min(index + Math.max(digits.length, 1), 5);
+    window.requestAnimationFrame(() => document.getElementById(`otp-${nextIndex}`)?.focus());
 
     // Auto-submit OTP when fully entered (6 digits)
     const otpCode = newOtp.join('');
@@ -146,21 +155,22 @@ export default function Step1Phone() {
     }
   };
 
-  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+  const handlePaste = (index: number, e: React.ClipboardEvent<HTMLInputElement>) => {
     e.preventDefault();
-    const pastedData = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    const pastedData = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6 - index);
     if (!pastedData) return;
 
     const newOtp = [...otp];
     for (let i = 0; i < pastedData.length; i++) {
-      newOtp[i] = pastedData[i];
+      newOtp[index + i] = pastedData[i];
     }
     setOtp(newOtp);
     setOtpError('');
 
-    const focusIndex = Math.min(pastedData.length, 5);
-    const nextInput = document.getElementById(`otp-${focusIndex}`);
-    nextInput?.focus();
+    const focusIndex = Math.min(index + pastedData.length, 5);
+    window.requestAnimationFrame(() => document.getElementById(`otp-${focusIndex}`)?.focus());
+    const otpCode = newOtp.join('');
+    if (otpCode.length === 6) verifyOtpCode(otpCode);
   };
 
   return (
@@ -218,7 +228,7 @@ export default function Step1Phone() {
               <FaWhatsapp className="h-5 w-5 text-emerald-500" aria-hidden="true" />
               <span>Check WhatsApp. Your OTP is sent through WhatsApp.</span>
             </div>
-            <div className="flex justify-between gap-2">
+            <div className="grid grid-cols-6 gap-2 sm:gap-3">
               {otp.map((digit, i) => (
                 <Input
                   key={i}
@@ -226,11 +236,13 @@ export default function Step1Phone() {
                   type="text"
                   inputMode="numeric"
                   maxLength={1}
+                  autoComplete={i === 0 ? 'one-time-code' : 'off'}
                   value={digit}
                   onChange={(e) => handleOtpChange(i, e.target.value)}
                   onKeyDown={(e) => handleKeyDown(i, e)}
-                  onPaste={handlePaste}
-                  className={`w-12 h-14 md:w-14 md:h-16 text-center text-xl font-bold rounded-xl ${otpError ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                  onPaste={(e) => handlePaste(i, e)}
+                  aria-label={`Verification code digit ${i + 1}`}
+                  className={`h-14 min-w-0 w-full text-center text-xl font-bold rounded-xl md:h-16 ${otpError ? "border-red-500 focus-visible:ring-red-500" : ""}`}
                   autoFocus={i === 0}
                 />
               ))}

@@ -42,6 +42,34 @@ export default function Step9Plan() {
   const subtotal = basePrice - discount;
   const gst = subtotal * 0.18;
   const total = Math.round(subtotal + gst);
+  const isBillingManagement = data.hasCompletedOnboarding;
+
+  const verifyPayment = async (token: string | null, payload: any) => {
+    const verifyRes = await fetch("/api/payments/verify", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        ...payload,
+        plan
+      })
+    });
+
+    const verifyData = await verifyRes.json();
+    if (!verifyRes.ok) {
+      throw new Error(verifyData.error || "Payment verification failed");
+    }
+
+    updateData({
+      plan,
+      isPremium: true,
+      storageQuotaBytes: 50 * 1024 * 1024,
+    });
+    toast({ title: 'Payment Successful', description: 'Your BEXO Pro access is active.' });
+    setLocation('/dashboard');
+  };
 
   const validateCode = () => {
     // Flexible format for Bexo activation codes (e.g. BEXO-KAVIN-2026, BEXO-PRO-LIFETIME, BEXO-XXXX-XXXX)
@@ -89,6 +117,15 @@ export default function Step9Plan() {
         throw new Error(orderData.error || "Failed to create order");
       }
 
+      if (orderData.mock) {
+        await verifyPayment(token, {
+          razorpay_payment_id: `mock_payment_${Date.now()}`,
+          razorpay_order_id: orderData.orderId,
+          razorpay_signature: 'mock_signature'
+        });
+        return;
+      }
+
       // Initialize Razorpay
       const options = {
         key: orderData.key || 'rzp_test_YourKeyIdHere', // Fallback for testing UI without keys
@@ -100,34 +137,12 @@ export default function Step9Plan() {
         handler: async function (response: any) {
           try {
             toast({ title: 'Processing Payment', description: 'Please wait while we verify your payment...' });
-            
-            // Verify Payment
-            const verifyRes = await fetch("/api/payments/verify", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${token}`
-              },
-              body: JSON.stringify({
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_order_id: response.razorpay_order_id,
-                razorpay_signature: response.razorpay_signature,
-                plan
-              })
-            });
-
-            const verifyData = await verifyRes.json();
-            
-            if (verifyRes.ok) {
-              updateData({ plan });
-              toast({ title: 'Payment Successful', description: 'Welcome to Bexo Premium!' });
-              setLocation('/dashboard');
-            } else {
-              throw new Error(verifyData.error || "Payment verification failed");
-            }
+            await verifyPayment(token, response);
           } catch (err: any) {
             console.error("Verification error:", err);
             toast({ title: 'Verification Failed', description: err.message, variant: 'destructive' });
+          } finally {
+            setIsProcessing(false);
           }
         },
         prefill: {
@@ -176,7 +191,11 @@ export default function Step9Plan() {
       const result = await res.json();
       
       if (res.ok) {
-        updateData({ plan: 'activation_code' });
+        updateData({
+          plan: result.plan || 'annual',
+          isPremium: true,
+          storageQuotaBytes: 50 * 1024 * 1024,
+        });
         toast({ title: 'Account Activated', description: 'Your activation code was successfully redeemed.' });
         setLocation('/dashboard');
       } else {
@@ -295,10 +314,12 @@ export default function Step9Plan() {
     <div className="flex flex-col h-full max-w-lg w-full mx-auto justify-center pb-10">
       <div className="mb-8 text-center">
         <h1 className="font-serif text-3xl md:text-4xl font-bold text-slate-900 mb-3 tracking-tight">
-          Activate Your Account
+          {isBillingManagement ? 'Manage Your Plan' : 'Activate Your Account'}
         </h1>
         <p className="text-slate-500 text-base md:text-lg">
-          Complete your setup to unlock dashboard access and premium features.
+          {isBillingManagement
+            ? 'Upgrade, renew, or redeem a campus activation code for your portfolio.'
+            : 'Complete your setup to unlock dashboard access and premium features.'}
         </p>
       </div>
 

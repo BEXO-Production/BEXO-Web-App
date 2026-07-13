@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useOnboarding } from '../context/OnboardingContext';
 import { useLocation } from 'wouter';
 import { Input, Label, Card } from '../design-system/primitives';
@@ -20,6 +20,7 @@ export default function Login() {
   const [otpError, setOtpError] = useState('');
   const [isSwooshingSend, setIsSwooshingSend] = useState(false);
   const [isSwooshingVerify, setIsSwooshingVerify] = useState(false);
+  const isSubmittingOtp = useRef(false);
 
   useEffect(() => {
     let timer: number;
@@ -63,7 +64,10 @@ export default function Login() {
   };
 
   const verifyOtpCode = async (otpCode: string) => {
+    if (isSubmittingOtp.current || !/^\d{6}$/.test(otpCode)) return;
+    isSubmittingOtp.current = true;
     setOtpError('');
+    setIsVerifying(true);
     setIsSwooshingVerify(true);
     
     try {
@@ -98,8 +102,11 @@ export default function Login() {
         setLocation('/step/2');
       }
     } catch (err: any) {
-      setIsSwooshingVerify(false);
       setOtpError(err.message || 'Verification failed. Please check your OTP.');
+    } finally {
+      isSubmittingOtp.current = false;
+      setIsVerifying(false);
+      setIsSwooshingVerify(false);
     }
   };
 
@@ -120,22 +127,42 @@ export default function Login() {
   };
 
   const handleOtpChange = (index: number, value: string) => {
-    if (!/^\d*$/.test(value)) return;
+    const digits = value.replace(/\D/g, '');
+    if (value && !digits) return;
     const newOtp = [...otp];
-    newOtp[index] = value;
+    digits.slice(0, 6 - index).split('').forEach((digit, offset) => {
+      newOtp[index + offset] = digit;
+    });
+    if (!digits) newOtp[index] = '';
     setOtp(newOtp);
     setOtpError('');
-    
-    if (value && index < 5) {
-      const nextInput = document.getElementById(`login-otp-${index + 1}`);
-      nextInput?.focus();
-    }
+
+    const nextIndex = Math.min(index + Math.max(digits.length, 1), 5);
+    window.requestAnimationFrame(() => document.getElementById(`login-otp-${nextIndex}`)?.focus());
 
     // Auto-submit OTP when fully entered (6 digits)
     const otpCode = newOtp.join('');
     if (otpCode.length === 6) {
       verifyOtpCode(otpCode);
     }
+  };
+
+  const handlePaste = (index: number, e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const pastedDigits = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6 - index);
+    if (!pastedDigits) return;
+
+    const newOtp = [...otp];
+    pastedDigits.split('').forEach((digit, offset) => {
+      newOtp[index + offset] = digit;
+    });
+    setOtp(newOtp);
+    setOtpError('');
+
+    const otpCode = newOtp.join('');
+    const nextIndex = Math.min(index + pastedDigits.length, 5);
+    window.requestAnimationFrame(() => document.getElementById(`login-otp-${nextIndex}`)?.focus());
+    if (otpCode.length === 6) verifyOtpCode(otpCode);
   };
 
   const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -225,18 +252,22 @@ export default function Login() {
                   <span>Check WhatsApp. Your OTP is sent through WhatsApp.</span>
                 </div>
 
-                <div className="flex justify-between gap-2 pt-2">
+                <div className="grid grid-cols-6 gap-2 pt-2 sm:gap-3">
                   {otp.map((digit, idx) => (
                     <Input
                       key={idx}
                       id={`login-otp-${idx}`}
                       type="text"
+                      inputMode="numeric"
                       pattern="\d*"
                       maxLength={1}
+                      autoComplete={idx === 0 ? 'one-time-code' : 'off'}
                       value={digit}
                       onChange={e => handleOtpChange(idx, e.target.value)}
                       onKeyDown={e => handleKeyDown(idx, e)}
-                      className="w-12 h-12 text-center text-lg font-bold rounded-xl bg-slate-50 border-slate-200"
+                      onPaste={e => handlePaste(idx, e)}
+                      aria-label={`Verification code digit ${idx + 1}`}
+                      className="h-12 min-w-0 w-full text-center text-lg font-bold rounded-xl bg-slate-50 border-slate-200 sm:h-14"
                       required
                     />
                   ))}

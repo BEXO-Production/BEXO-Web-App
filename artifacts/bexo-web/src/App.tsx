@@ -140,6 +140,23 @@ function Router() {
       <Route path="/dashboard">
         {hasToken ? <Dashboard /> : <Redirect to="/" />}
       </Route>
+      <Route path="/billing">
+        {hasToken ? (
+          <div className="min-h-screen bg-slate-50 px-4 py-8">
+            <div className="mx-auto mb-6 flex w-full max-w-lg items-center justify-between">
+              <button
+                type="button"
+                onClick={() => window.location.href = '/dashboard'}
+                className="text-xs font-bold uppercase tracking-wider text-slate-500 hover:text-slate-900"
+              >
+                Back to dashboard
+              </button>
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Billing</span>
+            </div>
+            <Step9Plan />
+          </div>
+        ) : <Redirect to="/" />}
+      </Route>
       <Route path="/step/:id">
         {params => {
           const stepId = parseInt(params.id, 10);

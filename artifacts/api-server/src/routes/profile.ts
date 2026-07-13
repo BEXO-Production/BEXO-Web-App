@@ -1,12 +1,13 @@
 import { Router } from "express";
 import { requireAuth, AuthenticatedRequest } from "../middlewares/auth";
-import { db, users, profiles, profileSections, subscriptions } from "@workspace/db";
+import { db, users, profiles, profileSections } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import multer from "multer";
 import { createRequire } from "module";
 import { uploadToR2 } from "../lib/r2";
 import { generateATSResume } from "../lib/resumeEngine";
+import { resolveSubscriptionState, syncStorageQuota } from "../lib/subscriptions";
 
 const require = createRequire(import.meta.url);
 const pdf = require("pdf-parse");
@@ -54,19 +55,8 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<voi
     const getEntries = (type: string) => sections.find(s => s.type === type)?.entries || [];
     const contactEntries = sections.find(s => s.type === "contact")?.entries as any;
 
-    const activeSub = await db.select().from(subscriptions).where(
-      and(
-        eq(subscriptions.userId, userId),
-        eq(subscriptions.status, 'active')
-      )
-    ).limit(1);
-    const plan = activeSub[0]?.plan || null;
-    const isPremium = !!plan && plan !== 'free';
-
-    const expectedQuota = isPremium ? 52428800 : 10485760;
-    if (Number(user.storageQuotaBytes) !== expectedQuota) {
-      await db.update(users).set({ storageQuotaBytes: expectedQuota }).where(eq(users.id, userId));
-    }
+    const subscriptionState = await resolveSubscriptionState(userId);
+    await syncStorageQuota(userId, subscriptionState.storageQuotaBytes, Number(user.storageQuotaBytes));
 
     res.json({
       profile,
@@ -80,13 +70,13 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<voi
         resumeUrl: user.resumeUrl,
         profilePhotoAssetId: user.profilePhotoAssetId,
         storageUsedBytes: user.storageUsedBytes,
-        storageQuotaBytes: expectedQuota,
+        storageQuotaBytes: subscriptionState.storageQuotaBytes,
         openToHire: user.openToHire ?? false,
         templateId: user.templateId ?? 'minimal',
         themeColor: user.themeColor ?? 'blue'
       },
-      plan,
-      isPremium,
+      plan: subscriptionState.plan,
+      isPremium: subscriptionState.isPremium,
       aboutEntries: getEntries("about"),
       educationEntries: getEntries("education"),
       experienceEntries: getEntries("experience"),
@@ -112,11 +102,8 @@ router.patch("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<v
   } = req.body;
   try {
     // Resolve premium status for gating
-    const activeSub = await db.select().from(subscriptions).where(
-      and(eq(subscriptions.userId, userId), eq(subscriptions.status, 'active'))
-    ).limit(1);
-    const currentPlan = activeSub[0]?.plan || null;
-    const isPremium = !!currentPlan && currentPlan !== 'free';
+    const subscriptionState = await resolveSubscriptionState(userId);
+    const isPremium = subscriptionState.isPremium;
 
     // Gate template selection for free users
     if (templateId !== undefined && templateId !== 'minimal' && !isPremium) {
@@ -661,11 +648,9 @@ router.post("/upload", requireAuth, upload.single("file"), async (req: Authentic
     const userList = await db.select().from(users).where(eq(users.id, userId)).limit(1);
     const user = userList[0];
     if (user) {
-      const activeSub = await db.select().from(subscriptions).where(
-        and(eq(subscriptions.userId, userId), eq(subscriptions.status, 'active'))
-      ).limit(1);
-      const isPremium = activeSub.length > 0 && activeSub[0].plan !== 'free';
-      const quota = isPremium ? 52428800 : 10485760;
+      const subscriptionState = await resolveSubscriptionState(userId);
+      const quota = subscriptionState.storageQuotaBytes;
+      await syncStorageQuota(userId, quota, Number(user.storageQuotaBytes));
 
       const currentUsed = Number(user.storageUsedBytes) || 0;
       if (currentUsed + file.size > quota) {
@@ -721,14 +706,8 @@ router.get("/public/:handle", async (req, res): Promise<void> => {
     const getEntries = (type: string) => sections.find(s => s.type === type)?.entries || [];
     const contactEntries = sections.find(s => s.type === "contact")?.entries as any;
 
-    const activeSub = await db.select().from(subscriptions).where(
-      and(
-        eq(subscriptions.userId, user.id),
-        eq(subscriptions.status, 'active')
-      )
-    ).limit(1);
-    const plan = activeSub[0]?.plan || null;
-    const isPremium = !!plan && plan !== 'free';
+    const subscriptionState = await resolveSubscriptionState(user.id);
+    const isPremium = subscriptionState.isPremium;
 
     // Enforce tier design limits:
     // If not premium, override template and theme to minimal blue.

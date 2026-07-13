@@ -23,13 +23,15 @@ import {
   Palette,
   Layout,
   Sparkles,
-  ArrowUpRight,
   Link as LinkIcon,
   Image as ImageIcon,
   Upload,
   AlertCircle,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  CreditCard,
+  CalendarClock,
+  Crown
 } from 'lucide-react';
 import { cn } from '../design-system/primitives';
 import logo from '../assets/bexo-logo.png';
@@ -71,6 +73,19 @@ const TEMPLATES = [
     description: 'Bold colors and unique grid layouts for designers.',
   }
 ];
+
+type BillingStatus = {
+  plan: 'annual' | 'lifetime' | null;
+  status: 'free' | 'active' | 'expired';
+  isPremium: boolean;
+  expiresAt: string | null;
+  storageQuotaBytes: number;
+  latestPayment?: {
+    amount: number;
+    status: string;
+    createdAt: string;
+  } | null;
+};
 
 export default function Dashboard() {
   const { data, updateData, setToken } = useOnboarding();
@@ -179,6 +194,8 @@ export default function Dashboard() {
   // Storage limit and simulation states
   const [storageLimit, setStorageLimit] = useState(data.storageQuotaBytes || 10 * 1024 * 1024); // 10MB free tier default
   const [simulatedUsage, setSimulatedUsage] = useState<number | null>(null);
+  const [billingStatus, setBillingStatus] = useState<BillingStatus | null>(null);
+  const [billingLoading, setBillingLoading] = useState(true);
 
   useEffect(() => {
     if (data.storageQuotaBytes) {
@@ -217,13 +234,38 @@ export default function Dashboard() {
   const isStorageFull = usedStorage >= storageLimit;
   const isStorageExhausted90 = usedStorage >= 0.9 * storageLimit;
 
-  const handleBuyStorage = () => {
-    const newLimit = storageLimit + 50 * 1024 * 1024;
-    setStorageLimit(newLimit);
-    toast({
-      title: 'Upgrade Successful!',
-      description: `Storage limit increased to ${(newLimit / 1024 / 1024).toFixed(0)}MB.`,
-    });
+  const refreshBillingStatus = async () => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    try {
+      setBillingLoading(true);
+      const res = await fetch('/api/payments/status', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Unable to load billing status');
+
+      setBillingStatus(result);
+      setStorageLimit(result.storageQuotaBytes || storageLimit);
+      updateData({
+        plan: result.plan,
+        isPremium: result.isPremium,
+        storageQuotaBytes: result.storageQuotaBytes,
+      });
+    } catch (err) {
+      console.error('Billing status error:', err);
+    } finally {
+      setBillingLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    refreshBillingStatus();
+  }, []);
+
+  const openBilling = () => {
+    window.location.href = '/billing';
   };
 
   // Compute profile completion percentage
@@ -242,6 +284,35 @@ export default function Dashboard() {
   };
 
   const completionScore = calculateCompletion();
+  const planName = billingStatus?.plan === 'lifetime'
+    ? 'Lifetime Pro'
+    : billingStatus?.plan === 'annual'
+      ? 'Annual Pro'
+      : data.isPremium
+        ? 'Pro'
+        : 'Free';
+  const planRenewal = billingStatus?.expiresAt
+    ? new Date(billingStatus.expiresAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+    : billingStatus?.plan === 'lifetime'
+      ? 'Never expires'
+      : 'Upgrade available';
+  const totalEntries = [
+    data.aboutEntries,
+    data.educationEntries,
+    data.experienceEntries,
+    data.projectEntries,
+    data.certificateEntries,
+    data.achievementEntries,
+    data.researchEntries
+  ].reduce((sum, entries) => sum + (entries?.length || 0), 0);
+  const nextAction = completionScore < 90
+    ? { label: 'Complete portfolio', detail: 'Add the missing profile sections before sharing widely.', action: () => setShowCompletionModal(true), icon: CheckCircle2 }
+    : !data.resumeFileName
+      ? { label: 'Attach resume', detail: 'A resume improves the downloadable version and future parsing.', action: () => setCurrentView('resume'), icon: FileText }
+      : !data.isPremium
+        ? { label: 'Unlock Pro publishing', detail: 'Move to custom subdomain, premium templates, and 50MB storage.', action: openBilling, icon: Crown }
+        : { label: 'Review live portfolio', detail: 'Your public page is ready for recruiters and applications.', action: () => window.open(`https://${url}`, '_blank', 'noopener,noreferrer'), icon: ExternalLink };
+  const NextActionIcon = nextAction.icon;
 
   const handleCopyUrl = () => {
     navigator.clipboard.writeText(`https://${url}`);
@@ -434,7 +505,7 @@ export default function Dashboard() {
       if (usedStorage + sizeBytes > storageLimit) {
         toast({
           title: 'Quota Exceeded',
-          description: 'Not enough storage. Please clear space or buy more storage first.',
+          description: 'Not enough storage. Clear space or review your plan in billing.',
           variant: 'destructive'
         });
         return;
@@ -590,14 +661,12 @@ export default function Dashboard() {
   const [settingsPronouns, setSettingsPronouns] = useState(data.pronouns || '');
   const [settingsNationality, setSettingsNationality] = useState(data.nationality || '');
   const [settingsPhone, setSettingsPhone] = useState(data.phone || '');
-  const [settingsPlan, setSettingsPlan] = useState(data.plan || 'Free');
 
   useEffect(() => {
     setSettingsName(data.name || '');
     setSettingsPronouns(data.pronouns || '');
     setSettingsNationality(data.nationality || '');
     setSettingsPhone(data.phone || '');
-    setSettingsPlan(data.plan || 'Free');
   }, [data, currentView]);
 
   const handleSaveSettings = () => {
@@ -1092,7 +1161,7 @@ export default function Dashboard() {
                 <div className="flex justify-between items-center text-xs">
                   <span className="text-slate-500 font-medium">Workspace Plan</span>
                   <span className="font-bold text-indigo-650 bg-indigo-50 px-2 py-0.5 rounded-full capitalize">
-                    {data.plan === 'activation_code' ? 'Activated Pro' : data.plan || 'Free'}
+                    {planName}
                   </span>
                 </div>
               </div>
@@ -1101,7 +1170,7 @@ export default function Dashboard() {
               <div className="mx-3 my-1.5 px-3 py-2 bg-slate-50/50 rounded-xl border border-slate-100/85 flex items-center justify-between">
                 <div className="flex flex-col">
                   <span className="text-[11px] font-bold text-slate-700">Willing to Work</span>
-                  <span className="text-[9px] text-slate-450">{data.openToHire ? '🟢 Actively Looking' : '⚪ Not looking'}</span>
+                  <span className="text-[9px] text-slate-450">{data.openToHire ? 'Actively looking' : 'Not looking'}</span>
                 </div>
                 <button
                   type="button"
@@ -1163,22 +1232,24 @@ export default function Dashboard() {
         {/* Main Dashboard Overview */}
         {currentView === 'overview' && (
           <div className="space-y-8 animate-in fade-in duration-300">
-            {/* Hero welcome row */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
               <div>
-                <h1 className="font-serif text-3.5xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                  Welcome back, {data.name?.split(' ')[0] || 'there'} <Sparkles className="w-6 h-6 text-indigo-500 animate-bounce" />
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400 mb-2">Portfolio command center</p>
+                <h1 className="font-serif text-3.5xl font-bold text-slate-900 tracking-tight">
+                  Welcome back, {data.name?.split(' ')[0] || 'there'}
                 </h1>
-                <p className="text-slate-500">Manage your portfolio, track views, and update your profile.</p>
+                <p className="text-slate-500 max-w-2xl">Keep your public portfolio ready for applications, recruiters, and campus opportunities.</p>
               </div>
-              <a 
-                href={`https://${url}`} 
-                target="_blank" 
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 text-sm font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
-              >
-                View live portfolio <ArrowUpRight className="w-4 h-4" />
-              </a>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button onClick={() => setCurrentView('edit-profile')} className="h-10 px-4 text-xs gap-2">
+                  <Pencil className="w-4 h-4" /> Edit profile
+                </Button>
+                <a href={`https://${url}`} target="_blank" rel="noreferrer">
+                  <Button variant="outline" className="h-10 px-4 text-xs gap-2">
+                    <ExternalLink className="w-4 h-4" /> View live
+                  </Button>
+                </a>
+              </div>
             </div>
 
             {/* Storage Alert (only shows if usedStorage >= 90% of limit) */}
@@ -1199,16 +1270,83 @@ export default function Dashboard() {
                     />
                   </div>
                 </div>
-                <Button 
-                  onClick={handleBuyStorage} 
+                <Button
+                  onClick={openBilling}
                   className="bg-rose-600 text-white hover:bg-rose-700 border-none px-5 h-10 text-xs font-semibold shadow-md flex items-center gap-1.5 shrink-0"
                 >
-                  <Plus className="w-4 h-4" /> Buy More Storage
+                  <CreditCard className="w-4 h-4" /> Review plans
                 </Button>
               </Card>
             )}
 
-            {/* Metrics cards row */}
+            <div className="grid lg:grid-cols-[1.35fr_0.85fr] gap-6 items-stretch">
+              <Card className="p-6 bg-slate-950 text-slate-100 border border-slate-900 shadow-sm overflow-hidden">
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-5">
+                  <div className="space-y-5">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Next best action</p>
+                      <h2 className="text-2xl font-bold mt-2">{nextAction.label}</h2>
+                      <p className="text-sm text-slate-300 mt-1 max-w-xl">{nextAction.detail}</p>
+                    </div>
+                    <Button
+                      onClick={nextAction.action}
+                      className="h-11 px-4 bg-slate-100 text-slate-950 hover:bg-white border-none shadow-none gap-2"
+                    >
+                      <NextActionIcon className="w-4 h-4" /> Continue
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-3 sm:grid-cols-1 gap-3 sm:w-36">
+                    <div className="rounded-xl bg-slate-900 border border-slate-800 p-3">
+                      <p className="text-[11px] text-slate-400 font-semibold">Readiness</p>
+                      <p className="text-xl font-bold mt-1">{completionScore}%</p>
+                    </div>
+                    <div className="rounded-xl bg-slate-900 border border-slate-800 p-3">
+                      <p className="text-[11px] text-slate-400 font-semibold">Entries</p>
+                      <p className="text-xl font-bold mt-1">{totalEntries}</p>
+                    </div>
+                    <div className="rounded-xl bg-slate-900 border border-slate-800 p-3">
+                      <p className="text-[11px] text-slate-400 font-semibold">Plan</p>
+                      <p className="text-sm font-bold mt-1 truncate">{planName}</p>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="p-6 bg-white border border-slate-200 shadow-sm">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Subscription</p>
+                    <h3 className="text-xl font-bold text-slate-900 mt-2">{billingLoading ? 'Checking plan' : planName}</h3>
+                    <p className="text-xs text-slate-500 mt-1 flex items-center gap-1.5">
+                      <CalendarClock className="w-3.5 h-3.5" /> {planRenewal}
+                    </p>
+                  </div>
+                  <span className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold",
+                    data.isPremium ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"
+                  )}>
+                    {data.isPremium ? <Crown className="w-3.5 h-3.5" /> : <CreditCard className="w-3.5 h-3.5" />}
+                    {data.isPremium ? 'Pro active' : 'Free'}
+                  </span>
+                </div>
+                <div className="mt-6 space-y-3">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-600">
+                    <span>Storage</span>
+                    <span>{(usedStorage / 1024 / 1024).toFixed(1)} / {(storageLimit / 1024 / 1024).toFixed(0)} MB</span>
+                  </div>
+                  <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
+                    <div
+                      className={cn("h-full rounded-full transition-all duration-500", isStorageExhausted90 ? "bg-rose-500" : "bg-emerald-500")}
+                      style={{ width: `${storagePercentage}%` }}
+                    />
+                  </div>
+                  <Button variant="outline" onClick={openBilling} className="w-full h-10 text-xs gap-2">
+                    <CreditCard className="w-4 h-4" /> Manage billing
+                  </Button>
+                </div>
+              </Card>
+            </div>
+
             <div className="grid md:grid-cols-3 gap-6">
               {/* Profile Completion / Status Card */}
               {completionScore >= 90 ? (
@@ -1241,7 +1379,7 @@ export default function Dashboard() {
                       <div className="flex justify-between items-center mb-4">
                         <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Portfolio Status</p>
                         <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full flex items-center gap-1 select-none">
-                          ⚪ Basic Portfolio
+                          Basic Portfolio
                         </span>
                       </div>
                       <div className="flex items-center gap-3 mb-3">
@@ -1276,7 +1414,7 @@ export default function Dashboard() {
                       />
                     </div>
                     <p className="text-xs text-slate-500 flex items-center gap-1 font-semibold group-hover:text-indigo-600 transition-colors">
-                      Click to complete missing details &rarr;
+                      Click to complete missing details
                     </p>
                   </div>
                 </Card>
@@ -1301,31 +1439,26 @@ export default function Dashboard() {
                   }} 
                   className="text-xs font-bold text-indigo-600 hover:text-indigo-800 text-left transition-colors"
                 >
-                  {data.isPremium ? "Customize look" : "Customize look (Free)"} &rarr;
+                  {data.isPremium ? "Customize look" : "Customize look (Free)"}
                 </button>
               </Card>
 
               {/* Plan Status Card */}
-              <Card className={cn(
-                "p-6 text-white border-0 shadow-md flex flex-col justify-between transition-all duration-300",
-                data.isPremium 
-                  ? "bg-gradient-to-br from-indigo-600 to-indigo-900" 
-                  : "bg-gradient-to-br from-slate-700 to-slate-900"
-              )}>
+              <Card className="p-6 bg-white border border-slate-200 shadow-sm flex flex-col justify-between transition-all duration-300">
                 <div>
-                  <p className="text-indigo-100 text-xs font-bold uppercase tracking-wider mb-2">Workspace tier</p>
-                  <h3 className="text-2xl font-bold capitalize flex items-center gap-2">
-                    {data.plan === 'activation_code' ? 'Activated Pro' : data.plan === 'lifetime' ? 'Lifetime Pro' : data.plan === 'annual' ? 'Annual Pro' : 'Free Plan'}
+                  <p className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Workspace tier</p>
+                  <h3 className="text-2xl font-bold text-slate-900 capitalize flex items-center gap-2">
+                    {planName}
                   </h3>
                 </div>
                 {data.isPremium ? (
-                  <div className="flex items-center text-xs font-semibold text-indigo-50 bg-white/10 w-fit px-3 py-1 rounded-full backdrop-blur-sm mt-4">
-                    <CheckCircle2 className="w-3.5 h-3.5 mr-1.5 text-indigo-200" /> Pro Features Unlocked
+                  <div className="flex items-center text-xs font-semibold text-emerald-700 bg-emerald-50 w-fit px-3 py-1 rounded-full mt-4">
+                    <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> Pro features unlocked
                   </div>
                 ) : (
-                  <div className="flex items-center text-xs font-semibold text-slate-300 bg-white/10 w-fit px-3 py-1 rounded-full backdrop-blur-sm mt-4">
-                    <AlertCircle className="w-3.5 h-3.5 mr-1.5 text-slate-400" /> Free Limits Applied
-                  </div>
+                  <button onClick={openBilling} className="flex items-center text-xs font-semibold text-indigo-700 bg-indigo-50 w-fit px-3 py-1 rounded-full mt-4 hover:bg-indigo-100 transition-colors">
+                    <CreditCard className="w-3.5 h-3.5 mr-1.5" /> Upgrade path ready
+                  </button>
                 )}
               </Card>
             </div>
@@ -1352,7 +1485,7 @@ export default function Dashboard() {
                         ? "text-emerald-700 bg-emerald-50" 
                         : "text-slate-500 bg-slate-100"
                     )}>
-                      {data.openToHire ? '🟢 Actively Looking' : '⚪ Not looking for opportunities'}
+                      {data.openToHire ? 'Actively looking' : 'Not looking for opportunities'}
                     </span>
                     {/* Custom Toggle Switch */}
                     <button
@@ -1514,11 +1647,11 @@ export default function Dashboard() {
                       style={{ width: `${storagePercentage}%` }}
                     />
                   </div>
-                  <button 
-                    onClick={handleBuyStorage}
-                    className="text-[10px] font-bold text-indigo-500 hover:text-indigo-700 mt-2.5 text-left flex items-center gap-0.5 hover:underline cursor-pointer"
+                  <button
+                    onClick={openBilling}
+                    className="text-[10px] font-bold text-indigo-500 hover:text-indigo-700 mt-2.5 text-left flex items-center gap-1 hover:underline cursor-pointer"
                   >
-                    Upgrade Storage &rarr;
+                    <CreditCard className="w-3 h-3" /> Review billing
                   </button>
                 </Card>
               </div>
@@ -1577,7 +1710,7 @@ export default function Dashboard() {
                               ? "text-emerald-700 bg-emerald-50" 
                               : "text-slate-500 bg-slate-100"
                           )}>
-                            {data.openToHire ? '🟢 Active' : '⚪ Off'}
+                            {data.openToHire ? 'Active' : 'Off'}
                           </span>
                           <button
                             type="button"
@@ -2053,7 +2186,7 @@ export default function Dashboard() {
                   className={cn(
                     "flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all text-left w-full",
                     settingsSubTab === 'profile' 
-                      ? "bg-indigo-50 text-indigo-900 shadow-sm border-l-4 border-indigo-650" 
+                      ? "bg-indigo-50 text-indigo-900 shadow-sm ring-1 ring-indigo-100" 
                       : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                   )}
                 >
@@ -2065,7 +2198,7 @@ export default function Dashboard() {
                   className={cn(
                     "flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all text-left w-full",
                     settingsSubTab === 'design' 
-                      ? "bg-indigo-50 text-indigo-900 shadow-sm border-l-4 border-indigo-650" 
+                      ? "bg-indigo-50 text-indigo-900 shadow-sm ring-1 ring-indigo-100" 
                       : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                   )}
                 >
@@ -2077,7 +2210,7 @@ export default function Dashboard() {
                   className={cn(
                     "flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all text-left w-full",
                     settingsSubTab === 'storage' 
-                      ? "bg-indigo-50 text-indigo-900 shadow-sm border-l-4 border-indigo-650" 
+                      ? "bg-indigo-50 text-indigo-900 shadow-sm ring-1 ring-indigo-100" 
                       : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                   )}
                 >
@@ -2158,10 +2291,10 @@ export default function Dashboard() {
                       <Label className="text-xs font-semibold text-slate-500">Workspace Tier Plan</Label>
                       <div className="flex items-center justify-between h-12 w-full rounded-xl border border-slate-100 bg-slate-50 px-4 py-2 text-sm text-slate-700">
                         <span className="font-semibold capitalize text-slate-900">
-                          {settingsPlan === 'activation_code' ? 'Activated Pro (Code)' : settingsPlan === 'lifetime' ? 'Lifetime Pro' : settingsPlan === 'annual' ? 'Annual Pro' : 'Free Plan'}
+                          {planName}
                         </span>
                         <span className="text-xs text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded-full font-bold">
-                          {settingsPlan && settingsPlan !== 'Free' ? 'Premium active' : 'Standard'}
+                          {data.isPremium ? 'Premium active' : 'Standard'}
                         </span>
                       </div>
                       <p className="text-[11px] text-slate-400 leading-normal">
@@ -2377,25 +2510,15 @@ export default function Dashboard() {
                       <div className="flex flex-col sm:flex-row gap-3 pt-2">
                         {data.isPremium ? (
                           <Button 
-                            onClick={() => {
-                              toast({
-                                title: 'Cloud Storage Limit',
-                                description: 'You are on the premium Pro tier with 50MB quota. To purchase extra storage, please contact support.',
-                              });
-                            }} 
+                            onClick={openBilling}
                             size="sm" 
                             className="h-10 text-xs px-4 bg-indigo-50 text-indigo-900 hover:bg-indigo-100 flex-1 border border-indigo-200 shadow-none"
                           >
-                            Request Extra Storage
+                            Manage Billing
                           </Button>
                         ) : (
                           <Button 
-                            onClick={() => {
-                              toast({
-                                title: 'Upgrade to Pro',
-                                description: 'Upgrade during onboarding or active payment flows to increase your quota to 50MB.',
-                              });
-                            }} 
+                            onClick={openBilling}
                             size="sm" 
                             className="h-10 text-xs px-4 bg-indigo-600 text-white hover:bg-indigo-700 flex-1 border-none shadow-md font-semibold"
                           >
