@@ -245,6 +245,18 @@ export default function Dashboard() {
   };
 
   const handleSave = () => {
+    // Check if any supporting assets are still uploading in the background
+    const isUploadingImages = editForm.assets?.images?.some((img: any) => img.isUploading);
+    const isUploadingPdfs = editForm.assets?.pdfs?.some((pdf: any) => pdf.isUploading);
+    if (isUploadingImages || isUploadingPdfs) {
+      toast({
+        title: 'Upload in Progress',
+        description: 'Please wait for your files to finish uploading before saving.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     let updated;
     const isNew = !sections[activeEditorTab as keyof typeof sections].some((e: any) => e.id === editingId);
     if (isNew) {
@@ -306,7 +318,7 @@ export default function Dashboard() {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = type === 'images' ? 'image/*' : 'application/pdf';
-    input.onchange = async (e: any) => {
+    input.onchange = (e: any) => {
       const file = e.target.files?.[0];
       if (!file) return;
 
@@ -320,48 +332,84 @@ export default function Dashboard() {
         return;
       }
 
+      // Generate a temporary local preview URL immediately
+      const localUrl = URL.createObjectURL(file);
+      const tempId = `temp-${Date.now()}`;
+
+      const newAsset: FileAsset = {
+        id: tempId,
+        name: file.name,
+        url: localUrl,
+        sizeBytes,
+        isUploading: true
+      };
+
+      // Add to state immediately
+      setEditForm((prev: any) => ({
+        ...prev,
+        assets: {
+          ...prev.assets,
+          [type]: [...(prev.assets[type] || []), newAsset]
+        }
+      }));
+
+      // Background upload
       const formData = new FormData();
       formData.append("file", file);
-
       const token = localStorage.getItem('token');
-      try {
-        const res = await fetch("/api/profile/upload", {
-          method: "POST",
-          headers: {
-            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-          },
-          body: formData
-        });
 
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.error || "Upload failed");
-        }
-
-        const result = await res.json();
-        if (result.url) {
-          const newAsset: FileAsset = {
-            id: Date.now().toString(),
-            name: file.name,
-            url: result.url,
-            sizeBytes
-          };
-          setEditForm({
-            ...editForm,
-            assets: {
-              ...editForm.assets,
-              [type]: [...current, newAsset]
-            }
+      fetch("/api/profile/upload", {
+        method: "POST",
+        headers: {
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: formData
+      })
+        .then(async (res) => {
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            throw new Error(errData.error || "Upload failed");
+          }
+          return res.json();
+        })
+        .then((result) => {
+          if (result.url) {
+            // Replace temporary asset with the live R2 URL
+            setEditForm((prev: any) => {
+              const list = prev.assets[type] || [];
+              const updatedList = list.map((item: any) =>
+                item.id === tempId ? { ...item, url: result.url, isUploading: false } : item
+              );
+              return {
+                ...prev,
+                assets: {
+                  ...prev.assets,
+                  [type]: updatedList
+                }
+              };
+            });
+          }
+        })
+        .catch((err) => {
+          console.error("Failed to upload file to R2 in background:", err);
+          toast({
+            title: 'Upload Failed',
+            description: err.message || 'An error occurred during file upload.',
+            variant: 'destructive'
           });
-        }
-      } catch (err: any) {
-        console.error("Failed to upload file to R2:", err);
-        toast({
-          title: 'Upload Failed',
-          description: err.message || 'An error occurred during file upload.',
-          variant: 'destructive'
+          // Remove the temporary asset on failure
+          setEditForm((prev: any) => {
+            const list = prev.assets[type] || [];
+            const updatedList = list.filter((item: any) => item.id !== tempId);
+            return {
+              ...prev,
+              assets: {
+                ...prev.assets,
+                [type]: updatedList
+              }
+            };
+          });
         });
-      }
     };
     input.click();
   };

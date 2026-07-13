@@ -8,6 +8,7 @@ export type FileAsset = {
   name: string;
   url: string;
   sizeBytes: number;
+  isUploading?: boolean;
 };
 
 export type LinkAsset = {
