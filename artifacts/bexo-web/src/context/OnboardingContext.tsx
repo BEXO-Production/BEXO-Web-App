@@ -67,6 +67,8 @@ export type OnboardingData = {
   isPremium: boolean;
   hasCompletedOnboarding: boolean;
   payments?: any[];
+  resumeParsesThisMonth: number;
+  lastResumeParseReset?: string | Date;
 };
 
 interface OnboardingContextType {
@@ -116,6 +118,8 @@ const defaultData: OnboardingData = {
   isPremium: false,
   hasCompletedOnboarding: false,
   payments: [],
+  resumeParsesThisMonth: 0,
+  lastResumeParseReset: new Date().toISOString()
 };
 
 const OnboardingContext = createContext<OnboardingContextType | undefined>(undefined);
@@ -282,7 +286,9 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
             themeColor: result.user?.themeColor || prev.themeColor,
             themeBg: result.user?.themeBg || prev.themeBg,
             hasCompletedOnboarding: !!result.profile?.handle && !!result.plan,
-            payments: result.payments || prev.payments
+            payments: result.payments || prev.payments,
+            resumeParsesThisMonth: result.user?.resumeParsesThisMonth !== undefined ? result.user.resumeParsesThisMonth : prev.resumeParsesThisMonth,
+            lastResumeParseReset: result.user?.lastResumeParseReset || prev.lastResumeParseReset
           }));
         }
       })

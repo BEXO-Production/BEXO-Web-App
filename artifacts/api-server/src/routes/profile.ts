@@ -80,7 +80,9 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<voi
         openToHire: user.openToHire ?? false,
         templateId: user.templateId ?? 'minimal',
         themeColor: user.themeColor ?? 'blue',
-        themeBg: user.themeBg ?? 'grid'
+        themeBg: user.themeBg ?? 'grid',
+        resumeParsesThisMonth: user.resumeParsesThisMonth ?? 0,
+        lastResumeParseReset: user.lastResumeParseReset
       },
       plan: subscriptionState.plan,
       isPremium: subscriptionState.isPremium,
@@ -954,6 +956,7 @@ async function autoGenerateResumeIfNeeded(userId: string): Promise<void> {
       github: contactEntries?.github || undefined,
       headline: profile.headline || undefined,
       bio: profile.bio || undefined,
+      photoUrl: user.photoUrl || undefined,
       aboutEntries: getEntries("about"),
       educationEntries: getEntries("education"),
       experienceEntries: getEntries("experience"),
@@ -1003,6 +1006,7 @@ router.post("/generate-resume", requireAuth, async (req: AuthenticatedRequest, r
       github: contactEntries?.github || undefined,
       headline: profile.headline || undefined,
       bio: profile.bio || undefined,
+      photoUrl: user.photoUrl || undefined,
       aboutEntries: getEntries("about"),
       educationEntries: getEntries("education"),
       experienceEntries: getEntries("experience"),
@@ -1020,6 +1024,7 @@ router.post("/generate-resume", requireAuth, async (req: AuthenticatedRequest, r
     res.json({ success: true, url: resumeUrl });
   } catch (err: any) {
     logger.error({ err, userId }, "Error compiling ATS PDF resume");
+    require('fs').writeFileSync('/Users/kavin/.gemini/antigravity-ide/brain/353d34a5-dd8f-4ed9-b917-1e6fe1f79084/scratch/pdf-error.log', err.stack || err.message || String(err));
     res.status(500).json({ error: err.message || "Failed to generate professional resume PDF" });
   }
 });

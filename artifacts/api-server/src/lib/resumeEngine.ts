@@ -1,3 +1,4 @@
+import sharp from 'sharp';
 import PDFDocument from 'pdfkit';
 
 export interface ResumeData {
@@ -8,6 +9,7 @@ export interface ResumeData {
   github?: string;
   headline?: string;
   bio?: string;
+  photoUrl?: string; // New field for profile image
   aboutEntries?: any[];
   educationEntries?: any[];
   experienceEntries?: any[];
@@ -17,8 +19,22 @@ export interface ResumeData {
   researchEntries?: any[];
 }
 
-export function generateATSResume(data: ResumeData): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
+async function fetchImageBuffer(url: string): Promise<Buffer | null> {
+  if (!url) return null;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const arrayBuffer = await res.arrayBuffer();
+    const rawBuffer = Buffer.from(arrayBuffer);
+    // Convert any image format to JPEG using sharp
+    return await sharp(rawBuffer).jpeg().toBuffer();
+  } catch (error) {
+    return null;
+  }
+}
+
+export async function generateATSResume(data: ResumeData): Promise<Buffer> {
+  return new Promise(async (resolve, reject) => {
     try {
       const doc = new PDFDocument({
         size: 'A4',
@@ -35,11 +51,29 @@ export function generateATSResume(data: ResumeData): Promise<Buffer> {
       const secondaryColor = '#475569'; // Slate 600
       const accentColor = '#2563eb'; // Blue 600
 
+      // Fetch profile image if provided
+      let imageBuffer: Buffer | null = null;
+      if (data.photoUrl) {
+        imageBuffer = await fetchImageBuffer(data.photoUrl);
+      }
+
       // Header section
+      let textStartX = 40;
+      if (imageBuffer) {
+        try {
+          // Draw image
+          doc.image(imageBuffer, 40, 40, { width: 60, height: 60 });
+          textStartX = 115; // Shift text right
+        } catch (err) {
+          // Ignore image parsing errors
+          textStartX = 40;
+        }
+      }
+
       doc.fillColor(primaryColor)
          .font('Helvetica-Bold')
          .fontSize(22)
-         .text(data.name, { align: 'center' });
+         .text(data.name, textStartX, 45, { align: 'left' });
 
       doc.moveDown(0.2);
 
@@ -53,9 +87,14 @@ export function generateATSResume(data: ResumeData): Promise<Buffer> {
       doc.font('Helvetica')
          .fontSize(9.5)
          .fillColor(secondaryColor)
-         .text(contacts.join('   |   '), { align: 'center' });
+         .text(contacts.join('   |   '), textStartX, doc.y, { align: 'left' });
 
-      doc.moveDown(0.5);
+      // Move Y below the header (which is max of image height or text height)
+      if (imageBuffer && doc.y < 110) {
+        doc.y = 115;
+      } else {
+        doc.moveDown(1);
+      }
 
       // Headline or summary
       const summary = data.headline || data.bio || (data.aboutEntries && data.aboutEntries[0]?.description);
@@ -72,19 +111,23 @@ export function generateATSResume(data: ResumeData): Promise<Buffer> {
       if (data.experienceEntries && data.experienceEntries.length > 0) {
         drawSectionHeader(doc, 'WORK EXPERIENCE', primaryColor);
         data.experienceEntries.forEach((exp: any) => {
-          const y = doc.y;
+          const startY = doc.y;
           doc.font('Helvetica-Bold')
              .fontSize(11)
              .fillColor(primaryColor);
           
-          const roleAndCompany = `${exp.role}  -  ${exp.company}`;
+          const roleAndCompany = `${exp.role || ''}  -  ${exp.company || ''}`;
           const duration = exp.duration || '';
           
-          doc.text(roleAndCompany, 40, y);
+          doc.text(roleAndCompany, 40, startY, { width: 400 });
+          const endY1 = doc.y;
+          
           doc.font('Helvetica')
              .fontSize(10)
              .fillColor(secondaryColor)
-             .text(duration, 40, y, { align: 'right' });
+             .text(duration, 40, startY, { align: 'right' });
+          const endY2 = doc.y;
+          doc.y = Math.max(endY1, endY2);
 
           if (exp.description) {
             doc.moveDown(0.2);
@@ -102,18 +145,23 @@ export function generateATSResume(data: ResumeData): Promise<Buffer> {
       if (data.projectEntries && data.projectEntries.length > 0) {
         drawSectionHeader(doc, 'PROJECTS', primaryColor);
         data.projectEntries.forEach((proj: any) => {
-          const y = doc.y;
+          const startY = doc.y;
           doc.font('Helvetica-Bold')
              .fontSize(11)
              .fillColor(primaryColor);
           
-          doc.text(proj.title, 40, y);
+          doc.text(proj.title || 'Project', 40, startY, { width: 400 });
+          const endY1 = doc.y;
+          let endY2 = startY;
+          
           if (proj.link) {
             doc.font('Helvetica')
                .fontSize(9.5)
                .fillColor(accentColor)
-               .text(proj.link, 40, y, { align: 'right' });
+               .text(proj.link, 40, startY, { align: 'right' });
+            endY2 = doc.y;
           }
+          doc.y = Math.max(endY1, endY2);
 
           if (proj.description) {
             doc.moveDown(0.2);
@@ -131,19 +179,23 @@ export function generateATSResume(data: ResumeData): Promise<Buffer> {
       if (data.educationEntries && data.educationEntries.length > 0) {
         drawSectionHeader(doc, 'EDUCATION', primaryColor);
         data.educationEntries.forEach((edu: any) => {
-          const y = doc.y;
+          const startY = doc.y;
           doc.font('Helvetica-Bold')
              .fontSize(11)
              .fillColor(primaryColor);
           
-          const degreeSchool = `${edu.degree}  -  ${edu.school}`;
+          const degreeSchool = `${edu.degree || ''}  -  ${edu.school || ''}`;
           const duration = edu.duration || '';
           
-          doc.text(degreeSchool, 40, y);
+          doc.text(degreeSchool, 40, startY, { width: 400 });
+          const endY1 = doc.y;
+          
           doc.font('Helvetica')
              .fontSize(10)
              .fillColor(secondaryColor)
-             .text(duration, 40, y, { align: 'right' });
+             .text(duration, 40, startY, { align: 'right' });
+          const endY2 = doc.y;
+          doc.y = Math.max(endY1, endY2);
 
           if (edu.grade) {
             doc.moveDown(0.15);
@@ -168,10 +220,10 @@ export function generateATSResume(data: ResumeData): Promise<Buffer> {
             doc.font('Helvetica-Bold')
                .fontSize(9.5)
                .fillColor(primaryColor)
-               .text(`[Certification] ${cert.name}`, { continued: true })
+               .text(`[Certification] ${cert.name || ''}`, { continued: true })
                .font('Helvetica')
                .fillColor(secondaryColor)
-               .text(`  |  Issued by: ${cert.issuer} ${cert.date ? `(${cert.date})` : ''}`);
+               .text(`  |  Issued by: ${cert.issuer || ''} ${cert.date ? `(${cert.date})` : ''}`);
             doc.moveDown(0.25);
           });
         }
@@ -181,10 +233,10 @@ export function generateATSResume(data: ResumeData): Promise<Buffer> {
             doc.font('Helvetica-Bold')
                .fontSize(9.5)
                .fillColor(primaryColor)
-               .text(`[Achievement] ${ach.title}`, { continued: true })
+               .text(`[Achievement] ${ach.title || ''}`, { continued: true })
                .font('Helvetica')
                .fillColor(secondaryColor)
-               .text(`  |  ${ach.organization} ${ach.date ? `(${ach.date})` : ''}`);
+               .text(`  |  ${ach.organization || ''} ${ach.date ? `(${ach.date})` : ''}`);
             doc.moveDown(0.25);
           });
         }

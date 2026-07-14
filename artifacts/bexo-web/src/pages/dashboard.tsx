@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useOnboarding, AssetMode, AssetData, FileAsset, LinkAsset } from '../context/OnboardingContext';
 import { Card, Button, Input, Label } from '../design-system/primitives';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../components/ui/dialog';
+import { Checkbox } from '../components/ui/checkbox';
+
 import { useToast } from '../hooks/use-toast';
 import {
   User,
@@ -32,7 +35,8 @@ import {
   CreditCard,
   CalendarClock,
   Crown,
-  Share2
+  Share2,
+  Lock
 } from 'lucide-react';
 import { cn } from '../design-system/primitives';
 import logo from '../assets/bexo-logo.png';
@@ -94,15 +98,22 @@ type BillingStatus = {
 export default function Dashboard() {
   const { data, updateData, setToken } = useOnboarding();
   const { toast } = useToast();
-  const [currentView, setCurrentView] = useState<'overview' | 'edit-profile' | 'resume' | 'settings'>('overview');
+  const [currentView, setCurrentView] = useState<'overview' | 'edit-profile' | 'updates' | 'settings'>('overview');
+  const [updatesTab, setUpdatesTab] = useState<'parse' | 'post'>('parse');
   const [settingsSubTab, setSettingsSubTab] = useState<'profile' | 'design' | 'storage' | 'billing'>('profile');
   const [showLoginToast, setShowLoginToast] = useState(false);
   
   // FAB & Update State
   const [showFabMenu, setShowFabMenu] = useState(false);
-  const [showPostUpdateModal, setShowPostUpdateModal] = useState(false);
-  const [newUpdateText, setNewUpdateText] = useState("");
   const fabRef = useRef<HTMLDivElement>(null);
+
+  // Dynamic Post Update States
+  const [updateCategory, setUpdateCategory] = useState<'achievement' | 'experience' | 'education' | 'project' | 'certificate' | 'research'>('education');
+  const [updateForm, setUpdateForm] = useState<any>({
+    assets: { mode: 'images' as AssetMode, images: [], pdfs: [], links: [] }
+  });
+  const [isUpdateUploading, setIsUpdateUploading] = useState(false);
+
 
   // Click outside listener for FAB
   useEffect(() => {
@@ -133,7 +144,11 @@ export default function Dashboard() {
   
   // Dropdown & modal states
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+
   const [showCompletionModal, setShowCompletionModal] = useState(false);
+  const [isCompileDialogOpen, setIsCompileDialogOpen] = useState(false);
+  const [hasAcceptedDeclaration, setHasAcceptedDeclaration] = useState(false);
+  const [isCompiling, setIsCompiling] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -339,8 +354,8 @@ export default function Dashboard() {
   ].reduce((sum, entries) => sum + (entries?.length || 0), 0);
   const nextAction = completionScore < 90
     ? { label: 'Complete portfolio', detail: 'Add the missing profile sections before sharing widely.', action: () => setShowCompletionModal(true), icon: CheckCircle2 }
-    : !data.resumeFileName
-      ? { label: 'Attach resume', detail: 'A resume improves the downloadable version and future parsing.', action: () => setCurrentView('resume'), icon: FileText }
+      : !data.resumeFileName
+      ? { label: 'Attach resume', detail: 'A resume improves the downloadable version and future parsing.', action: () => { setCurrentView('updates'); setUpdatesTab('parse'); }, icon: FileText }
       : !data.isPremium
         ? { label: 'Unlock Pro publishing', detail: 'Move to custom subdomain, premium templates, and 50MB storage.', action: openBilling, icon: Crown }
         : { label: 'Review live portfolio', detail: 'Your public page is ready for recruiters and applications.', action: () => window.open(correctVisitUrl, '_blank', 'noopener,noreferrer'), icon: ExternalLink };
@@ -542,6 +557,107 @@ export default function Dashboard() {
   // Asset handlers
   const handleAssetModeChange = (mode: AssetMode) => {
     setEditForm({ ...editForm, assets: { ...editForm.assets, mode } });
+  };
+  
+  const handleUpdateAssetModeChange = (mode: AssetMode) => {
+    setUpdateForm({ ...updateForm, assets: { ...updateForm.assets, mode } });
+  };
+
+  const handleUpdateFileUpload = (type: 'images' | 'pdfs') => {
+    if (isStorageFull) return;
+    const current = updateForm.assets?.[type] || [];
+    if (type === 'images' && current.length >= 5) return;
+    if (type === 'pdfs' && current.length >= 2) return;
+
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = type === 'images' ? 'image/*' : 'application/pdf';
+    input.onchange = (e: any) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      const sizeBytes = file.size;
+      if (usedStorage + sizeBytes > storageLimit) {
+        toast({ title: 'Quota Exceeded', description: 'Not enough storage.', variant: 'destructive' });
+        return;
+      }
+
+      setIsUpdateUploading(true);
+      const localUrl = URL.createObjectURL(file);
+      const tempId = `temp-${Date.now()}`;
+      const newAsset: FileAsset = { id: tempId, name: file.name, url: localUrl, sizeBytes, isUploading: true };
+
+      setUpdateForm((prev: any) => ({
+        ...prev,
+        assets: {
+          ...prev.assets,
+          [type]: [...(prev.assets?.[type] || []), newAsset]
+        }
+      }));
+
+      const formData = new FormData();
+      formData.append("file", file);
+      const token = localStorage.getItem('token');
+
+      fetch("/api/profile/upload", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}` },
+        body: formData
+      })
+      .then(r => r.json())
+      .then(res => {
+        if(res.error) throw new Error(res.error);
+        setUpdateForm((prev: any) => ({
+          ...prev,
+          assets: {
+            ...prev.assets,
+            [type]: prev.assets[type].map((a: any) => a.id === tempId ? { ...a, id: res.file.id, url: res.file.url, isUploading: false } : a)
+          }
+        }));
+      })
+      .catch(err => {
+        toast({ title: 'Upload Failed', description: err.message, variant: 'destructive' });
+        setUpdateForm((prev: any) => ({
+          ...prev,
+          assets: { ...prev.assets, [type]: prev.assets[type].filter((a: any) => a.id !== tempId) }
+        }));
+      })
+      .finally(() => {
+        setIsUpdateUploading(false);
+      });
+    };
+    input.click();
+  };
+  
+  const handleUpdateDeleteAsset = (type: 'images' | 'pdfs', id: string) => {
+    setUpdateForm((prev: any) => ({
+      ...prev,
+      assets: { ...prev.assets, [type]: prev.assets[type].filter((a: any) => a.id !== id) }
+    }));
+  };
+
+  const handleUpdateAddLink = () => {
+    setUpdateForm((prev: any) => ({
+      ...prev,
+      assets: { ...prev.assets, links: [...(prev.assets?.links || []), { url: '', label: '' }] }
+    }));
+  };
+
+  const handleUpdateDeleteLink = (index: number) => {
+    setUpdateForm((prev: any) => ({
+      ...prev,
+      assets: { ...prev.assets, links: prev.assets.links.filter((_: any, i: number) => i !== index) }
+    }));
+  };
+
+  const handleUpdateLinkChange = (index: number, field: 'url' | 'label', value: string) => {
+    setUpdateForm((prev: any) => ({
+      ...prev,
+      assets: {
+        ...prev.assets,
+        links: prev.assets.links.map((link: any, i: number) => i === index ? { ...link, [field]: value } : link)
+      }
+    }));
   };
 
   const handleFileUpload = (type: 'images' | 'pdfs') => {
@@ -1674,7 +1790,10 @@ export default function Dashboard() {
                 </Card>
 
                 <Card 
-                  onClick={() => setCurrentView('resume')} 
+                  onClick={() => {
+                    setCurrentView('updates');
+                    setUpdatesTab('parse');
+                  }} 
                   className="p-6 hover:shadow-md transition-shadow group cursor-pointer border-slate-200 bg-white flex flex-col justify-between"
                 >
                   <div>
@@ -2122,9 +2241,9 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* View 3: Manage Resume */}
-        {currentView === 'resume' && (
-          <div className="space-y-6 animate-in slide-in-from-bottom duration-300 max-w-xl mx-auto">
+        {/* View 3: Updates Hub */}
+        {currentView === 'updates' && (
+          <div className="space-y-6 animate-in slide-in-from-bottom duration-300 max-w-2xl mx-auto">
             <button 
               onClick={() => setCurrentView('overview')}
               className="inline-flex items-center gap-1 text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors"
@@ -2133,141 +2252,626 @@ export default function Dashboard() {
             </button>
 
             <div>
-              <h1 className="text-2.5xl font-serif font-bold text-slate-900 mb-1">Manage Resume</h1>
-              <p className="text-slate-500 text-sm">Upload or replace your PDF resume. Our parser will extract updated information.</p>
+              <h1 className="text-2.5xl font-serif font-bold text-slate-900 mb-1">Updates Hub</h1>
+              <p className="text-slate-500 text-sm">Parse your latest resume or add quick achievements to your portfolio.</p>
             </div>
 
-            <Card className="p-6 bg-white border border-slate-200 shadow-sm">
-              <div 
+            <div className="flex bg-slate-100 p-1 rounded-xl w-fit">
+              <button 
+                onClick={() => setUpdatesTab('parse')}
                 className={cn(
-                  "relative border-2 border-dashed rounded-2xl p-8 text-center transition-all duration-300",
-                  resumeStatus === 'idle' ? "border-slate-300 hover:border-indigo-500 bg-slate-50 hover:bg-indigo-50/20 cursor-pointer" :
-                  resumeStatus === 'success' ? "border-emerald-500 bg-emerald-50/10" :
-                  "border-indigo-500 bg-indigo-50/20"
+                  "px-4 py-2 text-sm font-semibold rounded-lg transition-all",
+                  updatesTab === 'parse' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
                 )}
-                onClick={() => resumeStatus === 'idle' && resumeInputRef.current?.click()}
               >
-                <input 
-                  type="file" 
-                  ref={resumeInputRef}
-                  className="hidden" 
-                  accept="application/pdf"
-                  onChange={handleResumeChange}
-                />
-
-                {resumeStatus === 'idle' && (
-                  <div className="flex flex-col items-center">
-                    <div className="w-12 h-12 bg-indigo-50 text-indigo-500 rounded-full flex items-center justify-center mb-3">
-                      <UploadCloud className="w-6 h-6" />
-                    </div>
-                    <h3 className="text-sm font-bold text-slate-900 mb-0.5">Click to upload PDF resume</h3>
-                    <p className="text-slate-400 text-xs">PDF format only, up to 5MB.</p>
-                  </div>
+                Parse Resume
+              </button>
+              <button 
+                onClick={() => setUpdatesTab('post')}
+                className={cn(
+                  "px-4 py-2 text-sm font-semibold rounded-lg transition-all",
+                  updatesTab === 'post' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
                 )}
+              >
+                Post Achievement
+              </button>
+            </div>
 
-                {(resumeStatus === 'uploading' || resumeStatus === 'parsing') && (
-                  <div className="flex flex-col items-center">
-                    <Loader2 className="w-8 h-8 animate-spin text-indigo-500 mb-3" />
-                    <h3 className="text-sm font-bold text-slate-900 mb-0.5">
-                      {resumeStatus === 'uploading' ? 'Uploading resume...' : 'Parsing resume details...'}
-                    </h3>
-                    <p className="text-slate-400 text-xs">Structuring your sections.</p>
-                    
-                    <div className="w-full max-w-xs mt-4 h-1 bg-slate-200 rounded-full overflow-hidden">
-                      <div 
-                        className={cn(
-                          "h-full bg-indigo-600 rounded-full transition-all duration-700",
-                          resumeStatus === 'uploading' ? "w-1/3" : "w-4/5"
+            {updatesTab === 'parse' && (
+              <div className="space-y-6">
+                {/* Pre-flight limit check */}
+                {(() => {
+                  const now = new Date();
+                  const resetTime = data.lastResumeParseReset ? new Date(data.lastResumeParseReset) : now;
+                  const diffDays = Math.floor((now.getTime() - resetTime.getTime()) / (1000 * 60 * 60 * 24));
+                  
+                  let limitDays = 30;
+                  let limitParses = 0;
+                  let planDisplay = "Free";
+
+                  if (!data.plan || data.plan === "free") {
+                    limitDays = 50;
+                    limitParses = 1;
+                  } else if (data.plan === "lifetime") {
+                    limitDays = 30;
+                    limitParses = 3;
+                    planDisplay = "Lifetime";
+                  } else if (data.plan === "annual") {
+                    limitDays = 30;
+                    limitParses = 10;
+                    planDisplay = "Annual";
+                  }
+
+                  const actualParsesCount = diffDays >= limitDays ? 0 : data.resumeParsesThisMonth;
+                  const actualDiffDays = diffDays >= limitDays ? 0 : diffDays;
+                  const remaining = Math.max(limitParses - actualParsesCount, 0);
+                  const daysToReset = Math.max(limitDays - actualDiffDays, 1);
+                  const isLocked = remaining <= 0;
+
+                  return (
+                    <>
+                      <Card className="p-5 bg-white border border-slate-200 shadow-sm flex items-center justify-between">
+                        <div>
+                          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">AI Parse Limit ({planDisplay})</p>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xl font-bold text-slate-900">{remaining}</span>
+                            <span className="text-slate-500 text-sm">of {limitParses} remaining</span>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs text-slate-500 mb-1">Resets in</p>
+                          <p className="text-sm font-semibold text-indigo-600">{daysToReset} Days</p>
+                        </div>
+                      </Card>
+
+                      <Card className="p-6 bg-white border border-slate-200 shadow-sm relative overflow-hidden">
+                        {isLocked && (
+                          <div className="absolute inset-0 z-10 bg-white/70 backdrop-blur-sm flex flex-col items-center justify-center">
+                            <div className="w-12 h-12 bg-red-50 text-red-500 rounded-full flex items-center justify-center mb-3 shadow-sm">
+                              <Lock className="w-6 h-6" />
+                            </div>
+                            <h3 className="font-bold text-slate-900 mb-1">Quota Exhausted</h3>
+                            <p className="text-sm text-slate-600 max-w-xs text-center mb-4">
+                              You've used all your AI parses for this period. Please wait {daysToReset} days for the quota to reset.
+                            </p>
+                            {(!data.isPremium || data.plan === 'free') && (
+                              <Button onClick={openBilling} size="sm">Upgrade to Pro</Button>
+                            )}
+                          </div>
                         )}
-                      />
-                    </div>
-                  </div>
-                )}
+                        
+                        <div 
+                          className={cn(
+                            "relative border-2 border-dashed rounded-2xl p-8 text-center transition-all duration-300",
+                            isLocked ? "opacity-40 pointer-events-none border-slate-200 bg-slate-50" :
+                            resumeStatus === 'idle' ? "border-slate-300 hover:border-indigo-500 bg-slate-50 hover:bg-indigo-50/20 cursor-pointer" :
+                            resumeStatus === 'success' ? "border-emerald-500 bg-emerald-50/10" :
+                            "border-indigo-500 bg-indigo-50/20"
+                          )}
+                          onClick={() => !isLocked && resumeStatus === 'idle' && resumeInputRef.current?.click()}
+                        >
+                          <input 
+                            type="file" 
+                            ref={resumeInputRef}
+                            className="hidden" 
+                            accept="application/pdf"
+                            onChange={handleResumeChange}
+                          />
 
-                {resumeStatus === 'success' && (
-                  <div className="flex flex-col items-center">
-                    <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-3">
-                      <CheckCircle2 className="w-6 h-6" />
-                    </div>
-                    <h3 className="text-sm font-bold text-slate-950 mb-2">Resume uploaded successfully</h3>
-                    <div className="flex items-center gap-1.5 text-slate-700 bg-white border border-slate-200 px-3 py-1.5 rounded-lg text-xs shadow-sm max-w-[250px] truncate">
-                      <FileText className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-                      <span className="truncate">{resumeFile?.name || data.resumeFileName || 'resume.pdf'}</span>
-                    </div>
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); handleRemoveResume(); }} 
-                      className="text-xs text-red-500 hover:text-red-700 font-semibold mt-4 hover:underline"
-                    >
-                      Delete Resume
-                    </button>
-                  </div>
-                )}
+                          {resumeStatus === 'idle' && (
+                            <div className="flex flex-col items-center">
+                              <div className="w-12 h-12 bg-indigo-50 text-indigo-500 rounded-full flex items-center justify-center mb-3">
+                                <UploadCloud className="w-6 h-6" />
+                              </div>
+                              <h3 className="text-sm font-bold text-slate-900 mb-0.5">Click to upload PDF resume</h3>
+                              <p className="text-slate-400 text-xs">PDF format only, up to 5MB.</p>
+                            </div>
+                          )}
+
+                          {(resumeStatus === 'uploading' || resumeStatus === 'parsing') && (
+                            <div className="flex flex-col items-center">
+                              <Loader2 className="w-8 h-8 animate-spin text-indigo-500 mb-3" />
+                              <h3 className="text-sm font-bold text-slate-900 mb-0.5">
+                                {resumeStatus === 'uploading' ? 'Uploading resume...' : 'Parsing resume details...'}
+                              </h3>
+                              <p className="text-slate-400 text-xs">Structuring your sections.</p>
+                              
+                              <div className="w-full max-w-xs mt-4 h-1 bg-slate-200 rounded-full overflow-hidden">
+                                <div 
+                                  className={cn(
+                                    "h-full bg-indigo-600 rounded-full transition-all duration-700",
+                                    resumeStatus === 'uploading' ? "w-1/3" : "w-4/5"
+                                  )}
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          {resumeStatus === 'success' && (
+                            <div className="flex flex-col items-center">
+                              <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-3">
+                                <CheckCircle2 className="w-6 h-6" />
+                              </div>
+                              <h3 className="text-sm font-bold text-slate-950 mb-2">Resume uploaded successfully</h3>
+                              <div className="flex items-center gap-1.5 text-slate-700 bg-white border border-slate-200 px-3 py-1.5 rounded-lg text-xs shadow-sm max-w-[250px] truncate">
+                                <FileText className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                                <span className="truncate">{resumeFile?.name || data.resumeFileName || 'resume.pdf'}</span>
+                              </div>
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); handleRemoveResume(); }} 
+                                className="text-xs text-red-500 hover:text-red-700 font-semibold mt-4 hover:underline"
+                              >
+                                Delete Resume
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </Card>
+
+                      {/* Generated PDF Resume Panel */}
+                      {data.resumeUrl && (
+                        <Card className="p-6 bg-white border border-slate-200 shadow-sm flex flex-col gap-4 animate-in slide-in-from-bottom duration-300">
+                          <div className="flex items-center justify-between border-b border-slate-150 pb-3">
+                            <div className="space-y-0.5">
+                              <h3 className="text-sm font-bold text-slate-900">Your Current Resume PDF</h3>
+                              <p className="text-xs text-slate-500">Your resume is parsed and synchronized with your digital portfolio details.</p>
+                            </div>
+                            <a 
+                              href={data.resumeUrl} 
+                              target="_blank" 
+                              rel="noreferrer" 
+                              className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-650 hover:text-indigo-850 hover:underline"
+                            >
+                              View / Download <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                          </div>
+
+                          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 bg-slate-50 p-4 rounded-xl border border-slate-150">
+                            <div className="flex items-center gap-2">
+                              <FileText className="w-5 h-5 text-indigo-500 shrink-0" />
+                              <span className="text-xs font-medium text-slate-800">
+                                ATS Professional Resume PDF
+                              </span>
+                            </div>
+                            <div className="flex gap-2">
+                              
+                              <Button 
+                                onClick={() => { setIsCompileDialogOpen(true); setHasAcceptedDeclaration(false); }}
+                                variant="secondary" 
+                                size="sm" 
+                                className="text-xs h-9 px-3 flex gap-1 bg-white hover:bg-slate-100 border-slate-200"
+                              >
+                                Re-Compile PDF
+                              </Button>
+
+                              <Dialog open={isCompileDialogOpen} onOpenChange={setIsCompileDialogOpen}>
+                                <DialogContent className="sm:max-w-[425px]">
+                                  <DialogHeader>
+                                    <DialogTitle>Compile Professional ATS Resume</DialogTitle>
+                                    <DialogDescription>
+                                      Your resume will be generated dynamically using the information provided in your portfolio (Education, Experience, Projects, etc.).
+                                    </DialogDescription>
+                                  </DialogHeader>
+                                  <div className="py-4 space-y-4">
+                                    <div className="flex items-start space-x-3 p-3 bg-amber-50 text-amber-800 rounded-lg text-sm border border-amber-200/50">
+                                      <Checkbox 
+                                        id="declaration" 
+                                        checked={hasAcceptedDeclaration} 
+                                        onCheckedChange={(c) => setHasAcceptedDeclaration(!!c)} 
+                                        className="mt-0.5 border-amber-300 data-[state=checked]:bg-amber-600 data-[state=checked]:border-amber-600"
+                                      />
+                                      <div className="grid gap-1.5 leading-none">
+                                        <label htmlFor="declaration" className="font-semibold text-sm cursor-pointer">
+                                          Declaration of Authenticity
+                                        </label>
+                                        <p className="text-xs text-amber-700/80 leading-snug">
+                                          I hereby declare that all the details, achievements, and assets provided by me are original, verified, and strictly correct to the best of my knowledge.
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <p className="text-xs text-slate-500 bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                      <strong className="text-slate-700">Need to make changes?</strong> Close this window and post an update or edit your portfolio details first before generating.
+                                    </p>
+                                  </div>
+                                  <DialogFooter className="flex-col sm:flex-row gap-2">
+                                    <Button variant="outline" onClick={() => setIsCompileDialogOpen(false)}>
+                                      Cancel & Edit Content
+                                    </Button>
+                                    <Button 
+                                      disabled={!hasAcceptedDeclaration || isCompiling}
+                                      onClick={async () => {
+                                        setIsCompiling(true);
+                                        try {
+                                          const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+                                          const token = localStorage.getItem('token');
+                                          const res = await fetch(`${apiUrl}/api/profile/generate-resume`, {
+                                            method: 'POST',
+                                            headers: {
+                                              'Authorization': `Bearer ${token}`
+                                            }
+                                          });
+                                          if (!res.ok) {
+                                            const errorData = await res.json().catch(() => ({}));
+                                            throw new Error(errorData.error || 'Generation failed');
+                                          }
+                                          const result = await res.json();
+                                          updateData({ resumeUrl: result.url });
+                                          setIsCompileDialogOpen(false);
+                                          toast({
+                                            title: "Resume Compiled",
+                                            description: "ATS Professional Resume compiled successfully from current details."
+                                          });
+                                        } catch (err: any) {
+                                          toast({
+                                            title: "Error",
+                                            description: err.message || "Failed to compile resume",
+                                            variant: "destructive"
+                                          });
+                                        } finally {
+                                          setIsCompiling(false);
+                                        }
+                                      }}
+                                    >
+                                      {isCompiling ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
+                                      Compile PDF
+                                    </Button>
+                                  </DialogFooter>
+                                </DialogContent>
+                              </Dialog>
+                              <a href={data.resumeUrl} target="_blank" rel="noreferrer">
+                                <Button size="sm" className="text-xs h-9 px-3 flex gap-1">
+                                  Download PDF
+                                </Button>
+                              </a>
+                            </div>
+                          </div>
+                        </Card>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
-            </Card>
+            )}
 
-            {/* Generated PDF Resume Panel */}
-            {data.resumeUrl && (
-              <Card className="p-6 bg-white border border-slate-200 shadow-sm flex flex-col gap-4 animate-in slide-in-from-bottom duration-300">
-                <div className="flex items-center justify-between border-b border-slate-150 pb-3">
-                  <div className="space-y-0.5">
-                    <h3 className="text-sm font-bold text-slate-900">Your Current Resume PDF</h3>
-                    <p className="text-xs text-slate-500">Your resume is parsed and synchronized with your digital portfolio details.</p>
+            {updatesTab === 'post' && (
+              <Card className="p-6 bg-white border border-slate-200 shadow-sm animate-in slide-in-from-bottom duration-300">
+                <div className="space-y-6">
+                  <div>
+                    <Label className="text-sm font-semibold text-slate-800">What type of update is this?</Label>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {[
+                        { id: 'education', label: 'Education' },
+                        { id: 'experience', label: 'Experience' },
+                        { id: 'project', label: 'Projects' },
+                        { id: 'certificate', label: 'Certificates' },
+                        { id: 'achievement', label: 'Achievements' },
+                        { id: 'research', label: 'Research' }
+                      ].map(cat => (
+                        <button
+                          key={cat.id}
+                          onClick={() => {
+                            setUpdateCategory(cat.id as any);
+                            setUpdateForm({ assets: { mode: 'images' as AssetMode, images: [], pdfs: [], links: [] } });
+                          }}
+                          className={cn(
+                            "px-4 py-2 rounded-lg text-sm font-medium transition-all border",
+                            updateCategory === cat.id 
+                              ? "bg-indigo-50 border-indigo-200 text-indigo-700" 
+                              : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                          )}
+                        >
+                          {cat.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  <a 
-                    href={data.resumeUrl} 
-                    target="_blank" 
-                    rel="noreferrer" 
-                    className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-650 hover:text-indigo-850 hover:underline"
-                  >
-                    View / Download <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                </div>
 
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 bg-slate-50 p-4 rounded-xl border border-slate-150">
-                  <div className="flex items-center gap-2">
-                    <FileText className="w-5 h-5 text-indigo-500 shrink-0" />
-                    <span className="text-xs font-medium text-slate-800">
-                      ATS Professional Resume PDF
-                    </span>
+                    {/* Shared Assets UI for supported categories */}
+                    {['project', 'certificate', 'achievement', 'research'].includes(updateCategory) && (
+                      <div className="pt-4 mt-4 border-t border-slate-100">
+                        <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider mb-3 block">Attachments</Label>
+                        <div className="bg-slate-50 border border-slate-200 rounded-xl overflow-hidden">
+                          <div className="flex border-b border-slate-200">
+                            {[
+                              { id: 'images', icon: ImageIcon, label: 'Images' },
+                              { id: 'pdfs', icon: FileText, label: 'PDFs' },
+                              { id: 'links', icon: LinkIcon, label: 'Links' }
+                            ].map(tab => (
+                              <button
+                                key={tab.id}
+                                type="button"
+                                onClick={() => handleUpdateAssetModeChange(tab.id as AssetMode)}
+                                className={cn(
+                                  "flex-1 py-2 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors",
+                                  updateForm.assets?.mode === tab.id
+                                    ? "bg-white text-indigo-600 border-b-2 border-indigo-600"
+                                    : "text-slate-500 hover:bg-slate-100"
+                                )}
+                              >
+                                <tab.icon className="w-3.5 h-3.5" />
+                                {tab.label}
+                              </button>
+                            ))}
+                          </div>
+                          
+                          <div className="p-4 bg-white min-h-[120px]">
+                            {updateForm.assets?.mode === 'images' && (
+                              <div className="space-y-3">
+                                <div className="flex justify-between items-center">
+                                  <p className="text-xs text-slate-500">Upload screenshots or proof (Max 5)</p>
+                                  <Button type="button" variant="outline" size="sm" className="h-8 text-xs px-3" onClick={() => handleUpdateFileUpload('images')} disabled={(updateForm.assets?.images || []).length >= 5 || isStorageFull || isUpdateUploading}>
+                                    {isUpdateUploading ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Upload className="w-3.5 h-3.5 mr-1.5" />}
+                                    Upload Image
+                                  </Button>
+                                </div>
+                                {(updateForm.assets?.images || []).length > 0 && (
+                                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                    {(updateForm.assets.images || []).map((img: any) => (
+                                      <div key={img.id} className="relative aspect-video rounded-lg border border-slate-200 overflow-hidden group bg-slate-100">
+                                        {img.isUploading ? (
+                                          <div className="absolute inset-0 flex items-center justify-center bg-slate-100/80">
+                                            <Loader2 className="w-5 h-5 text-slate-400 animate-spin" />
+                                          </div>
+                                        ) : (
+                                          <>
+                                            <img src={img.url} alt={img.name} className="w-full h-full object-cover" />
+                                            <button type="button" onClick={() => handleUpdateDeleteAsset('images', img.id)} className="absolute top-1 right-1 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm">
+                                              <X className="w-3.5 h-3.5" />
+                                            </button>
+                                          </>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {updateForm.assets?.mode === 'pdfs' && (
+                              <div className="space-y-3">
+                                <div className="flex justify-between items-center">
+                                  <p className="text-xs text-slate-500">Upload PDF documents (Max 2)</p>
+                                  <Button type="button" variant="outline" size="sm" className="h-8 text-xs px-3" onClick={() => handleUpdateFileUpload('pdfs')} disabled={(updateForm.assets?.pdfs || []).length >= 2 || isStorageFull || isUpdateUploading}>
+                                    {isUpdateUploading ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Upload className="w-3.5 h-3.5 mr-1.5" />}
+                                    Upload PDF
+                                  </Button>
+                                </div>
+                                {(updateForm.assets?.pdfs || []).length > 0 && (
+                                  <div className="space-y-2">
+                                    {(updateForm.assets.pdfs || []).map((pdf: any) => (
+                                      <div key={pdf.id} className="flex items-center justify-between p-2.5 rounded-lg border border-slate-200 bg-slate-50">
+                                        <div className="flex items-center gap-2 overflow-hidden">
+                                          {pdf.isUploading ? <Loader2 className="w-4 h-4 text-slate-400 animate-spin shrink-0" /> : <FileText className="w-4 h-4 text-red-500 shrink-0" />}
+                                          <span className="text-xs font-medium text-slate-700 truncate">{pdf.name}</span>
+                                        </div>
+                                        {!pdf.isUploading && (
+                                          <button type="button" onClick={() => handleUpdateDeleteAsset('pdfs', pdf.id)} className="p-1 hover:bg-slate-200 rounded text-slate-500 hover:text-red-500 transition-colors">
+                                            <X className="w-4 h-4" />
+                                          </button>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {updateForm.assets?.mode === 'links' && (
+                              <div className="space-y-3">
+                                <div className="flex justify-between items-center">
+                                  <p className="text-xs text-slate-500">Add external URLs</p>
+                                  <Button type="button" variant="outline" size="sm" className="h-8 text-xs px-3" onClick={handleUpdateAddLink}>
+                                    <Plus className="w-3.5 h-3.5 mr-1.5" />
+                                    Add Link
+                                  </Button>
+                                </div>
+                                {(updateForm.assets?.links || []).length > 0 && (
+                                  <div className="space-y-2">
+                                    {(updateForm.assets.links || []).map((link: any, i: number) => (
+                                      <div key={i} className="flex items-start gap-2">
+                                        <div className="flex-1 space-y-2">
+                                          <Input placeholder="Label (e.g. Live Demo)" value={link.label} onChange={e => handleUpdateLinkChange(i, 'label', e.target.value)} className="h-8 text-xs" />
+                                          <Input placeholder="URL (https://...)" value={link.url} onChange={e => handleUpdateLinkChange(i, 'url', e.target.value)} className="h-8 text-xs" />
+                                        </div>
+                                        <button type="button" onClick={() => handleUpdateDeleteLink(i)} className="mt-1 p-1.5 hover:bg-red-50 rounded-lg text-slate-400 hover:text-red-500 transition-colors">
+                                          <Trash2 className="w-4 h-4" />
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                  <div className="space-y-4 pt-4 border-t border-slate-100">
+                    {['achievement', 'research'].includes(updateCategory) && (
+                      <>
+                        <div className="space-y-1">
+                          <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Title</Label>
+                          <Input value={updateForm.title || ''} onChange={e => setUpdateForm({...updateForm, title: e.target.value})} placeholder="E.g., Promoted to Senior Developer" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Organization/Context</Label>
+                            <Input value={updateForm.organization || ''} onChange={e => setUpdateForm({...updateForm, organization: e.target.value})} placeholder="E.g., Google" />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Date</Label>
+                            <Input value={updateForm.date || ''} onChange={e => setUpdateForm({...updateForm, date: e.target.value})} placeholder="E.g., Oct 2026" />
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {updateCategory === 'experience' && (
+                      <>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Role/Title</Label>
+                            <Input value={updateForm.role || ''} onChange={e => setUpdateForm({...updateForm, role: e.target.value})} placeholder="E.g., Software Engineer" />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Company</Label>
+                            <Input value={updateForm.company || ''} onChange={e => setUpdateForm({...updateForm, company: e.target.value})} placeholder="E.g., Bexo Inc." />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Start Date</Label>
+                            <Input value={updateForm.startYear || ''} onChange={e => setUpdateForm({...updateForm, startYear: e.target.value})} placeholder="E.g., Jan 2023" />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">End Date</Label>
+                            <Input value={updateForm.endYear || ''} onChange={e => setUpdateForm({...updateForm, endYear: e.target.value})} placeholder="E.g., Present" />
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Description</Label>
+                          <textarea 
+                            value={updateForm.description || ''} 
+                            onChange={e => setUpdateForm({...updateForm, description: e.target.value})} 
+                            className="w-full h-24 px-3 py-2 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 resize-none"
+                            placeholder="What did you achieve?"
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    {updateCategory === 'education' && (
+                      <>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Institution</Label>
+                            <Input value={updateForm.institution || ''} onChange={e => setUpdateForm({...updateForm, institution: e.target.value})} placeholder="E.g., Stanford University" />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Degree/Major</Label>
+                            <Input value={updateForm.degree || ''} onChange={e => setUpdateForm({...updateForm, degree: e.target.value})} placeholder="E.g., BS Computer Science" />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-3 gap-4">
+                          <div className="space-y-1">
+                            <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Start Year</Label>
+                            <Input value={updateForm.startYear || ''} onChange={e => setUpdateForm({...updateForm, startYear: e.target.value})} placeholder="2020" />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">End Year</Label>
+                            <Input value={updateForm.endYear || ''} onChange={e => setUpdateForm({...updateForm, endYear: e.target.value})} placeholder="2024" />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Grade/GPA</Label>
+                            <Input value={updateForm.grade || ''} onChange={e => setUpdateForm({...updateForm, grade: e.target.value})} placeholder="E.g., 3.8/4.0" />
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {updateCategory === 'project' && (
+                      <>
+                        <div className="space-y-1">
+                          <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Project Title</Label>
+                          <Input value={updateForm.title || ''} onChange={e => setUpdateForm({...updateForm, title: e.target.value})} placeholder="E.g., E-commerce Platform" />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Tech Stack</Label>
+                          <Input value={updateForm.tech || ''} onChange={e => setUpdateForm({...updateForm, tech: e.target.value})} placeholder="E.g., React, Node.js, MongoDB" />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Live Link / Repo</Label>
+                          <Input value={updateForm.link || ''} onChange={e => setUpdateForm({...updateForm, link: e.target.value})} placeholder="https://github.com/..." />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Description</Label>
+                          <textarea 
+                            value={updateForm.description || ''} 
+                            onChange={e => setUpdateForm({...updateForm, description: e.target.value})} 
+                            className="w-full h-24 px-3 py-2 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 resize-none"
+                            placeholder="Describe what you built..."
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    {updateCategory === 'certificate' && (
+                      <>
+                        <div className="space-y-1">
+                          <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Certificate Title</Label>
+                          <Input value={updateForm.title || ''} onChange={e => setUpdateForm({...updateForm, title: e.target.value})} placeholder="E.g., AWS Solutions Architect" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Issuer</Label>
+                            <Input value={updateForm.issuer || ''} onChange={e => setUpdateForm({...updateForm, issuer: e.target.value})} placeholder="E.g., Amazon Web Services" />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Date Earned</Label>
+                            <Input value={updateForm.date || ''} onChange={e => setUpdateForm({...updateForm, date: e.target.value})} placeholder="E.g., Oct 2026" />
+                          </div>
+                        </div>
+                      </>
+                    )}
+
                   </div>
-                  <div className="flex gap-2">
+
+                  <div className="flex justify-end pt-4 border-t border-slate-100">
                     <Button 
-                      onClick={async () => {
-                        try {
-                          const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001';
-                          const token = localStorage.getItem('token');
-                          const res = await fetch(`${apiUrl}/api/profile/generate-resume`, {
-                            method: 'POST',
-                            headers: {
-                              'Authorization': `Bearer ${token}`
-                            }
+                      className="h-10 px-6"
+                      onClick={() => {
+                        // Check uploading state
+                        if (isUpdateUploading) {
+                          toast({ title: 'Wait', description: 'Please wait for files to finish uploading.', variant: 'destructive' });
+                          return;
+                        }
+
+                        // Validate minimum requirements for the specific category
+                        let isValid = false;
+                        if (['achievement', 'research'].includes(updateCategory) && updateForm.title?.trim()) isValid = true;
+                        if (updateCategory === 'experience' && updateForm.role?.trim() && updateForm.company?.trim()) isValid = true;
+                        if (updateCategory === 'education' && updateForm.institution?.trim() && updateForm.degree?.trim()) isValid = true;
+                        if (updateCategory === 'project' && updateForm.title?.trim()) isValid = true;
+                        if (updateCategory === 'certificate' && updateForm.title?.trim() && updateForm.issuer?.trim()) isValid = true;
+
+                        if (isValid) {
+                          const newEntry = {
+                            id: Date.now().toString(),
+                            ...updateForm
+                          };
+                          
+                          // Map category to the data key
+                          const stateKeyMap: Record<string, string> = {
+                            'achievement': 'achievementEntries',
+                            'experience': 'experienceEntries',
+                            'education': 'educationEntries',
+                            'project': 'projectEntries',
+                            'certificate': 'certificateEntries',
+                            'research': 'researchEntries'
+                          };
+                          const targetKey = stateKeyMap[updateCategory];
+                          const currentList = Array.isArray((data as any)[targetKey]) ? (data as any)[targetKey] : [];
+                          
+                          updateData({
+                            [targetKey]: [...currentList, newEntry]
                           });
-                          if (!res.ok) throw new Error('Generation failed');
-                          const result = await res.json();
-                          updateData({ resumeUrl: result.url });
+                          
                           toast({
-                            title: "Resume Compiled",
-                            description: "ATS Professional Resume compiled successfully from current details."
+                            title: "Update posted!",
+                            description: "Your new entry has been added to your profile."
                           });
-                        } catch (err: any) {
-                          toast({
-                            title: "Error",
-                            description: err.message || "Failed to compile resume",
-                            variant: "destructive"
-                          });
+                          
+                          // Reset form
+                          setUpdateForm({ assets: { mode: 'images' as AssetMode, images: [], pdfs: [], links: [] } });
+                          setCurrentView('overview');
+                        } else {
+                          toast({ title: 'Incomplete', description: 'Please fill out the required primary fields.', variant: 'destructive' });
                         }
                       }}
-                      variant="secondary" 
-                      size="sm" 
-                      className="text-xs h-9 px-3 flex gap-1 bg-white hover:bg-slate-100 border-slate-200"
                     >
-                      Re-Compile PDF
+                      Post Update to Profile
                     </Button>
-                    <a href={data.resumeUrl} target="_blank" rel="noreferrer">
-                      <Button size="sm" className="text-xs h-9 px-3 flex gap-1">
-                        Download PDF
-                      </Button>
-                    </a>
                   </div>
                 </div>
               </Card>
@@ -3004,39 +3608,39 @@ export default function Dashboard() {
         <div ref={fabRef} className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3 animate-in slide-in-from-bottom-8 fade-in duration-300">
           {showFabMenu && (
             <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col w-56 animate-in slide-in-from-bottom-4 fade-in duration-200 origin-bottom-right">
-              <button
-                onClick={() => {
-                  setShowFabMenu(false);
-                  setCurrentView('edit-profile');
-                  setActiveEditorTab('about'); // or wherever the file upload is located
-                  // We'll jump to settings if they need to upload there, or just open edit-profile
-                }}
-                className="flex items-center gap-3 px-4 py-3.5 hover:bg-indigo-50 text-left text-sm font-semibold text-slate-800 hover:text-indigo-700 transition-colors border-b border-slate-100"
-              >
-                <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
-                  <UploadCloud className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="leading-none mb-1">Parse My Resume</div>
-                  <div className="text-[10px] text-slate-500 font-normal leading-tight">Auto-fill via AI</div>
-                </div>
-              </button>
-              
-              <button
-                onClick={() => {
-                  setShowFabMenu(false);
-                  setShowPostUpdateModal(true);
-                }}
-                className="flex items-center gap-3 px-4 py-3.5 hover:bg-emerald-50 text-left text-sm font-semibold text-slate-800 hover:text-emerald-700 transition-colors"
-              >
-                <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
-                  <Plus className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="leading-none mb-1">Post an Update</div>
-                  <div className="text-[10px] text-slate-500 font-normal leading-tight">Add a quick achievement</div>
-                </div>
-              </button>
+
+              <button 
+                  onClick={() => {
+                    setShowFabMenu(false);
+                    setCurrentView('updates');
+                    setUpdatesTab('parse');
+                  }}
+                  className="flex items-center gap-3 p-3 w-full hover:bg-slate-50 transition-colors group"
+                >
+                  <div className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:bg-indigo-100 group-hover:scale-105 transition-all">
+                    <UploadCloud className="w-5 h-5" />
+                  </div>
+                  <div className="text-left">
+                    <div className="font-semibold text-sm text-slate-900 group-hover:text-indigo-600 transition-colors">Parse My Resume</div>
+                    <div className="text-[10px] text-slate-500 font-normal leading-tight">Auto-fill via AI</div>
+                  </div>
+                </button>
+                <button 
+                  onClick={() => {
+                    setShowFabMenu(false);
+                    setCurrentView('updates');
+                    setUpdatesTab('post');
+                  }}
+                  className="flex items-center gap-3 p-3 w-full hover:bg-slate-50 transition-colors group"
+                >
+                  <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:bg-emerald-100 group-hover:scale-105 transition-all">
+                    <Plus className="w-5 h-5" />
+                  </div>
+                  <div className="text-left">
+                    <div className="font-semibold text-sm text-slate-900 group-hover:text-emerald-600 transition-colors">Post an Update</div>
+                    <div className="text-[10px] text-slate-500 font-normal leading-tight">Add a quick achievement</div>
+                  </div>
+                </button>
             </div>
           )}
 
@@ -3048,57 +3652,7 @@ export default function Dashboard() {
           </button>
         </div>
 
-        {/* Post Update Modal */}
-        {showPostUpdateModal && (
-          <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
-              <div className="flex items-center justify-between p-4 border-b border-slate-100">
-                <h3 className="font-bold text-slate-900">Post an Update</h3>
-                <button onClick={() => setShowPostUpdateModal(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-full transition-colors">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="p-5 space-y-4">
-                <div>
-                  <Label>What's new?</Label>
-                  <textarea 
-                    value={newUpdateText}
-                    onChange={(e) => setNewUpdateText(e.target.value)}
-                    placeholder="E.g., Just earned my AWS Solutions Architect certification!"
-                    className="w-full h-32 px-3 py-2 mt-1.5 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 resize-none"
-                  />
-                </div>
-                <Button 
-                  className="w-full h-11"
-                  onClick={() => {
-                    if (newUpdateText.trim()) {
-                      const newAchievement = {
-                        id: Date.now().toString(),
-                        title: newUpdateText.trim(),
-                        date: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short' }),
-                        organization: "",
-                        assets: { mode: 'images' as const, images: [], pdfs: [], links: [] }
-                      };
-                      const currentAchievements = Array.isArray(data.achievementEntries) ? data.achievementEntries : [];
-                      updateData({
-                        achievementEntries: [...currentAchievements, newAchievement]
-                      });
-                      toast({
-                        title: "Update posted!",
-                        description: "Your achievement has been added."
-                      });
-                      setNewUpdateText("");
-                      setShowPostUpdateModal(false);
-                    }
-                  }}
-                  disabled={!newUpdateText.trim()}
-                >
-                  Post Update
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
+
       </main>
     </div>
   );

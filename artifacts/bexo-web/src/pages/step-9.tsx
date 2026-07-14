@@ -40,6 +40,7 @@ export default function Step9Plan() {
   const [couponCode, setCouponCode] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
   const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
+  const [showUpgradeOptions, setShowUpgradeOptions] = useState(false);
 
   // Free flow states
   const [freeFlowStep, setFreeFlowStep] = useState<'none' | 'warning' | 'handle'>('none');
@@ -79,7 +80,7 @@ export default function Step9Plan() {
 
   // Compute the user's portfolio URL for display
   const handleStr = data.handle || (data.name ? data.name.toLowerCase().replace(/[^a-z0-9]/g, '') : '');
-  const portfolioUrl = handleStr ? `mybexo.com/${handleStr}` : null;
+  const portfolioUrl = handleStr ? `${handleStr}.mybexo.com` : null;
 
   const verifyPayment = async (token: string | null, payload: any) => {
     const verifyRes = await fetch("/api/payments/verify", {
@@ -499,7 +500,7 @@ export default function Step9Plan() {
             {
               icon: <X className="w-4 h-4 text-red-600" />,
               title: 'No Custom Subdomains',
-              desc: 'Portfolio at mybexo.com/handle only — no yourname.mybexo.com subdomain.',
+              desc: 'Portfolio at handle.mybexo.com only — no yourname.mybexo.com custom domain setup.',
             },
           ].map((item, idx) => (
             <div key={idx} className={cn("flex items-start gap-3", idx < 3 && "pb-3 border-b border-slate-100")}>
@@ -548,7 +549,7 @@ export default function Step9Plan() {
   // ──────────────────────────────────────────────────────────────────────
   if (freeFlowStep === 'handle') {
     const selectedThemeObj = THEMES.find(t => t.id === freeTheme) || THEMES[0];
-    const previewUrl = `mybexo.com/${freeHandle || 'yourhandle'}`;
+    const previewUrl = `${freeHandle || 'yourhandle'}.mybexo.com`;
 
     return (
       <div className="flex flex-col h-full max-w-md w-full mx-auto justify-center pb-10 animate-in fade-in slide-in-from-right-4">
@@ -567,15 +568,12 @@ export default function Step9Plan() {
           <div className="space-y-2">
             <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Your Portfolio URL</label>
             <div className="relative flex">
-              <span className="inline-flex items-center px-4 rounded-l-2xl border border-r-0 border-slate-200 bg-slate-50 text-slate-500 text-sm font-semibold select-none">
-                mybexo.com/
-              </span>
               <Input 
                 placeholder="yourhandle" 
                 className={cn(
-                  "rounded-l-none rounded-r-2xl h-12 font-semibold text-slate-800",
-                  handleAvailable === true ? "border-green-400 focus-visible:ring-green-400" : "",
-                  handleAvailable === false ? "border-red-400 focus-visible:ring-red-400" : ""
+                  "rounded-r-none rounded-l-2xl h-12 font-semibold text-slate-800 border-r-0",
+                  handleAvailable === true ? "border-green-400 focus-visible:ring-green-400 z-10" : "",
+                  handleAvailable === false ? "border-red-400 focus-visible:ring-red-400 z-10" : ""
                 )}
                 value={freeHandle}
                 onChange={(e) => {
@@ -584,6 +582,9 @@ export default function Step9Plan() {
                   setHandleError('');
                 }}
               />
+              <span className="inline-flex items-center px-4 rounded-r-2xl border border-l-0 border-slate-200 bg-slate-50 text-slate-500 text-sm font-semibold select-none">
+                .mybexo.com
+              </span>
             </div>
             
             {isCheckingHandle && (
@@ -774,6 +775,82 @@ export default function Step9Plan() {
   }
 
   // ──────────────────────────────────────────────────────────────────────
+  // ACTIVE PLAN VIEW (For Premium Users)
+  // ──────────────────────────────────────────────────────────────────────
+  if (data.isPremium && isBillingManagement && !showUpgradeOptions) {
+    return (
+      <div className="flex flex-col h-full max-w-lg w-full mx-auto justify-center pb-10 animate-in fade-in slide-in-from-right-4">
+        <button 
+          onClick={() => setLocation('/dashboard')}
+          className="flex items-center text-slate-500 hover:text-slate-900 mb-6 transition-colors w-fit text-sm font-medium"
+        >
+          <ArrowLeft className="w-4 h-4 mr-1" /> Back to Dashboard
+        </button>
+
+        <h2 className="font-serif text-3xl md:text-4xl font-bold text-slate-900 mb-2">Billing & Plan</h2>
+        <p className="text-slate-500 text-sm mb-6">Manage your subscription and view your current limits.</p>
+
+        {portfolioUrl && (
+          <div className="inline-flex items-center gap-2 mb-6 px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-full w-fit">
+            <Globe className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+            <span className="text-sm font-semibold text-indigo-700"><span className="text-indigo-500">{data.handle || ''}</span>.mybexo.com</span>
+          </div>
+        )}
+
+        <div className="space-y-6">
+          <Card className="p-6 bg-white border border-slate-200 shadow-sm relative overflow-hidden">
+            <div className="absolute top-0 right-0 bg-indigo-50 text-indigo-600 font-bold px-3 py-1 text-xs rounded-bl-lg">
+              ACTIVE
+            </div>
+            <div className="flex items-start gap-4 mb-4">
+              <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-500 flex items-center justify-center shrink-0">
+                <Check className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-900 text-lg">
+                  {data.plan === 'lifetime' ? 'Lifetime Pro' : data.plan === 'annual' ? 'Annual Support Plan' : 'Pro Plan'}
+                </h3>
+                <p className="text-sm text-slate-500 mt-0.5">
+                  You are currently on the {data.plan === 'lifetime' ? 'lifetime' : 'annual'} premium tier.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 mt-6 pt-6 border-t border-slate-100">
+              <div>
+                <p className="text-xs font-bold text-slate-400 uppercase mb-1">Storage Quota</p>
+                <p className="text-sm font-semibold text-slate-800">
+                  {data.plan === 'lifetime' ? '500MB' : '100MB'} Limit
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-bold text-slate-400 uppercase mb-1">AI Resume Parses</p>
+                <p className="text-sm font-semibold text-slate-800">
+                  {data.plan === 'lifetime' ? '3 per month' : '10 per month'}
+                </p>
+              </div>
+            </div>
+          </Card>
+
+          {data.plan === 'annual' && (
+            <Card className="p-6 bg-indigo-600 border border-indigo-700 shadow-md text-white text-center">
+              <h3 className="font-bold text-xl mb-2">Upgrade to Lifetime</h3>
+              <p className="text-indigo-100 text-sm mb-6">Pay once and enjoy premium access forever. No more annual renewals.</p>
+              <Button 
+                onClick={() => setShowUpgradeOptions(true)} 
+                variant="secondary" 
+                className="w-full bg-white text-indigo-600 hover:bg-indigo-50 border-none"
+              >
+                View Lifetime Plan
+              </Button>
+            </Card>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ──────────────────────────────────────────────────────────────────────
   // MAIN PLAN SELECTION VIEW
   // ──────────────────────────────────────────────────────────────────────
   return (
@@ -791,7 +868,7 @@ export default function Step9Plan() {
         {portfolioUrl && (
           <div className="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-full">
             <Globe className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-            <span className="text-sm font-semibold text-indigo-700">mybexo.com/<span className="text-indigo-500">{data.handle || ''}</span></span>
+            <span className="text-sm font-semibold text-indigo-700"><span className="text-indigo-500">{data.handle || ''}</span>.mybexo.com</span>
           </div>
         )}
       </div>
