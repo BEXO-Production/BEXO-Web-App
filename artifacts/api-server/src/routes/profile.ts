@@ -912,9 +912,9 @@ router.get("/public/:handle", async (req, res): Promise<void> => {
     const isPremium = subscriptionState.isPremium;
 
     // Enforce tier design limits:
-    // If not premium, override template and theme to minimal blue.
+    // If not premium, override template to minimal. Custom theme color is allowed.
     const templateId = isPremium ? (user.templateId || 'minimal') : 'minimal';
-    const themeColor = isPremium ? (user.themeColor || 'blue') : 'blue';
+    const themeColor = user.themeColor || 'blue';
 
     res.json({
       profile: {

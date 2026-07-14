@@ -69,6 +69,49 @@ function buildEntryAssetsHTML(assets: any, accent: string, accentLight: string, 
   return html;
 }
 
+function buildFeaturedCardHTML(title: string, sub: string, date: string, description: string, assets: any, linkButtonHTML: string, accentColor: string): string {
+  const images = Array.isArray(assets?.images) ? assets.images.filter(Boolean) : [];
+  const pdfs = Array.isArray(assets?.pdfs) ? assets.pdfs.filter(Boolean) : [];
+  const imageUrl = typeof images[0] === 'string' ? images[0] : (images[0]?.url || '');
+
+  if (!imageUrl) return '';
+
+  let pdfButtonsHTML = '';
+  pdfs.forEach((pdf: any, idx: number) => {
+    const url = typeof pdf === 'string' ? pdf : (pdf.url || '');
+    if (url) {
+      pdfButtonsHTML += `
+        <a href="${esc(url)}" target="_blank" download style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; font-size: 10px; font-weight: 700; color: #ffffff; text-decoration: none; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+          Download PDF
+        </a>`;
+    }
+  });
+
+  return `
+    <div style="position: relative; aspect-ratio: 16/10; border-radius: 16px; overflow: hidden; border: 1px solid rgba(226,232,240,0.6); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 12px; width: 100%;">
+      <!-- Background Image -->
+      <img src="${esc(imageUrl)}" style="width: 100%; height: 100%; object-fit: cover;" />
+      <!-- Dark overlay gradient -->
+      <div style="position: absolute; inset: 0; background: linear-gradient(to top, rgba(15,23,42,0.95) 0%, rgba(15,23,42,0.3) 60%, transparent 100%);"></div>
+      
+      <!-- Content on top of image -->
+      <div style="position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: flex-end; padding: 20px; z-index: 10; font-family: 'Inter', sans-serif;">
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          ${date ? `<span style="font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: rgba(255,255,255,0.95); background: rgba(255,255,255,0.2); padding: 2px 6px; border-radius: 4px; align-self: flex-start; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);">${esc(date)}</span>` : ''}
+          <h4 style="font-size: 14px; font-weight: 700; color: #ffffff; margin: 2px 0 0 0; line-height: 1.3;">${esc(title)}</h4>
+          ${sub ? `<p style="font-size: 11px; font-weight: 600; color: #cbd5e1; margin: 0;">${esc(sub)}</p>` : ''}
+        </div>
+        ${description ? `<p style="font-size: 11px; color: #94a3b8; margin-top: 8px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${esc(description)}</p>` : ''}
+        
+        <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px;">
+          ${pdfButtonsHTML}
+          ${linkButtonHTML}
+        </div>
+      </div>
+    </div>`;
+}
+
 export function buildMinimalPortfolioHTML(data: OnboardingData, themeColor: string, handle: string): string {
   const accent = THEME_HEX[themeColor] || THEME_HEX['blue'];
   const accentLight = accent + '12';
@@ -165,22 +208,33 @@ export function buildMinimalPortfolioHTML(data: OnboardingData, themeColor: stri
     ? `<div class="section-card anim">
         <h3 class="section-label"><span class="label-bar"></span> Projects</h3>
         <div class="projects-grid">
-          ${projectEntries.map((p: any) => `
-            <div class="project-card" style="display:flex;flex-direction:column;justify-content:between;">
-              <div>
-                <h4 class="entry-title">${esc(p.title)}</h4>
-                ${p.description ? `<p class="text-xs" style="color:#64748b;margin-top:6px;line-height:1.6;">${esc(p.description)}</p>` : ''}
-                ${p.tech ? `<p style="font-size:10px;color:#94a3b8;margin-top:8px;font-weight:600;">${esc(p.tech)}</p>` : ''}
-                ${buildEntryAssetsHTML(p.assets, accent, accentLight, accentMid)}
-              </div>
-              ${p.link ? `
-                <div style="margin-top:14px;padding-top:10px;border-top:1px solid #f1f5f9;">
-                  <a href="${esc(p.link)}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border:1px solid ${accentMid};border-radius:12px;font-size:11px;font-weight:700;color:${accent};background:${accentLight};text-decoration:none;width:100%;justify-content:center;">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="${accent}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
-                    Visit Link
-                  </a>
-                </div>` : ''}
-            </div>`).join('')}
+          ${projectEntries.map((p: any) => {
+            const linkButtonHTML = p.link ? `
+              <a href="${esc(p.link)}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:rgba(255,255,255,0.25);border:1px solid rgba(255,255,255,0.1);border-radius:12px;font-size:10px;font-weight:700;color:#ffffff;text-decoration:none;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+                Visit Link
+              </a>` : '';
+
+            const featured = buildFeaturedCardHTML(p.title, '', '', p.description || '', p.assets, linkButtonHTML, accent);
+            if (featured) return featured;
+
+            return `
+              <div class="project-card" style="display:flex;flex-direction:column;justify-content:between;">
+                <div>
+                  <h4 class="entry-title">${esc(p.title)}</h4>
+                  ${p.description ? `<p class="text-xs" style="color:#64748b;margin-top:6px;line-height:1.6;">${esc(p.description)}</p>` : ''}
+                  ${p.tech ? `<p style="font-size:10px;color:#94a3b8;margin-top:8px;font-weight:600;">${esc(p.tech)}</p>` : ''}
+                  ${buildEntryAssetsHTML(p.assets, accent, accentLight, accentMid)}
+                </div>
+                ${p.link ? `
+                  <div style="margin-top:14px;padding-top:10px;border-top:1px solid #f1f5f9;">
+                    <a href="${esc(p.link)}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border:1px solid ${accentMid};border-radius:12px;font-size:11px;font-weight:700;color:${accent};background:${accentLight};text-decoration:none;width:100%;justify-content:center;">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="${accent}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+                      Visit Link
+                    </a>
+                  </div>` : ''}
+              </div>`;
+          }).join('')}
         </div>
       </div>`
     : '';
@@ -189,17 +243,22 @@ export function buildMinimalPortfolioHTML(data: OnboardingData, themeColor: stri
   const certHTML = certEntries.length > 0
     ? `<div class="section-card anim">
         <h3 class="section-label">🏅 Certifications</h3>
-        ${certEntries.map((c: any) => `
-          <div class="cert-item" style="display:block;">
-            <div style="display:flex;justify-content:between;align-items:start;">
-              <div>
-                <h4 class="entry-title">${esc(c.title || c.name)}</h4>
-                <p class="entry-sub">${esc(c.issuer || c.organization || '')}</p>
+        ${certEntries.map((c: any) => {
+          const featured = buildFeaturedCardHTML(c.title || c.name, c.issuer, c.date, '', c.assets, '', accent);
+          if (featured) return featured;
+
+          return `
+            <div class="cert-item" style="display:block;">
+              <div style="display:flex;justify-content:between;align-items:start;">
+                <div>
+                  <h4 class="entry-title">${esc(c.title || c.name)}</h4>
+                  <p class="entry-sub">${esc(c.issuer || c.organization || '')}</p>
+                </div>
+                ${c.date ? `<span style="font-size:10px;font-weight:600;color:${accent};">${esc(c.date)}</span>` : ''}
               </div>
-              ${c.date ? `<span style="font-size:10px;font-weight:600;color:${accent};">${esc(c.date)}</span>` : ''}
-            </div>
-            ${buildEntryAssetsHTML(c.assets, accent, accentLight, accentMid)}
-          </div>`).join('')}
+              ${buildEntryAssetsHTML(c.assets, accent, accentLight, accentMid)}
+            </div>`;
+        }).join('')}
       </div>`
     : '';
 
@@ -207,17 +266,22 @@ export function buildMinimalPortfolioHTML(data: OnboardingData, themeColor: stri
   const achieveHTML = achieveEntries.length > 0
     ? `<div class="section-card anim">
         <h3 class="section-label">✨ Achievements</h3>
-        ${achieveEntries.map((a: any) => `
-          <div class="cert-item" style="display:block;">
-            <div style="display:flex;justify-content:between;align-items:start;">
-              <div>
-                <h4 class="entry-title">${esc(a.title)}</h4>
-                <p class="entry-sub">${esc(a.organization || '')}</p>
+        ${achieveEntries.map((a: any) => {
+          const featured = buildFeaturedCardHTML(a.title, a.organization, a.date, '', a.assets, '', accent);
+          if (featured) return featured;
+
+          return `
+            <div class="cert-item" style="display:block;">
+              <div style="display:flex;justify-content:between;align-items:start;">
+                <div>
+                  <h4 class="entry-title">${esc(a.title)}</h4>
+                  <p class="entry-sub">${esc(a.organization || '')}</p>
+                </div>
+                ${a.date ? `<span style="font-size:10px;font-weight:600;color:${accent};">${esc(a.date)}</span>` : ''}
               </div>
-              ${a.date ? `<span style="font-size:10px;font-weight:600;color:${accent};">${esc(a.date)}</span>` : ''}
-            </div>
-            ${buildEntryAssetsHTML(a.assets, accent, accentLight, accentMid)}
-          </div>`).join('')}
+              ${buildEntryAssetsHTML(a.assets, accent, accentLight, accentMid)}
+            </div>`;
+        }).join('')}
       </div>`
     : '';
 

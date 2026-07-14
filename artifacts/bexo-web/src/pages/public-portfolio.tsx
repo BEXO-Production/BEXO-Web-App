@@ -275,6 +275,66 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
       </div>
     );
   };
+
+  const renderFeaturedCard = (title: string, sub?: string, date?: string, description?: string, assets?: any, linkButton?: React.ReactNode) => {
+    const images = Array.isArray(assets?.images) ? assets.images.filter(Boolean) : [];
+    const pdfs = Array.isArray(assets?.pdfs) ? assets.pdfs.filter(Boolean) : [];
+    const imageUrl = typeof images[0] === 'string' ? images[0] : (images[0]?.url || '');
+
+    if (imageUrl) {
+      return (
+        <div key={title} className="relative aspect-[16/10] sm:aspect-[16/9] rounded-2xl overflow-hidden border border-slate-200/60 shadow-md group transition-all duration-300 hover:shadow-lg w-full">
+          {/* Background Image */}
+          <img 
+            src={imageUrl} 
+            alt={title} 
+            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" 
+          />
+          {/* Dark gradient overlay */}
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/40 to-transparent" />
+          
+          {/* Content positioned on top of the image */}
+          <div className="absolute inset-x-0 bottom-0 p-4 space-y-2 z-10">
+            <div className="space-y-1">
+              {date && (
+                <span className="text-[9px] font-extrabold uppercase tracking-wider text-white/95 bg-white/20 px-2 py-0.5 rounded backdrop-blur-sm">
+                  {date}
+                </span>
+              )}
+              <h4 className="text-sm font-bold text-white tracking-tight leading-tight mt-1">{title}</h4>
+              {sub && <p className="text-[11px] font-semibold text-slate-200">{sub}</p>}
+            </div>
+            {description && <p className="text-xs text-slate-350 line-clamp-2 leading-relaxed">{description}</p>}
+            
+            {/* Buttons (PDFs and links) */}
+            <div className="flex flex-wrap gap-2 pt-1">
+              {pdfs.map((pdfItem: any, idx: number) => {
+                const url = typeof pdfItem === 'string' ? pdfItem : (pdfItem.url || '');
+                if (!url) return null;
+                return (
+                  <a 
+                    key={idx} 
+                    href={url} 
+                    target="_blank" 
+                    rel="noreferrer"
+                    download
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-white/15 hover:bg-white/25 border border-white/10 rounded-xl text-[10px] font-bold text-white transition-colors backdrop-blur-sm shadow-sm"
+                  >
+                    <Download className="w-3.5 h-3.5 mr-1" />
+                    Download PDF
+                  </a>
+                );
+              })}
+              {linkButton}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
   const accentClass = getThemeAccentClass();
   const textAccent = getThemeTextClass();
   const badgeAccent = getThemeBadgeBg();
@@ -507,28 +567,50 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
                   <span className="w-1 h-4 rounded-full" style={{ background: accentHex }} /> Projects
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {projectEntries.map((proj: any) => (
-                    <div key={proj.id} className="project-card-m flex flex-col justify-between">
-                      <div className="space-y-1.5">
-                        <h4 className="text-sm font-bold text-slate-900">{proj.title}</h4>
-                        {proj.description && <p className="text-xs text-slate-505 leading-relaxed">{proj.description}</p>}
-                        {renderEntryAssets(proj.assets)}
-                      </div>
-                      {proj.link && (
-                        <div className="mt-3.5 pt-2.5 border-t border-slate-100">
-                          <a 
-                            href={proj.link} 
-                            target="_blank" 
-                            rel="noreferrer" 
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 border rounded-xl text-[11px] font-bold transition-all shadow-sm w-full justify-center sm:w-auto"
-                            style={{ color: accentHex, borderColor: accentMid, background: accentLight }}
-                          >
-                            <ExternalLink className="w-3.5 h-3.5" /> Visit Link
-                          </a>
+                  {projectEntries.map((proj: any) => {
+                    const featured = renderFeaturedCard(
+                      proj.title,
+                      undefined,
+                      undefined,
+                      proj.description,
+                      proj.assets,
+                      proj.link ? (
+                        <a 
+                          href={proj.link} 
+                          target="_blank" 
+                          rel="noreferrer" 
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-bold text-white bg-white/20 hover:bg-white/30 transition-all shadow-sm"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" /> Visit Link
+                        </a>
+                      ) : undefined
+                    );
+
+                    if (featured) return featured;
+
+                    return (
+                      <div key={proj.id} className="project-card-m flex flex-col justify-between">
+                        <div className="space-y-1.5">
+                          <h4 className="text-sm font-bold text-slate-900">{proj.title}</h4>
+                          {proj.description && <p className="text-xs text-slate-505 leading-relaxed">{proj.description}</p>}
+                          {renderEntryAssets(proj.assets)}
                         </div>
-                      )}
-                    </div>
-                  ))}
+                        {proj.link && (
+                          <div className="mt-3.5 pt-2.5 border-t border-slate-100">
+                            <a 
+                              href={proj.link} 
+                              target="_blank" 
+                              rel="noreferrer" 
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 border rounded-xl text-[11px] font-bold transition-all shadow-sm w-full justify-center sm:w-auto"
+                              style={{ color: accentHex, borderColor: accentMid, background: accentLight }}
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" /> Visit Link
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -542,14 +624,25 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
                       <Award className="w-4 h-4" /> Certifications
                     </h3>
                     <div className="space-y-4">
-                      {certificateEntries.map((cert: any) => (
-                        <div key={cert.id} className="space-y-0.5 pb-3 border-b border-slate-100 last:border-0 last:pb-0">
-                          <h4 className="text-xs font-bold text-slate-900 leading-snug">{cert.name}</h4>
-                          <p className="text-[11px] text-slate-500 leading-normal">{cert.issuer}</p>
-                          {cert.date && <p className="text-[10px] font-semibold" style={{ color: accentHex }}>{cert.date}</p>}
-                          {renderEntryAssets(cert.assets)}
-                        </div>
-                      ))}
+                      {certificateEntries.map((cert: any) => {
+                        const featured = renderFeaturedCard(
+                          cert.name || cert.title,
+                          cert.issuer,
+                          cert.date,
+                          undefined,
+                          cert.assets
+                        );
+                        if (featured) return featured;
+
+                        return (
+                          <div key={cert.id} className="space-y-0.5 pb-3 border-b border-slate-100 last:border-0 last:pb-0">
+                            <h4 className="text-xs font-bold text-slate-900 leading-snug">{cert.name}</h4>
+                            <p className="text-[11px] text-slate-500 leading-normal">{cert.issuer}</p>
+                            {cert.date && <p className="text-[10px] font-semibold" style={{ color: accentHex }}>{cert.date}</p>}
+                            {renderEntryAssets(cert.assets)}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -559,14 +652,25 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
                       <Sparkles className="w-4 h-4" /> Achievements
                     </h3>
                     <div className="space-y-4">
-                      {achievementEntries.map((ach: any) => (
-                        <div key={ach.id} className="space-y-0.5 pb-3 border-b border-slate-100 last:border-0 last:pb-0">
-                          <h4 className="text-xs font-bold text-slate-900 leading-snug">{ach.title}</h4>
-                          <p className="text-[11px] text-slate-500 leading-normal">{ach.organization}</p>
-                          {ach.date && <p className="text-[10px] font-semibold" style={{ color: accentHex }}>{ach.date}</p>}
-                          {renderEntryAssets(ach.assets)}
-                        </div>
-                      ))}
+                      {achievementEntries.map((ach: any) => {
+                        const featured = renderFeaturedCard(
+                          ach.title,
+                          ach.organization,
+                          ach.date,
+                          undefined,
+                          ach.assets
+                        );
+                        if (featured) return featured;
+
+                        return (
+                          <div key={ach.id} className="space-y-0.5 pb-3 border-b border-slate-100 last:border-0 last:pb-0">
+                            <h4 className="text-xs font-bold text-slate-900 leading-snug">{ach.title}</h4>
+                            <p className="text-[11px] text-slate-500 leading-normal">{ach.organization}</p>
+                            {ach.date && <p className="text-[10px] font-semibold" style={{ color: accentHex }}>{ach.date}</p>}
+                            {renderEntryAssets(ach.assets)}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
