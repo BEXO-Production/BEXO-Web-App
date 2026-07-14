@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useOnboarding } from '../context/OnboardingContext';
 import { Button, Card } from '../design-system/primitives';
 import { ArrowRight, CheckCircle2, Eye, X } from 'lucide-react';
@@ -35,7 +36,6 @@ const THEMES = [
   { id: 'blue', label: 'Navy', hex: 'bg-blue-600', textHex: 'text-blue-600' },
   { id: 'emerald', label: 'Emerald', hex: 'bg-emerald-600', textHex: 'text-emerald-600' },
   { id: 'rose', label: 'Rose', hex: 'bg-rose-600', textHex: 'text-rose-600' },
-  { id: 'amber', label: 'Amber', hex: 'bg-amber-600', textHex: 'text-amber-600' },
   { id: 'violet', label: 'Violet', hex: 'bg-violet-600', textHex: 'text-violet-600' },
 ];
 
@@ -72,25 +72,32 @@ export default function Step7Theme() {
         </div>
         
         {/* Theme Picker */}
-        <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-2 shrink-0">
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider px-1">Accent Color</span>
-          <div className="flex gap-2">
-            {THEMES.map(theme => (
-              <button
-                key={theme.id}
-                onClick={() => setSelectedTheme(theme.id)}
-                className={cn(
-                  "w-8 h-8 rounded-full flex items-center justify-center transition-all shadow-sm ring-offset-2 hover:scale-110",
-                  theme.hex,
-                  selectedTheme === theme.id ? "ring-2 ring-slate-900" : ""
-                )}
-                title={theme.label}
-              >
-                {selectedTheme === theme.id && <CheckCircle2 className="w-4 h-4 text-white" />}
-              </button>
-            ))}
+        {/* Theme Picker */}
+        {selectedTemplate === 'minimal' ? (
+          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-2 shrink-0 animate-in slide-in-from-right-3 duration-300">
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider px-1">Accent Color</span>
+            <div className="flex gap-2">
+              {THEMES.map(theme => (
+                <button
+                  key={theme.id}
+                  onClick={() => setSelectedTheme(theme.id)}
+                  className={cn(
+                    "w-8 h-8 rounded-full flex items-center justify-center transition-all shadow-sm ring-offset-2 hover:scale-110",
+                    theme.hex,
+                    selectedTheme === theme.id ? "ring-2 ring-slate-900" : ""
+                  )}
+                  title={theme.label}
+                >
+                  {selectedTheme === theme.id && <CheckCircle2 className="w-4 h-4 text-white" />}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/60 flex items-center justify-center h-[74px] shrink-0 px-4">
+            <span className="text-xs font-medium text-slate-400">Accent color auto-set by preset layout</span>
+          </div>
+        )}
       </div>
 
       <div className="grid md:grid-cols-3 gap-6 flex-1">
@@ -175,8 +182,8 @@ export default function Step7Theme() {
       </div>
 
       {/* Custom Fullscreen Preview Modal */}
-      {previewTemplate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-6 animate-in fade-in">
+      {previewTemplate && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 md:p-6 animate-in fade-in">
           <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setPreviewTemplate(null)} />
           <div className="bg-slate-100 w-full h-[90vh] max-w-5xl rounded-2xl shadow-2xl relative flex flex-col overflow-hidden animate-in zoom-in-95">
             <div className="bg-white border-b border-slate-200 p-4 flex justify-between items-center shrink-0">
@@ -203,7 +210,8 @@ export default function Step7Theme() {
               />
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

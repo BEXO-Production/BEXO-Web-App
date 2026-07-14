@@ -1,21 +1,51 @@
 import React, { useEffect, useState } from 'react';
 import { useOnboarding } from '../context/OnboardingContext';
 import { Button, Card } from '../design-system/primitives';
-import { CheckCircle2, Copy, ExternalLink, Sparkles, ArrowRight } from 'lucide-react';
+import { CheckCircle2, Copy, ExternalLink, Sparkles, ArrowRight, Share2 } from 'lucide-react';
 import logo from '../assets/bexo-logo.png';
+import { useToast } from '../hooks/use-toast';
 
 export default function Step8Publish() {
   const { data, nextStep } = useOnboarding();
   const [copied, setCopied] = useState(false);
   const [isSwooshing, setIsSwooshing] = useState(false);
+  const { toast } = useToast();
   
-  const handleString = data.name ? data.name.toLowerCase().replace(/[^a-z0-9]/g, '') : 'portfolio';
+  const handleString = data.handle || (data.name ? data.name.toLowerCase().replace(/[^a-z0-9]/g, '') : 'portfolio');
   const url = `${handleString}.mybexo.com`;
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(`https://${url}`);
     setCopied(true);
+    toast({
+      title: 'Copied!',
+      description: 'Public URL copied to clipboard.',
+    });
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleShareUrl = async () => {
+    const shareUrl = `https://${url}`;
+    const shareTitle = `${data.name || 'My'} Professional Portfolio`;
+    const shareText = `Hi! Check out my newly published professional portfolio on BEXO: ${shareUrl}`;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: shareTitle,
+          text: shareText,
+          url: shareUrl,
+        });
+      } catch (err) {
+        console.error('Web Share failed:', err);
+      }
+    } else {
+      navigator.clipboard.writeText(shareText);
+      toast({
+        title: 'Ready to share!',
+        description: 'Customized portfolio link and description copied to clipboard.',
+      });
+    }
   };
 
   const handleContinue = () => {
@@ -63,9 +93,15 @@ export default function Step8Publish() {
               {copied ? <CheckCircle2 className="w-4 h-4 mr-2 text-green-600" /> : <Copy className="w-4 h-4 mr-2" />}
               {copied ? 'Copied' : 'Copy'}
             </Button>
-            <Button variant="secondary" className="flex-1 md:flex-none h-12">
-              <ExternalLink className="w-4 h-4" />
+            <Button variant="outline" className="flex-1 md:flex-none h-12 flex gap-2" onClick={handleShareUrl}>
+              <Share2 className="w-4 h-4 text-indigo-500" />
+              <span>Share</span>
             </Button>
+            <a href={`https://${url}`} target="_blank" rel="noreferrer" className="flex-1 md:flex-none">
+              <Button variant="secondary" className="w-full h-12">
+                <ExternalLink className="w-4 h-4" />
+              </Button>
+            </a>
           </div>
         </div>
       </Card>

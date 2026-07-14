@@ -53,7 +53,6 @@ const THEMES = [
   { id: 'blue', label: 'Navy', hex: 'bg-blue-600', textHex: 'text-blue-600' },
   { id: 'emerald', label: 'Emerald', hex: 'bg-emerald-600', textHex: 'text-emerald-600' },
   { id: 'rose', label: 'Rose', hex: 'bg-rose-600', textHex: 'text-rose-600' },
-  { id: 'amber', label: 'Amber', hex: 'bg-amber-600', textHex: 'text-amber-600' },
   { id: 'violet', label: 'Violet', hex: 'bg-violet-600', textHex: 'text-violet-600' },
 ];
 
@@ -2347,8 +2346,8 @@ export default function Dashboard() {
 
                 {settingsSubTab === 'design' && (
                   <div className="space-y-6 animate-in fade-in duration-200">
-                    {/* Theme selector - ONLY for Free users */}
-                    {!data.isPremium && (
+                    {/* Theme selector - ONLY for Free template */}
+                    {data.templateId === 'minimal' && (
                       <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-4">
                         <div>
                           <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
