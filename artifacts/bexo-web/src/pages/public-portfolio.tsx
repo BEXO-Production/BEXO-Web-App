@@ -137,12 +137,20 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
     );
   }
 
+  // Theme accent color — resolved to HEX for inline styles (CSS variable approach)
+  const THEME_HEX_MAP: Record<string, string> = {
+    blue: '#2563eb', emerald: '#059669', rose: '#e11d48', violet: '#7c3aed', indigo: '#4f46e5',
+  };
+  const accentHex = THEME_HEX_MAP[user.themeColor] || THEME_HEX_MAP['blue'];
+  const accentLight = accentHex + '12';
+  const accentMid = accentHex + '30';
+
   // Resolve theme accent color class
   const getThemeAccentClass = () => {
     switch (user.themeColor) {
       case 'rose': return 'bg-rose-500 text-rose-500 border-rose-250';
       case 'emerald': return 'bg-emerald-500 text-emerald-500 border-emerald-250';
-      case 'amber': return 'bg-amber-500 text-amber-500 border-amber-250';
+      case 'violet': return 'bg-violet-600 text-violet-600 border-violet-250';
       case 'indigo': return 'bg-indigo-600 text-indigo-650 border-indigo-250';
       default: return 'bg-blue-500 text-blue-500 border-blue-250';
     }
@@ -252,191 +260,293 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
 
   const templateId = user.templateId || 'minimal';
 
+  // IntersectionObserver for fade-in-on-scroll animations
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('portfolio-visible');
+            observer.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.1, rootMargin: '0px 0px -40px 0px' }
+    );
+    setTimeout(() => {
+      document.querySelectorAll('.portfolio-animate').forEach((el) => observer.observe(el));
+    }, 100);
+    return () => observer.disconnect();
+  }, [profileData]);
+
   const renderMinimalLayout = () => {
     return (
-      <div className="max-w-3xl mx-auto px-4 pt-12 md:pt-16 space-y-10 relative z-10 font-sans">
-        {/* Profile Header */}
-        <div className="text-center space-y-4">
-          <div className="w-24 h-24 rounded-full bg-slate-100 overflow-hidden border border-slate-200 shadow-inner flex items-center justify-center mx-auto">
-            {user.photoUrl ? (
-              <img src={user.photoUrl} alt={user.name} className="w-full h-full object-cover" />
-            ) : (
-              <span className="text-4xl font-bold text-slate-400 capitalize">{user.name?.charAt(0)}</span>
-            )}
-          </div>
-          <div className="space-y-1">
-            <h1 className="text-3xl font-extrabold text-slate-905 tracking-tight">{user.name}</h1>
-            {profile.headline && <p className="text-md font-medium text-slate-600">{profile.headline}</p>}
+      <>
+        {/* Inject animation + font styles */}
+        <style>{`
+          @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@600;700;800&display=swap');
+          .portfolio-animate {
+            opacity: 0;
+            transform: translateY(18px);
+            transition: opacity 0.55s cubic-bezier(0.22,1,0.36,1), transform 0.55s cubic-bezier(0.22,1,0.36,1);
+          }
+          .portfolio-visible {
+            opacity: 1 !important;
+            transform: translateY(0) !important;
+          }
+          .section-card {
+            background: rgba(255,255,255,0.75);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(226,232,240,0.7);
+            border-radius: 20px;
+            padding: 28px 28px 24px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.02);
+            transition: box-shadow 0.3s ease;
+          }
+          .section-card:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.04);
+          }
+          .project-card-m {
+            background: rgba(248,250,252,0.8);
+            border: 1px solid rgba(226,232,240,0.8);
+            border-radius: 16px;
+            padding: 20px;
+            transition: all 0.3s ease;
+          }
+          .project-card-m:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 14px rgba(0,0,0,0.06);
+            border-color: ${accentMid};
+          }
+          .tl-dot {
+            width: 10px; height: 10px; border-radius: 50%;
+            background: ${accentHex};
+            box-shadow: 0 0 0 4px ${accentLight};
+            position: absolute; left: -6px; top: 6px; z-index: 2;
+          }
+          .avatar-ring {
+            background: conic-gradient(${accentHex}, ${accentHex}88, ${accentHex}33, transparent, ${accentHex});
+            padding: 3px; border-radius: 50%;
+            animation: ringSpin 6s linear infinite;
+          }
+          @keyframes ringSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+          .hero-card-bg {
+            background: linear-gradient(135deg, ${accentLight} 0%, rgba(248,250,252,0.5) 50%, ${accentLight} 100%);
+            border: 1px solid ${accentMid};
+          }
+        `}</style>
+
+        <div className="max-w-3xl mx-auto px-5 pt-14 md:pt-20 pb-4 space-y-8 relative z-10" style={{ fontFamily: "'Inter', -apple-system, sans-serif" }}>
+          {/* ─── HERO CARD ─── */}
+          <div className="portfolio-animate hero-card-bg rounded-3xl p-8 md:p-10 text-center">
+            <div className="flex justify-center mb-5">
+              <div className="avatar-ring">
+                <div className="w-28 h-28 rounded-full bg-slate-100 overflow-hidden flex items-center justify-center border-[3px] border-white">
+                  {user.photoUrl ? (
+                    <img src={user.photoUrl} alt={user.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-5xl font-bold text-slate-300 capitalize" style={{ fontFamily: "'Outfit', sans-serif" }}>{user.name?.charAt(0)}</span>
+                  )}
+                </div>
+              </div>
+            </div>
+            <h1 className="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight" style={{ fontFamily: "'Outfit', sans-serif" }}>{user.name}</h1>
+            {profile.headline && <p className="text-base font-medium text-slate-500 mt-1.5">{profile.headline}</p>}
             {user.openToHire && (
-              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-100 mt-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Available for Hire
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200/60 mt-3">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> Available for Hire
               </span>
             )}
-          </div>
-          {profile.bio && <p className="text-sm text-slate-500 leading-relaxed max-w-lg mx-auto">{profile.bio}</p>}
-          
-          <div className="flex justify-center gap-3 pt-2">
-            {user.resumeUrl && (
-              <a href={user.resumeUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-650 hover:text-indigo-800 transition-colors">
-                View Resume <ExternalLink className="w-3.5 h-3.5" />
-              </a>
-            )}
-            {user.openToHire && (
-              <a 
-                href={`mailto:${contactData.email || user.email}?subject=Hiring inquiry for ${user.name}`}
-                className={cn("inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold text-white transition-all shadow-sm border-none hover:shadow-md", accentClass.split(' ')[0])}
-              >
-                <Mail className="w-3.5 h-3.5" /> Hire Me
-              </a>
-            )}
-          </div>
-        </div>
-
-        {/* Contact Info Header Bar */}
-        <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-xs text-slate-500 py-3.5 border-y border-slate-200/60">
-          {contactData.email && (
-            <div className="flex items-center gap-1.5">
-              <Mail className="w-3.5 h-3.5 text-slate-450" />
-              <a href={`mailto:${contactData.email}`} className="hover:text-slate-900">{contactData.email}</a>
-            </div>
-          )}
-          {contactData.phone && (
-            <div className="flex items-center gap-1.5">
-              <Phone className="w-3.5 h-3.5 text-slate-450" />
-              <span>{contactData.phone}</span>
-            </div>
-          )}
-          {contactData.linkedin && (
-            <div className="flex items-center gap-1.5">
-              <Linkedin className="w-3.5 h-3.5 text-slate-455" />
-              <a href={getHref(contactData.linkedin, 'linkedin')} target="_blank" rel="noreferrer" className="hover:text-slate-900">
-                {formatUrlText(contactData.linkedin, 'linkedin')}
-              </a>
-            </div>
-          )}
-          {contactData.github && (
-            <div className="flex items-center gap-1.5">
-              <Github className="w-3.5 h-3.5 text-slate-455" />
-              <a href={getHref(contactData.github, 'github')} target="_blank" rel="noreferrer" className="hover:text-slate-900">
-                {formatUrlText(contactData.github, 'github')}
-              </a>
-            </div>
-          )}
-        </div>
-
-        {/* Stacked content */}
-        <div className="space-y-8">
-          {/* About */}
-          {aboutEntries.length > 0 && (
-            <div className="space-y-2">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">About Me</h3>
-              {aboutEntries.map((ab: any) => (
-                <p key={ab.id} className="text-sm text-slate-650 leading-relaxed">{ab.description}</p>
-              ))}
-            </div>
-          )}
-
-          {/* Experience */}
-          {experienceEntries.length > 0 && (
-            <div className="space-y-4">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Experience</h3>
-              <div className="space-y-5">
-                {experienceEntries.map((exp: any) => (
-                  <div key={exp.id} className="space-y-1">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h4 className="text-sm font-bold text-slate-900">{exp.role}</h4>
-                        <p className="text-xs font-semibold text-slate-500">{exp.company}</p>
-                      </div>
-                      {exp.duration && <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded">{exp.duration}</span>}
-                    </div>
-                    {exp.description && <p className="text-xs text-slate-505 leading-relaxed pt-0.5">{exp.description}</p>}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Education */}
-          {educationEntries.length > 0 && (
-            <div className="space-y-4">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Education</h3>
-              <div className="space-y-4">
-                {educationEntries.map((edu: any) => (
-                  <div key={edu.id} className="flex justify-between items-start">
-                    <div>
-                      <h4 className="text-sm font-bold text-slate-900">{edu.degree}</h4>
-                      <p className="text-xs font-semibold text-slate-500">{edu.school}</p>
-                      {edu.grade && <span className="text-[10px] font-bold text-indigo-650 mt-1 block">Grade: {edu.grade}</span>}
-                    </div>
-                    {edu.duration && <span className="text-[10px] font-bold text-slate-400">{edu.duration}</span>}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Projects */}
-          {projectEntries.length > 0 && (
-            <div className="space-y-4">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Projects</h3>
-              <div className="grid grid-cols-1 gap-4">
-                {projectEntries.map((proj: any) => (
-                  <div key={proj.id} className="border border-slate-200 rounded-xl p-4 bg-white/50 space-y-1.5">
-                    <div className="flex justify-between items-start">
-                      <h4 className="text-sm font-bold text-slate-905">{proj.title}</h4>
-                      {proj.link && (
-                        <a href={proj.link} target="_blank" rel="noreferrer" className="text-indigo-650 hover:text-indigo-850">
-                          <ExternalLink className="w-3.5 h-3.5" />
-                        </a>
-                      )}
-                    </div>
-                    {proj.description && <p className="text-xs text-slate-500 leading-relaxed">{proj.description}</p>}
-                    {renderEntryAssets(proj.assets)}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Certifications & Achievements */}
-          {(certificateEntries.length > 0 || achievementEntries.length > 0) && (
-            <div className="grid md:grid-cols-2 gap-8 pt-2">
-              {certificateEntries.length > 0 && (
-                <div className="space-y-3">
-                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Certifications</h3>
-                  <div className="space-y-3.5">
-                    {certificateEntries.map((cert: any) => (
-                      <div key={cert.id} className="space-y-0.5">
-                        <h4 className="text-xs font-bold text-slate-900 leading-snug">{cert.name}</h4>
-                        <p className="text-[11px] text-slate-550 leading-normal">{cert.issuer}</p>
-                        {cert.date && <p className="text-[10px] text-slate-400">{cert.date}</p>}
-                        {renderEntryAssets(cert.assets)}
-                      </div>
-                    ))}
-                  </div>
-                </div>
+            {profile.bio && <p className="text-sm text-slate-500 leading-relaxed max-w-lg mx-auto mt-4">{profile.bio}</p>}
+            
+            <div className="flex justify-center gap-3 mt-6 flex-wrap">
+              {user.resumeUrl && (
+                <a 
+                  href={user.resumeUrl} target="_blank" rel="noreferrer" 
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-xs font-bold transition-all duration-200 border hover:shadow-md"
+                  style={{ color: accentHex, borderColor: accentMid, background: accentLight }}
+                >
+                  <FileText className="w-3.5 h-3.5" /> View Resume
+                </a>
               )}
-
-              {achievementEntries.length > 0 && (
-                <div className="space-y-3">
-                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Achievements</h3>
-                  <div className="space-y-3.5">
-                    {achievementEntries.map((ach: any) => (
-                      <div key={ach.id} className="space-y-0.5">
-                        <h4 className="text-xs font-bold text-slate-900 leading-snug">{ach.title}</h4>
-                        <p className="text-[11px] text-slate-550 leading-normal">{ach.organization}</p>
-                        {ach.date && <p className="text-[10px] text-slate-400">{ach.date}</p>}
-                        {renderEntryAssets(ach.assets)}
-                      </div>
-                    ))}
-                  </div>
-                </div>
+              {user.openToHire && (
+                <a 
+                  href={`mailto:${contactData.email || user.email}?subject=Hiring inquiry for ${user.name}`}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-xs font-bold text-white transition-all duration-200 hover:shadow-lg hover:brightness-110"
+                  style={{ background: accentHex, boxShadow: `0 4px 14px ${accentHex}44` }}
+                >
+                  <Mail className="w-3.5 h-3.5" /> Hire Me
+                </a>
               )}
             </div>
-          )}
+          </div>
+
+          {/* ─── CONTACT BAR ─── */}
+          <div className="portfolio-animate flex flex-wrap justify-center gap-x-5 gap-y-2.5 text-xs text-slate-500 py-4 px-6 rounded-2xl" style={{ background: 'rgba(248,250,252,0.7)', border: '1px solid rgba(226,232,240,0.5)' }}>
+            {contactData.email && (
+              <a href={`mailto:${contactData.email}`} className="flex items-center gap-1.5 hover:text-slate-900 transition-colors font-medium">
+                <Mail className="w-3.5 h-3.5" style={{ color: accentHex }} /> {contactData.email}
+              </a>
+            )}
+            {contactData.phone && (
+              <span className="flex items-center gap-1.5 font-medium">
+                <Phone className="w-3.5 h-3.5" style={{ color: accentHex }} /> {contactData.phone}
+              </span>
+            )}
+            {contactData.linkedin && (
+              <a href={getHref(contactData.linkedin, 'linkedin')} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 hover:text-slate-900 transition-colors font-medium">
+                <Linkedin className="w-3.5 h-3.5" style={{ color: accentHex }} /> {formatUrlText(contactData.linkedin, 'linkedin')}
+              </a>
+            )}
+            {contactData.github && (
+              <a href={getHref(contactData.github, 'github')} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 hover:text-slate-900 transition-colors font-medium">
+                <Github className="w-3.5 h-3.5" style={{ color: accentHex }} /> {formatUrlText(contactData.github, 'github')}
+              </a>
+            )}
+          </div>
+
+          {/* ─── CONTENT SECTIONS ─── */}
+          <div className="space-y-6">
+            {/* About */}
+            {aboutEntries.length > 0 && (
+              <div className="portfolio-animate section-card">
+                <h3 className="text-[11px] font-bold uppercase tracking-[0.15em] mb-4 flex items-center gap-2" style={{ color: accentHex }}>
+                  <span className="w-1 h-4 rounded-full" style={{ background: accentHex }} /> About Me
+                </h3>
+                {aboutEntries.map((ab: any) => (
+                  <p key={ab.id} className="text-sm text-slate-600 leading-[1.75]">{ab.description}</p>
+                ))}
+              </div>
+            )}
+
+            {/* Experience — Timeline */}
+            {experienceEntries.length > 0 && (
+              <div className="portfolio-animate section-card">
+                <h3 className="text-[11px] font-bold uppercase tracking-[0.15em] mb-5 flex items-center gap-2" style={{ color: accentHex }}>
+                  <span className="w-1 h-4 rounded-full" style={{ background: accentHex }} /> Experience
+                </h3>
+                <div className="relative pl-5" style={{ borderLeft: `2px solid ${accentLight}` }}>
+                  {experienceEntries.map((exp: any, idx: number) => (
+                    <div key={exp.id} className={cn("relative pb-6", idx === experienceEntries.length - 1 && "pb-0")}>
+                      <div className="tl-dot" />
+                      <div className="ml-4">
+                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-1">
+                          <div>
+                            <h4 className="text-sm font-bold text-slate-900">{exp.role}</h4>
+                            <p className="text-xs font-semibold text-slate-500 mt-0.5">{exp.company}{exp.location ? `, ${exp.location}` : ''}</p>
+                          </div>
+                          {exp.duration && (
+                            <span className="text-[10px] font-bold shrink-0 px-2.5 py-0.5 rounded-full" style={{ color: accentHex, background: accentLight }}>
+                              {exp.duration}
+                            </span>
+                          )}
+                        </div>
+                        {exp.description && <p className="text-xs text-slate-500 leading-relaxed mt-2">{exp.description}</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Education — Timeline */}
+            {educationEntries.length > 0 && (
+              <div className="portfolio-animate section-card">
+                <h3 className="text-[11px] font-bold uppercase tracking-[0.15em] mb-5 flex items-center gap-2" style={{ color: accentHex }}>
+                  <span className="w-1 h-4 rounded-full" style={{ background: accentHex }} /> Education
+                </h3>
+                <div className="relative pl-5" style={{ borderLeft: `2px solid ${accentLight}` }}>
+                  {educationEntries.map((edu: any, idx: number) => (
+                    <div key={edu.id} className={cn("relative pb-6", idx === educationEntries.length - 1 && "pb-0")}>
+                      <div className="tl-dot" />
+                      <div className="ml-4">
+                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-1">
+                          <div>
+                            <h4 className="text-sm font-bold text-slate-900">{edu.degree}</h4>
+                            <p className="text-xs font-semibold text-slate-500 mt-0.5">{edu.school}</p>
+                            {edu.grade && <span className="text-[10px] font-bold mt-1 block" style={{ color: accentHex }}>Grade: {edu.grade}</span>}
+                          </div>
+                          {edu.duration && (
+                            <span className="text-[10px] font-bold shrink-0 px-2.5 py-0.5 rounded-full" style={{ color: accentHex, background: accentLight }}>
+                              {edu.duration}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Projects */}
+            {projectEntries.length > 0 && (
+              <div className="portfolio-animate section-card">
+                <h3 className="text-[11px] font-bold uppercase tracking-[0.15em] mb-5 flex items-center gap-2" style={{ color: accentHex }}>
+                  <span className="w-1 h-4 rounded-full" style={{ background: accentHex }} /> Projects
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {projectEntries.map((proj: any) => (
+                    <div key={proj.id} className="project-card-m">
+                      <div className="flex justify-between items-start gap-2">
+                        <h4 className="text-sm font-bold text-slate-900">{proj.title}</h4>
+                        {proj.link && (
+                          <a href={proj.link} target="_blank" rel="noreferrer" className="shrink-0 hover:scale-110 transition-transform" style={{ color: accentHex }}>
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        )}
+                      </div>
+                      {proj.description && <p className="text-xs text-slate-500 leading-relaxed mt-1.5">{proj.description}</p>}
+                      {renderEntryAssets(proj.assets)}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Certifications & Achievements */}
+            {(certificateEntries.length > 0 || achievementEntries.length > 0) && (
+              <div className="grid md:grid-cols-2 gap-6">
+                {certificateEntries.length > 0 && (
+                  <div className="portfolio-animate section-card">
+                    <h3 className="text-[11px] font-bold uppercase tracking-[0.15em] mb-4 flex items-center gap-2" style={{ color: accentHex }}>
+                      <Award className="w-4 h-4" /> Certifications
+                    </h3>
+                    <div className="space-y-4">
+                      {certificateEntries.map((cert: any) => (
+                        <div key={cert.id} className="space-y-0.5 pb-3 border-b border-slate-100 last:border-0 last:pb-0">
+                          <h4 className="text-xs font-bold text-slate-900 leading-snug">{cert.name}</h4>
+                          <p className="text-[11px] text-slate-500 leading-normal">{cert.issuer}</p>
+                          {cert.date && <p className="text-[10px] font-semibold" style={{ color: accentHex }}>{cert.date}</p>}
+                          {renderEntryAssets(cert.assets)}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {achievementEntries.length > 0 && (
+                  <div className="portfolio-animate section-card">
+                    <h3 className="text-[11px] font-bold uppercase tracking-[0.15em] mb-4 flex items-center gap-2" style={{ color: accentHex }}>
+                      <Sparkles className="w-4 h-4" /> Achievements
+                    </h3>
+                    <div className="space-y-4">
+                      {achievementEntries.map((ach: any) => (
+                        <div key={ach.id} className="space-y-0.5 pb-3 border-b border-slate-100 last:border-0 last:pb-0">
+                          <h4 className="text-xs font-bold text-slate-900 leading-snug">{ach.title}</h4>
+                          <p className="text-[11px] text-slate-500 leading-normal">{ach.organization}</p>
+                          {ach.date && <p className="text-[10px] font-semibold" style={{ color: accentHex }}>{ach.date}</p>}
+                          {renderEntryAssets(ach.assets)}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      </>
     );
   };
 
@@ -853,17 +963,17 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
   };
 
   return (
-    <div className="min-h-screen pb-20 font-sans relative overflow-x-hidden transition-colors duration-300 bg-gradient-to-tr from-slate-50 via-slate-100/50 to-indigo-50/30 text-slate-800">
+    <div className="min-h-screen pb-20 font-sans relative overflow-x-hidden transition-colors duration-300 text-slate-800" style={{ background: `linear-gradient(135deg, #f8fafc 0%, ${accentLight} 30%, #f1f5f9 60%, ${accentLight} 100%)` }}>
       {/* Grid overlay background */}
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#8080800a_1px,transparent_1px),linear-gradient(to_bottom,#8080800a_1px,transparent_1px)] bg-[size:14px_24px] pointer-events-none opacity-100" />
 
-      {/* Decorative background glows */}
-      <div className="absolute top-[-10%] left-[-5%] w-[500px] h-[500px] rounded-full blur-[120px] pointer-events-none bg-indigo-200/10" />
-      <div className="absolute bottom-[20%] right-[-5%] w-[450px] h-[450px] rounded-full blur-[100px] pointer-events-none bg-blue-200/10" />
+      {/* Decorative background glows — themed */}
+      <div className="absolute top-[-10%] left-[-5%] w-[500px] h-[500px] rounded-full blur-[120px] pointer-events-none" style={{ background: `${accentHex}08` }} />
+      <div className="absolute bottom-[20%] right-[-5%] w-[450px] h-[450px] rounded-full blur-[100px] pointer-events-none" style={{ background: `${accentHex}06` }} />
 
-      {/* Portfolio Header Accent Bar (only for free minimal template) */}
+      {/* Portfolio Header Accent Bar */}
       {templateId === 'minimal' && (
-        <div className={cn("h-2.5 w-full sticky top-0 z-50", accentClass.split(' ')[0])} />
+        <div className="h-1.5 w-full sticky top-0 z-50" style={{ background: `linear-gradient(90deg, ${accentHex}, ${accentHex}88, ${accentHex})` }} />
       )}
 
       {/* Render selected template layout */}
@@ -873,20 +983,20 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
 
       {/* Footer */}
       <div className="max-w-4xl mx-auto px-4 pt-16 border-t border-slate-200/80 text-center space-y-2 relative z-10">
-        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Student Portfolio Network</p>
+        <p className="text-xs font-bold uppercase tracking-wider" style={{ color: accentHex }}>Student Portfolio Network</p>
         <p className="text-xs text-slate-450">
           &copy; {new Date().getFullYear()} Bexo. All rights reserved. Bexo is owned and operated by Ace Digital Private Limited.
         </p>
         <div className="flex justify-center gap-4 pt-2 text-[11px] font-bold text-slate-400">
-          <a href="https://mybexo.com" className="hover:text-indigo-600 transition-colors">About Bexo</a>
+          <a href="https://mybexo.com" className="hover:opacity-80 transition-colors" style={{ color: 'inherit' }}>About Bexo</a>
           <span>•</span>
-          <a href="https://mybexo.com" className="hover:text-indigo-600 transition-colors">Privacy Policy</a>
+          <a href="https://mybexo.com" className="hover:opacity-80 transition-colors" style={{ color: 'inherit' }}>Privacy Policy</a>
           <span>•</span>
-          <a href="https://mybexo.com" className="hover:text-indigo-600 transition-colors">Terms of Service</a>
+          <a href="https://mybexo.com" className="hover:opacity-80 transition-colors" style={{ color: 'inherit' }}>Terms of Service</a>
         </div>
       </div>
 
-      {/* Floating Replit-style Watermark */}
+      {/* Floating Watermark */}
       <a 
         href="https://mybexo.com" 
         target="_blank" 
@@ -894,8 +1004,8 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
         className="fixed bottom-6 right-6 z-50 flex items-center gap-2 text-white px-3.5 py-2 rounded-full shadow-lg backdrop-blur-sm transition-all duration-300 hover:scale-105 active:scale-95 group font-sans bg-slate-900/90 border border-slate-800 hover:bg-slate-900"
       >
         <span className="relative flex h-2 w-2">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-450 opacity-75"></span>
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-505"></span>
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ background: accentHex }}></span>
+          <span className="relative inline-flex rounded-full h-2 w-2" style={{ background: accentHex }}></span>
         </span>
         <span className="text-[10px] uppercase tracking-wider font-extrabold text-slate-400 group-hover:text-white transition-colors">
           Built with
