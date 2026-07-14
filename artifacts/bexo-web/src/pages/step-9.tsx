@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation } from 'wouter';
 import { useOnboarding } from '../context/OnboardingContext';
@@ -6,6 +6,7 @@ import { Button, Input, Card } from '../design-system/primitives';
 import { Check, ShieldCheck, Loader2, ArrowRight, Tag, ArrowLeft, X, Eye, Globe } from 'lucide-react';
 import { cn } from '../design-system/primitives';
 import { useToast } from '../hooks/use-toast';
+import { buildMinimalPortfolioHTML } from '../lib/buildMinimalHTML';
 
 declare global {
   interface Window {
@@ -20,7 +21,7 @@ const THEMES = [
   { id: 'violet',  label: 'Violet',  bg: 'bg-violet-600',  ring: 'ring-violet-600',  hex: '#7c3aed' },
 ];
 
-const FREE_PREVIEW_URL = 'https://resilient-hummingbird-87fc89.netlify.app/';
+// Removed static FREE_PREVIEW_URL — now using live user data via srcdoc
 
 export default function Step9Plan() {
   const { data, updateData } = useOnboarding();
@@ -537,6 +538,16 @@ export default function Step9Plan() {
   if (freeFlowStep === 'handle') {
     const selectedThemeObj = THEMES.find(t => t.id === freeTheme) || THEMES[0];
 
+    // Build the full portfolio HTML from the user's real onboarding data.
+    // This re-builds whenever theme or handle changes — no API call needed.
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const portfolioHTML = useMemo(
+      () => buildMinimalPortfolioHTML(data, freeTheme, freeHandle || 'yourhandle'),
+      [data, freeTheme, freeHandle]
+    );
+
+    const previewUrl = `mybexo.com/${freeHandle || 'yourhandle'}`;
+
     return (
       <div className="flex flex-col h-full max-w-md w-full mx-auto justify-center pb-10 animate-in fade-in slide-in-from-right-4">
         <button 
@@ -614,10 +625,10 @@ export default function Step9Plan() {
             </p>
           </div>
 
-          {/* Minimal Free Template Preview Card */}
+          {/* REAL Portfolio Preview — scaled iframe using srcdoc */}
           <div className="space-y-2.5">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Free Layout Preview</span>
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Your Portfolio Preview</span>
               <button
                 type="button"
                 onClick={() => setShowFreePreview(true)}
@@ -627,44 +638,39 @@ export default function Step9Plan() {
               </button>
             </div>
 
+            {/* Mini browser mockup with real user data rendered via srcdoc iframe */}
             <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-3 shadow-sm">
-              {/* Mini browser mockup */}
-              <div className="w-full h-36 bg-white rounded-xl border border-slate-200 shadow-inner relative flex flex-col overflow-hidden">
+              <div className="w-full rounded-xl border border-slate-200 shadow-inner relative flex flex-col overflow-hidden" style={{ height: 220 }}>
                 {/* browser chrome */}
-                <div className="h-5 bg-slate-100 border-b border-slate-200 flex items-center px-2 gap-1 shrink-0">
-                  <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
-                  <span className="w-1.5 h-1.5 rounded-full bg-yellow-400" />
-                  <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                <div className="h-6 bg-slate-100 border-b border-slate-200 flex items-center px-2 gap-1 shrink-0">
+                  <span className="w-2 h-2 rounded-full bg-red-400" />
+                  <span className="w-2 h-2 rounded-full bg-yellow-400" />
+                  <span className="w-2 h-2 rounded-full bg-green-400" />
                   <div className="ml-2 flex-1 bg-white rounded px-2 py-0.5 border border-slate-200 flex items-center gap-1">
-                    <Globe className="w-2 h-2 text-slate-400" />
-                    <span className="text-[8px] font-mono text-slate-500 truncate">mybexo.com/{freeHandle || 'yourhandle'}</span>
+                    <Globe className="w-2.5 h-2.5 text-slate-400" />
+                    <span className="text-[9px] font-mono text-slate-500 truncate">{previewUrl}</span>
                   </div>
                 </div>
-                {/* page content mockup with the chosen accent colour */}
-                <div className="flex-1 p-2.5 flex flex-col gap-1.5 overflow-hidden">
-                  {/* Header bar with accent colour */}
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <div className="h-2.5 w-20 rounded animate-pulse" style={{ backgroundColor: selectedThemeObj.hex + '33' }} />
-                      <div className="h-1.5 w-12 rounded mt-1" style={{ backgroundColor: selectedThemeObj.hex + '22' }} />
-                    </div>
-                    <div className="w-7 h-7 rounded-full" style={{ backgroundColor: selectedThemeObj.hex + '44' }} />
-                  </div>
-                  {/* Skills tags */}
-                  <div className="flex gap-1 mt-1">
-                    <span className="h-3.5 px-2 rounded text-[7px] font-bold flex items-center" style={{ backgroundColor: selectedThemeObj.hex + '22', color: selectedThemeObj.hex }}>Skill</span>
-                    <span className="h-3.5 px-2 rounded text-[7px] font-bold flex items-center bg-slate-100 text-slate-500">Experience</span>
-                  </div>
-                  {/* Section lines */}
-                  <div className="space-y-1 mt-1">
-                    <div className="h-1 w-full bg-slate-100 rounded" />
-                    <div className="h-1 w-4/5 bg-slate-100 rounded" />
-                    <div className="h-1 w-3/5 bg-slate-100 rounded" />
-                  </div>
+                {/* Real portfolio HTML rendered inside iframe via srcdoc — scaled down to fit */}
+                <div className="flex-1 relative overflow-hidden bg-white">
+                  <iframe
+                    key={freeTheme + freeHandle}
+                    srcDoc={portfolioHTML}
+                    title="Your Portfolio Preview"
+                    sandbox="allow-same-origin"
+                    className="absolute top-0 left-0 border-0"
+                    style={{
+                      width: '200%',
+                      height: '200%',
+                      transformOrigin: 'top left',
+                      transform: 'scale(0.5)',
+                      pointerEvents: 'none',
+                    }}
+                  />
                 </div>
               </div>
               <p className="text-[10px] text-slate-400 leading-normal px-1 text-center mt-2">
-                <strong>Minimal</strong> template with <span style={{ color: selectedThemeObj.hex }} className="font-semibold">{selectedThemeObj.label}</span> accent applied to your live portfolio.
+                This is <strong>your actual portfolio</strong> with <span style={{ color: selectedThemeObj.hex }} className="font-semibold">{selectedThemeObj.label}</span> accent — exactly how visitors will see it.
               </p>
             </div>
           </div>
@@ -685,31 +691,40 @@ export default function Step9Plan() {
           )}
         </button>
 
-        {/* Full Preview Portal */}
+        {/* Full Preview Portal — uses srcdoc so no external URL needed */}
         {showFreePreview && createPortal(
           <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 md:p-6 animate-in fade-in">
             <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setShowFreePreview(false)} />
-            <div className="bg-white w-full h-[90vh] max-w-5xl rounded-2xl shadow-2xl relative flex flex-col overflow-hidden animate-in zoom-in-95">
-              <div className="bg-slate-100 border-b border-slate-200 px-4 py-3 flex items-center justify-between shrink-0">
+            <div className="bg-white w-full h-[92vh] max-w-4xl rounded-2xl shadow-2xl relative flex flex-col overflow-hidden animate-in zoom-in-95">
+              {/* Browser chrome */}
+              <div className="bg-slate-100 border-b border-slate-200 px-4 py-2.5 flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full bg-red-400" />
-                  <div className="w-2.5 h-2.5 rounded-full bg-yellow-400" />
-                  <div className="w-2.5 h-2.5 rounded-full bg-green-400" />
-                  <span className="ml-3 text-xs font-mono text-slate-500">{FREE_PREVIEW_URL.replace('https://', '')}</span>
+                  <div className="w-3 h-3 rounded-full bg-red-400" />
+                  <div className="w-3 h-3 rounded-full bg-yellow-400" />
+                  <div className="w-3 h-3 rounded-full bg-green-400" />
+                  <div className="ml-3 bg-white border border-slate-200 rounded-lg px-3 py-1 flex items-center gap-1.5">
+                    <Globe className="w-3 h-3 text-slate-400" />
+                    <span className="text-xs font-mono text-slate-600">{previewUrl}</span>
+                  </div>
                 </div>
-                <button
-                  onClick={() => setShowFreePreview(false)}
-                  className="p-1.5 rounded-lg hover:bg-slate-200 transition-colors"
-                >
-                  <X className="w-4 h-4 text-slate-600" />
-                </button>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-slate-400 font-medium">Preview Mode</span>
+                  <button
+                    onClick={() => setShowFreePreview(false)}
+                    className="p-1.5 rounded-lg hover:bg-slate-200 transition-colors"
+                  >
+                    <X className="w-4 h-4 text-slate-600" />
+                  </button>
+                </div>
               </div>
-              <div className="flex-1 relative">
+              {/* Full-size iframe with your actual portfolio data */}
+              <div className="flex-1 relative overflow-hidden">
                 <iframe
-                  src={FREE_PREVIEW_URL}
-                  title="Free Minimal Template Preview"
+                  key={'fullpreview-' + freeTheme + freeHandle}
+                  srcDoc={portfolioHTML}
+                  title="Your Full Portfolio Preview"
+                  sandbox="allow-same-origin allow-popups"
                   className="w-full h-full border-0 absolute inset-0"
-                  allowFullScreen
                 />
               </div>
             </div>
