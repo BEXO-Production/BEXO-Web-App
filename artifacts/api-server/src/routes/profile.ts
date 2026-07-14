@@ -201,6 +201,72 @@ router.get("/check-handle", requireAuth, async (req: AuthenticatedRequest, res):
   }
 });
 
+// GET /profile/suggest-handle
+router.get("/suggest-handle", requireAuth, async (req: AuthenticatedRequest, res): Promise<void> => {
+  const firstName = (req.query.firstName as string || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  const lastName = (req.query.lastName as string || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  
+  if (!firstName) {
+    res.status(400).json({ error: "firstName query parameter is required" });
+    return;
+  }
+
+  try {
+    // Generate candidates
+    const candidates: string[] = [];
+    
+    // Candidate 1: firstname (e.g. kavin)
+    candidates.push(firstName);
+
+    // Candidate 2: firstnamelastname (e.g. kavinbalaji)
+    if (lastName) {
+      candidates.push(`${firstName}${lastName}`);
+      // Candidate 3: firstname-lastname (e.g. kavin-balaji)
+      candidates.push(`${firstName}-${lastName}`);
+      // Candidate 4: firstname.lastname (e.g. kavin.balaji)
+      candidates.push(`${firstName}.${lastName}`);
+    }
+
+    // Candidate 5: firstname + random 3 digit number (e.g. kavin184)
+    for (let i = 0; i < 5; i++) {
+      const rand = Math.floor(100 + Math.random() * 900);
+      candidates.push(`${firstName}${rand}`);
+    }
+
+    // Find which of these are already in use by other users
+    const matched = await db.select({ handle: profiles.handle, userId: profiles.userId })
+      .from(profiles)
+      .where(and(
+        // Match any of the generated candidates
+        // drizzle doesn't natively do SQL `IN` array matching cleanly without inArray helper,
+        // so we query them all or filter
+        eq(profiles.handle, candidates[0]) // fallback
+      ));
+
+    // To be perfectly safe, let's query all existing profiles matching our candidates
+    const allMatches = await db.select().from(profiles);
+    const takenHandles = new Set(
+      allMatches
+        .filter(p => p.userId !== req.user!.id) // owned by someone else
+        .map(p => p.handle?.toLowerCase())
+    );
+
+    // Find the first candidate that isn't taken
+    let suggestedHandle = candidates[0];
+    for (const cand of candidates) {
+      if (!takenHandles.has(cand)) {
+        suggestedHandle = cand;
+        break;
+      }
+    }
+
+    res.json({ suggestedHandle });
+  } catch (err) {
+    logger.error({ err, firstName, lastName }, "Error suggesting handle");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // GET /profile/sections/:type
 router.get("/sections/:type", requireAuth, async (req: AuthenticatedRequest, res): Promise<void> => {
   const userId = req.user!.id;

@@ -67,9 +67,42 @@ export default function Step3Info() {
   const [pronouns, setPronouns] = useState(data.pronouns || 'She/Her');
 
   const [firstNameError, setFirstNameError] = useState('');
+  const [lastNameError, setLastNameError] = useState('');
   const [handleError, setHandleError] = useState('');
   const [dobError, setDobError] = useState('');
+  const [pronounsError, setPronounsError] = useState('');
   const [isSwooshing, setIsSwooshing] = useState(false);
+  const [isHandleManuallyEdited, setIsHandleManuallyEdited] = useState(false);
+
+  // Fetch unique handle suggestion from backend
+  const fetchSuggestedHandle = async (fName: string, lName: string) => {
+    if (!fName.trim()) return;
+    try {
+      const token = localStorage.getItem('token');
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      const res = await fetch(`/api/profile/suggest-handle?firstName=${encodeURIComponent(fName)}&lastName=${encodeURIComponent(lName)}`, { headers });
+      if (res.ok) {
+        const result = await res.json();
+        if (result.suggestedHandle) {
+          setHandle(result.suggestedHandle);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching suggested handle:', err);
+    }
+  };
+
+  // Debounce handle suggestion as user types name
+  useEffect(() => {
+    if (isHandleManuallyEdited || !firstName.trim()) return;
+    const timer = setTimeout(() => {
+      fetchSuggestedHandle(firstName, lastName);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [firstName, lastName, isHandleManuallyEdited]);
 
   useEffect(() => {
     const fetchGoogleDetails = async () => {
@@ -135,10 +168,9 @@ export default function Step3Info() {
         setDobYear(prev => prev === '2001' && dYear ? dYear : prev);
         setPronouns(prev => prev === 'She/Her' && extractedPronouns ? extractedPronouns : prev);
 
-        // 5. Generate handle suggestion if empty
-        if (fName) {
-          const suggestedHandle = `${fName}${lName || ''}`.toLowerCase().replace(/[^a-z0-9]/g, '');
-          setHandle(prev => prev || suggestedHandle);
+        // 5. Query suggested handle from backend
+        if (fName && !handle) {
+          await fetchSuggestedHandle(fName, lName);
         }
 
       } catch (err) {
@@ -231,7 +263,19 @@ export default function Step3Info() {
       setFirstNameError('');
     }
 
-    // Last name is optional, so we do not validate it.
+    if (!lastName.trim()) {
+      setLastNameError('Last name is required');
+      valid = false;
+    } else {
+      setLastNameError('');
+    }
+
+    if (!pronouns.trim()) {
+      setPronounsError('Please select your pronouns');
+      valid = false;
+    } else {
+      setPronounsError('');
+    }
 
     if (!validateDate(dobDay, dobMonth, dobYear)) {
       setDobError('Please select a valid date of birth');
@@ -347,19 +391,26 @@ export default function Step3Info() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="lastName" className="text-slate-700 font-semibold text-xs">
-                Last name <span className="text-slate-400 font-normal italic">(optional)</span>
+              <Label htmlFor="lastName" className={lastNameError ? "text-red-500 font-semibold text-xs" : "text-slate-700 font-semibold text-xs"}>
+                Last name <span className="text-indigo-500">*</span>
               </Label>
               <div className="input-with-icon">
                 <User className="input-icon w-4 h-4" />
                 <input
                   id="lastName"
                   placeholder="Sharma"
-                  className="flex h-12 w-full rounded-xl border border-slate-200 bg-white pl-11 pr-4 py-2 text-sm text-slate-900 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 placeholder:text-slate-400"
+                  className={cn(
+                    "flex h-12 w-full rounded-xl border bg-white pl-11 pr-4 py-2 text-sm text-slate-900 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 placeholder:text-slate-400",
+                    lastNameError ? "border-red-500 focus-visible:ring-red-500" : "border-slate-200"
+                  )}
                   value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
+                  onChange={(e) => {
+                    setLastName(e.target.value);
+                    if (e.target.value.trim()) setLastNameError('');
+                  }}
                 />
               </div>
+              {lastNameError && <p className="text-red-500 text-xs mt-1">{lastNameError}</p>}
             </div>
           </div>
 
@@ -376,6 +427,7 @@ export default function Step3Info() {
                 value={handle}
                 onChange={(e) => {
                   setHandle(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''));
+                  setIsHandleManuallyEdited(true);
                   if (e.target.value.trim()) setHandleError('');
                 }}
               />
@@ -482,21 +534,24 @@ export default function Step3Info() {
 
           {/* Pronouns Field */}
           <div className="space-y-3">
-            <Label className="text-slate-700 font-semibold text-xs">
-              Pronouns <span className="text-slate-400 font-normal italic">(optional)</span>
-              <span className="text-indigo-500 ml-1">*</span>
+            <Label className={pronounsError ? "text-red-500 font-semibold text-xs" : "text-slate-700 font-semibold text-xs"}>
+              Pronouns <span className="text-indigo-500">*</span>
             </Label>
             <div className="flex flex-wrap gap-2.5">
               {['She/Her', 'He/Him', 'They/Them', 'Prefer not to say'].map((option) => (
                 <button
                   key={option}
                   type="button"
-                  onClick={() => setPronouns(option === pronouns ? '' : option)}
+                  onClick={() => {
+                    setPronouns(option);
+                    setPronounsError('');
+                  }}
                   className={cn(
                     "flex items-center gap-2 px-5 py-2.5 rounded-full border text-sm transition-all font-medium duration-200 cursor-pointer",
                     pronouns === option
                       ? "bg-indigo-600 border-indigo-600 text-white shadow-sm"
-                      : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300"
+                      : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300",
+                    pronounsError ? "border-red-500" : ""
                   )}
                 >
                   <CheckCircle2 className={cn(
@@ -507,13 +562,14 @@ export default function Step3Info() {
                 </button>
               ))}
             </div>
+            {pronounsError && <p className="text-red-500 text-xs mt-1">{pronounsError}</p>}
           </div>
 
           {/* Dark Submit Button */}
           <div className="pt-4">
             <button
               type="submit"
-              disabled={!firstName.trim() || isSwooshing || handleAvailability === 'checking' || handleAvailability === 'taken'}
+              disabled={!firstName.trim() || !lastName.trim() || !pronouns.trim() || isSwooshing || handleAvailability === 'checking' || handleAvailability === 'taken'}
               className={`w-full h-14 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-semibold text-base transition-all duration-200 flex items-center justify-center gap-3 group disabled:opacity-50 disabled:pointer-events-none cursor-pointer shadow-lg shadow-slate-900/20 btn-continue-wrap px-6${isSwooshing ? ' is-swooshing' : ''}`}
             >
               <div className="w-9 h-9 bg-indigo-500 rounded-xl flex items-center justify-center arrow-box shrink-0">
