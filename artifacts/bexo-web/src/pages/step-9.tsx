@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useLocation } from 'wouter';
 import { useOnboarding } from '../context/OnboardingContext';
 import { Button, Input, Card } from '../design-system/primitives';
-import { Check, ShieldCheck, Loader2, ArrowRight, Tag, ArrowLeft, X } from 'lucide-react';
+import { Check, ShieldCheck, Loader2, ArrowRight, Tag, ArrowLeft, X, Eye, Globe } from 'lucide-react';
 import { cn } from '../design-system/primitives';
 import { useToast } from '../hooks/use-toast';
 
@@ -11,6 +12,15 @@ declare global {
     Razorpay: any;
   }
 }
+
+const THEMES = [
+  { id: 'blue',    label: 'Navy',    bg: 'bg-blue-600',    ring: 'ring-blue-600',    hex: '#2563eb' },
+  { id: 'emerald', label: 'Emerald', bg: 'bg-emerald-600', ring: 'ring-emerald-600', hex: '#059669' },
+  { id: 'rose',    label: 'Rose',    bg: 'bg-rose-600',    ring: 'ring-rose-600',    hex: '#e11d48' },
+  { id: 'violet',  label: 'Violet',  bg: 'bg-violet-600',  ring: 'ring-violet-600',  hex: '#7c3aed' },
+];
+
+const FREE_PREVIEW_URL = 'https://resilient-hummingbird-87fc89.netlify.app/';
 
 export default function Step9Plan() {
   const { data, updateData } = useOnboarding();
@@ -33,9 +43,11 @@ export default function Step9Plan() {
   // Free flow states
   const [freeFlowStep, setFreeFlowStep] = useState<'none' | 'warning' | 'handle'>('none');
   const [freeHandle, setFreeHandle] = useState(data.handle || '');
+  const [freeTheme, setFreeTheme] = useState(data.themeColor || 'blue');
   const [isCheckingHandle, setIsCheckingHandle] = useState(false);
   const [handleAvailable, setHandleAvailable] = useState<boolean | null>(null);
   const [handleError, setHandleError] = useState('');
+  const [showFreePreview, setShowFreePreview] = useState(false);
 
   const basePrice = plan === 'annual' ? 999 : 2999;
   
@@ -43,8 +55,8 @@ export default function Step9Plan() {
     if (appliedCoupon === 'BEXO50') return basePrice * 0.5;
     if (appliedCoupon === 'STUDENT') return 200;
     if (appliedCoupon === 'BEXO2026' || appliedCoupon === 'PROMO2026') {
-      if (plan === 'annual') return basePrice - 799; // reduces price to 799
-      if (plan === 'lifetime') return basePrice - 1999; // reduces price to 1999
+      if (plan === 'annual') return basePrice - 799;
+      if (plan === 'lifetime') return basePrice - 1999;
     }
     return 0;
   };
@@ -54,6 +66,10 @@ export default function Step9Plan() {
   const gst = subtotal * 0.18;
   const total = Math.round(subtotal + gst);
   const isBillingManagement = data.hasCompletedOnboarding;
+
+  // Compute the user's portfolio URL for display
+  const handleStr = data.handle || (data.name ? data.name.toLowerCase().replace(/[^a-z0-9]/g, '') : '');
+  const portfolioUrl = handleStr ? `mybexo.com/${handleStr}` : null;
 
   const verifyPayment = async (token: string | null, payload: any) => {
     const verifyRes = await fetch("/api/payments/verify", {
@@ -83,7 +99,6 @@ export default function Step9Plan() {
   };
 
   const validateCode = () => {
-    // Flexible format for Bexo activation codes (e.g. BEXO-KAVIN-2026, BEXO-PRO-LIFETIME, BEXO-XXXX-XXXX)
     const pattern = /^BEXO-[A-Z0-9-]+$/i;
     if (!pattern.test(code)) {
       setCodeError('Invalid code format. Code should start with BEXO-');
@@ -112,7 +127,6 @@ export default function Step9Plan() {
     setIsProcessing(true);
     try {
       const token = localStorage.getItem('token');
-      // Create Order
       const orderRes = await fetch("/api/payments/create-order", {
         method: "POST",
         headers: {
@@ -137,9 +151,8 @@ export default function Step9Plan() {
         return;
       }
 
-      // Initialize Razorpay
       const options = {
-        key: orderData.key || 'rzp_test_YourKeyIdHere', // Fallback for testing UI without keys
+        key: orderData.key || 'rzp_test_YourKeyIdHere',
         amount: orderData.amount,
         currency: orderData.currency,
         name: "Bexo",
@@ -158,12 +171,10 @@ export default function Step9Plan() {
         },
         prefill: {
           name: data.name,
-          email: data.contactData.email || "",
+          email: data.contactData?.email || "",
           contact: data.phone || ""
         },
-        theme: {
-          color: "#4f46e5"
-        }
+        theme: { color: "#4f46e5" }
       };
 
       if (window.Razorpay) {
@@ -240,9 +251,7 @@ export default function Step9Plan() {
     try {
       const token = localStorage.getItem('token');
       const headers: HeadersInit = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
+      if (token) headers['Authorization'] = `Bearer ${token}`;
       const res = await fetch(`/api/profile/check-handle?handle=${cleanHandle}`, { headers });
       if (!res.ok) {
         setHandleAvailable(false);
@@ -291,20 +300,16 @@ export default function Step9Plan() {
     setIsProcessing(true);
     try {
       const token = localStorage.getItem('token');
-      const headers: HeadersInit = {
-        'Content-Type': 'application/json'
-      };
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      // 1. Save handle & template in profile
       const patchRes = await fetch("/api/profile", {
         method: "PATCH",
         headers,
         body: JSON.stringify({
           handle: freeHandle.trim().toLowerCase(),
-          templateId: 'minimal'
+          templateId: 'minimal',
+          themeColor: freeTheme
         })
       });
 
@@ -313,7 +318,6 @@ export default function Step9Plan() {
         throw new Error(errData.error || "Failed to update profile handle");
       }
 
-      // 2. Activate free plan subscription
       const activateRes = await fetch("/api/payments/free-activate", {
         method: "POST",
         headers
@@ -327,6 +331,7 @@ export default function Step9Plan() {
       updateData({
         handle: freeHandle.trim().toLowerCase(),
         templateId: 'minimal',
+        themeColor: freeTheme,
         plan: 'free',
         isPremium: false,
         storageQuotaBytes: 10 * 1024 * 1024,
@@ -343,6 +348,9 @@ export default function Step9Plan() {
     }
   };
 
+  // ──────────────────────────────────────────────────────────────────────
+  // CHECKOUT VIEW
+  // ──────────────────────────────────────────────────────────────────────
   if (showCheckout) {
     return (
       <div className="flex flex-col h-full max-w-md w-full mx-auto justify-center pb-10 animate-in fade-in slide-in-from-right-4">
@@ -433,9 +441,7 @@ export default function Step9Plan() {
           {isProcessing ? (
             <Loader2 className="w-5 h-5 animate-spin" />
           ) : (
-            <>
-              Pay ₹{total} Securely
-            </>
+            <>Pay ₹{total} Securely</>
           )}
         </button>
         <p className="text-center text-xs text-slate-400 mt-4 flex items-center justify-center gap-1">
@@ -445,6 +451,9 @@ export default function Step9Plan() {
     );
   }
 
+  // ──────────────────────────────────────────────────────────────────────
+  // FREE PLAN WARNING VIEW
+  // ──────────────────────────────────────────────────────────────────────
   if (freeFlowStep === 'warning') {
     return (
       <div className="flex flex-col h-full max-w-md w-full mx-auto justify-center pb-10 animate-in fade-in slide-in-from-right-4">
@@ -455,73 +464,79 @@ export default function Step9Plan() {
           <ArrowLeft className="w-4 h-4 mr-1" /> Back to Plans
         </button>
 
-        <h2 className="font-serif text-2xl font-bold text-slate-900 mb-2">Are you sure you want to proceed with Free?</h2>
+        <h2 className="font-serif text-2xl font-bold text-slate-900 mb-2">Are you sure?</h2>
         <p className="text-slate-500 text-sm mb-6">Here is what you will lose by continuing on the Free tier:</p>
 
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 mb-6 space-y-4">
-          <div className="flex items-start gap-3 pb-3 border-b border-slate-100">
-            <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center shrink-0">
-              <span className="text-red-600 font-bold text-sm">90%</span>
+          {[
+            {
+              pct: '90%',
+              title: 'Less Storage Space',
+              desc: 'Your storage limit drops to 10MB (Pro offers 500MB lifetime / 100MB annual).',
+            },
+            {
+              icon: <X className="w-4 h-4 text-red-600" />,
+              title: 'No AI Resume Parsing',
+              desc: 'Monthly AI resume data extraction is locked (Pro includes up to 3 parses/month).',
+            },
+            {
+              icon: <X className="w-4 h-4 text-red-600" />,
+              title: 'Locked Layout Templates',
+              desc: 'Only the Minimal template available. Creative & Academic designs are Pro-only.',
+            },
+            {
+              icon: <X className="w-4 h-4 text-red-600" />,
+              title: 'No Custom Subdomains',
+              desc: 'Portfolio at mybexo.com/handle only — no yourname.mybexo.com subdomain.',
+            },
+          ].map((item, idx) => (
+            <div key={idx} className={cn("flex items-start gap-3", idx < 3 && "pb-3 border-b border-slate-100")}>
+              <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center shrink-0">
+                {'pct' in item ? (
+                  <span className="text-red-600 font-bold text-xs">{item.pct}</span>
+                ) : (
+                  item.icon
+                )}
+              </div>
+              <div>
+                <p className="text-xs font-bold text-slate-900">{item.title}</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">{item.desc}</p>
+              </div>
             </div>
-            <div>
-              <p className="text-xs font-bold text-slate-900">Less Storage Space</p>
-              <p className="text-[11px] text-slate-500 mt-0.5">Your storage limit drops to 10MB (Pro offers 500MB for lifetime or 100MB for annual).</p>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-3 pb-3 border-b border-slate-100">
-            <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center shrink-0">
-              <X className="w-4.5 h-4.5 text-red-600 shrink-0" />
-            </div>
-            <div>
-              <p className="text-xs font-bold text-slate-900">No AI Resume Parsing</p>
-              <p className="text-[11px] text-slate-500 mt-0.5">You lose access to monthly AI resume data extraction (Pro includes up to 3 parses/month).</p>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-3 pb-3 border-b border-slate-100">
-            <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center shrink-0">
-              <X className="w-4.5 h-4.5 text-red-600 shrink-0" />
-            </div>
-            <div>
-              <p className="text-xs font-bold text-slate-900">Locked Layout Templates</p>
-              <p className="text-[11px] text-slate-500 mt-0.5">You can only use the Minimal template (Creative & Academic designs are locked).</p>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center shrink-0">
-              <X className="w-4.5 h-4.5 text-red-600 shrink-0" />
-            </div>
-            <div>
-              <p className="text-xs font-bold text-slate-900">No Custom Subdomains</p>
-              <p className="text-[11px] text-slate-500 mt-0.5">Your portfolio will live at mybexo.com/handle instead of custom subdomains.</p>
-            </div>
-          </div>
+          ))}
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-4">
+          {/* VISIBLE Upgrade to Pro button */}
           <button
             type="button"
-            className="w-full h-14 bg-indigo-650 hover:bg-indigo-700 text-white rounded-2xl font-semibold text-sm transition-all duration-200 shadow-md shadow-indigo-600/10 flex items-center justify-center gap-2 cursor-pointer border-none"
+            className="w-full h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-bold text-sm transition-all duration-200 shadow-lg shadow-indigo-600/25 flex items-center justify-center gap-2 cursor-pointer border-none"
             onClick={() => setFreeFlowStep('none')}
           >
-            Upgrade to Pro Now
+            🚀 Upgrade to Pro Now
           </button>
           
-          <button
-            type="button"
-            className="w-full h-12 bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 rounded-2xl font-semibold text-xs transition-all duration-150 flex items-center justify-center gap-2 cursor-pointer"
-            onClick={() => setFreeFlowStep('handle')}
-          >
-            I still want to continue with Free
-          </button>
+          {/* Plain clickable text — NOT a button */}
+          <p className="text-center text-xs text-slate-400 select-none">
+            or{' '}
+            <span
+              onClick={() => setFreeFlowStep('handle')}
+              className="text-slate-600 hover:text-slate-900 underline cursor-pointer transition-colors"
+            >
+              I still want to continue with free
+            </span>
+          </p>
         </div>
       </div>
     );
   }
 
+  // ──────────────────────────────────────────────────────────────────────
+  // FREE PLAN HANDLE + COLOR PICKER VIEW
+  // ──────────────────────────────────────────────────────────────────────
   if (freeFlowStep === 'handle') {
+    const selectedThemeObj = THEMES.find(t => t.id === freeTheme) || THEMES[0];
+
     return (
       <div className="flex flex-col h-full max-w-md w-full mx-auto justify-center pb-10 animate-in fade-in slide-in-from-right-4">
         <button 
@@ -532,10 +547,12 @@ export default function Step9Plan() {
         </button>
 
         <h2 className="font-serif text-2xl font-bold text-slate-900 mb-2">Claim Your Handle</h2>
-        <p className="text-slate-500 text-sm mb-6">Choose your personal mybexo.com link to activate your free portfolio.</p>
+        <p className="text-slate-500 text-sm mb-6">Choose your portfolio URL and accent colour.</p>
 
         <div className="space-y-6 mb-8">
+          {/* Handle input */}
           <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Your Portfolio URL</label>
             <div className="relative flex">
               <span className="inline-flex items-center px-4 rounded-l-2xl border border-r-0 border-slate-200 bg-slate-50 text-slate-500 text-sm font-semibold select-none">
                 mybexo.com/
@@ -561,47 +578,93 @@ export default function Step9Plan() {
                 <Loader2 className="w-3.5 h-3.5 animate-spin" /> Verifying availability...
               </p>
             )}
-            
             {handleAvailable === true && (
               <p className="text-green-600 text-xs flex items-center gap-1 px-1 font-semibold">
                 <Check className="w-4 h-4" /> This handle is available!
               </p>
             )}
-
             {handleError && (
-              <p className="text-red-500 text-xs px-1 font-semibold">
-                {handleError}
-              </p>
+              <p className="text-red-500 text-xs px-1 font-semibold">{handleError}</p>
             )}
           </div>
 
-          {/* Minimal Free Template Preview */}
+          {/* Accent Colour Picker */}
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Accent Colour</label>
+            <div className="flex gap-3">
+              {THEMES.map(theme => (
+                <button
+                  key={theme.id}
+                  type="button"
+                  onClick={() => setFreeTheme(theme.id)}
+                  className={cn(
+                    "w-9 h-9 rounded-full transition-all duration-150 border-2",
+                    theme.bg,
+                    freeTheme === theme.id
+                      ? "ring-2 ring-offset-2 " + theme.ring + " border-white scale-110 shadow-md"
+                      : "border-transparent hover:scale-105"
+                  )}
+                  aria-label={`Select ${theme.label} theme`}
+                  title={theme.label}
+                />
+              ))}
+            </div>
+            <p className="text-[11px] text-slate-400 px-0.5">
+              Selected: <span className="font-semibold text-slate-600">{selectedThemeObj.label}</span> — this colour will be applied to your live portfolio.
+            </p>
+          </div>
+
+          {/* Minimal Free Template Preview Card */}
           <div className="space-y-2.5">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider px-0.5">Free Layout Preview</span>
-            <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-4 shadow-sm flex flex-col gap-3">
-              <div className="w-full h-32 bg-white rounded-xl border border-slate-200 shadow-inner relative flex flex-col overflow-hidden">
-                <div className="h-4 bg-slate-100 border-b border-slate-200 flex items-center px-2 gap-1 shrink-0">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Free Layout Preview</span>
+              <button
+                type="button"
+                onClick={() => setShowFreePreview(true)}
+                className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
+              >
+                <Eye className="w-3.5 h-3.5" /> See Full Preview
+              </button>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-3 shadow-sm">
+              {/* Mini browser mockup */}
+              <div className="w-full h-36 bg-white rounded-xl border border-slate-200 shadow-inner relative flex flex-col overflow-hidden">
+                {/* browser chrome */}
+                <div className="h-5 bg-slate-100 border-b border-slate-200 flex items-center px-2 gap-1 shrink-0">
                   <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
                   <span className="w-1.5 h-1.5 rounded-full bg-yellow-400" />
                   <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
-                  <span className="text-[9px] font-mono text-slate-400 ml-2">mybexo.com/{freeHandle || 'handle'}</span>
-                </div>
-                <div className="flex-1 p-2.5 flex flex-col justify-between">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <div className="h-3 w-20 bg-slate-200 rounded animate-pulse" />
-                      <div className="h-2 w-14 bg-slate-100 rounded mt-1.5" />
-                    </div>
-                    <div className="w-8 h-8 rounded-full bg-slate-200 shrink-0" />
+                  <div className="ml-2 flex-1 bg-white rounded px-2 py-0.5 border border-slate-200 flex items-center gap-1">
+                    <Globe className="w-2 h-2 text-slate-400" />
+                    <span className="text-[8px] font-mono text-slate-500 truncate">mybexo.com/{freeHandle || 'yourhandle'}</span>
                   </div>
-                  <div className="flex gap-1.5">
-                    <span className="h-4 px-2 bg-indigo-50 border border-indigo-100 rounded text-[8px] font-bold text-indigo-650 flex items-center">Minimal Theme</span>
-                    <span className="h-4 px-2 bg-slate-100 rounded text-[8px] font-semibold text-slate-500 flex items-center">Responsive</span>
+                </div>
+                {/* page content mockup with the chosen accent colour */}
+                <div className="flex-1 p-2.5 flex flex-col gap-1.5 overflow-hidden">
+                  {/* Header bar with accent colour */}
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <div className="h-2.5 w-20 rounded animate-pulse" style={{ backgroundColor: selectedThemeObj.hex + '33' }} />
+                      <div className="h-1.5 w-12 rounded mt-1" style={{ backgroundColor: selectedThemeObj.hex + '22' }} />
+                    </div>
+                    <div className="w-7 h-7 rounded-full" style={{ backgroundColor: selectedThemeObj.hex + '44' }} />
+                  </div>
+                  {/* Skills tags */}
+                  <div className="flex gap-1 mt-1">
+                    <span className="h-3.5 px-2 rounded text-[7px] font-bold flex items-center" style={{ backgroundColor: selectedThemeObj.hex + '22', color: selectedThemeObj.hex }}>Skill</span>
+                    <span className="h-3.5 px-2 rounded text-[7px] font-bold flex items-center bg-slate-100 text-slate-500">Experience</span>
+                  </div>
+                  {/* Section lines */}
+                  <div className="space-y-1 mt-1">
+                    <div className="h-1 w-full bg-slate-100 rounded" />
+                    <div className="h-1 w-4/5 bg-slate-100 rounded" />
+                    <div className="h-1 w-3/5 bg-slate-100 rounded" />
                   </div>
                 </div>
               </div>
-              <p className="text-[10px] text-slate-400 leading-normal px-1 text-center">
-                Your portfolio will use the free <strong>Minimal</strong> theme layout with standard blue accents.
+              <p className="text-[10px] text-slate-400 leading-normal px-1 text-center mt-2">
+                <strong>Minimal</strong> template with <span style={{ color: selectedThemeObj.hex }} className="font-semibold">{selectedThemeObj.label}</span> accent applied to your live portfolio.
               </p>
             </div>
           </div>
@@ -621,10 +684,45 @@ export default function Step9Plan() {
             </>
           )}
         </button>
+
+        {/* Full Preview Portal */}
+        {showFreePreview && createPortal(
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 md:p-6 animate-in fade-in">
+            <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setShowFreePreview(false)} />
+            <div className="bg-white w-full h-[90vh] max-w-5xl rounded-2xl shadow-2xl relative flex flex-col overflow-hidden animate-in zoom-in-95">
+              <div className="bg-slate-100 border-b border-slate-200 px-4 py-3 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full bg-red-400" />
+                  <div className="w-2.5 h-2.5 rounded-full bg-yellow-400" />
+                  <div className="w-2.5 h-2.5 rounded-full bg-green-400" />
+                  <span className="ml-3 text-xs font-mono text-slate-500">{FREE_PREVIEW_URL.replace('https://', '')}</span>
+                </div>
+                <button
+                  onClick={() => setShowFreePreview(false)}
+                  className="p-1.5 rounded-lg hover:bg-slate-200 transition-colors"
+                >
+                  <X className="w-4 h-4 text-slate-600" />
+                </button>
+              </div>
+              <div className="flex-1 relative">
+                <iframe
+                  src={FREE_PREVIEW_URL}
+                  title="Free Minimal Template Preview"
+                  className="w-full h-full border-0 absolute inset-0"
+                  allowFullScreen
+                />
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
       </div>
     );
   }
 
+  // ──────────────────────────────────────────────────────────────────────
+  // MAIN PLAN SELECTION VIEW
+  // ──────────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-full max-w-lg w-full mx-auto justify-center pb-10">
       <div className="mb-8 text-center">
@@ -636,6 +734,13 @@ export default function Step9Plan() {
             ? 'Upgrade, renew, or redeem a campus activation code for your portfolio.'
             : 'Complete your setup to unlock dashboard access and premium features.'}
         </p>
+        {/* Show portfolio URL if handle already set */}
+        {portfolioUrl && (
+          <div className="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-full">
+            <Globe className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+            <span className="text-sm font-semibold text-indigo-700">mybexo.com/<span className="text-indigo-500">{data.handle || ''}</span></span>
+          </div>
+        )}
       </div>
 
       <div className="bg-slate-200/50 p-1.5 rounded-xl flex mb-8">
@@ -692,7 +797,7 @@ export default function Step9Plan() {
                 '1 AI Resume Parse per month (resets every 30 days)',
                 'Personalized subdomain (yourname.mybexo.com)',
                 'Full access to Academic & Creative layouts',
-                'Expose exposure and portfolio to placement cells'
+                'Portfolio visibility to placement cells'
               ].map((feat, i) => (
                 <li key={i} className="flex items-center text-xs text-slate-600">
                   <Check className="w-4 h-4 text-emerald-500 mr-2 shrink-0" /> {feat}
@@ -701,7 +806,7 @@ export default function Step9Plan() {
             </ul>
           </Card>
 
-          {/* Annual Support Plan (Secondary) */}
+          {/* Annual Support Plan */}
           <Card 
             className={cn(
               "p-6 cursor-pointer border-2 transition-all relative overflow-hidden",
@@ -786,15 +891,15 @@ export default function Step9Plan() {
             <p className="text-center text-xs text-slate-400 mt-4 flex items-center justify-center gap-1">
               <ShieldCheck className="w-3.5 h-3.5" /> Secure encrypted checkout
             </p>
+            {/* Plain text link — not a button */}
             <p className="text-center text-xs text-slate-400 mt-3 select-none">
               or{" "}
-              <button
-                type="button"
+              <span
                 onClick={() => setFreeFlowStep('warning')}
-                className="font-bold text-slate-600 hover:text-slate-900 underline transition-colors cursor-pointer border-none bg-transparent p-0"
+                className="text-slate-600 hover:text-slate-900 underline cursor-pointer transition-colors"
               >
                 Continue for free
-              </button>
+              </span>
             </p>
           </>
         ) : (
