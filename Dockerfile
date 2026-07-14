@@ -16,7 +16,8 @@ COPY scripts ./scripts
 # Install dependencies and build
 RUN pnpm install --frozen-lockfile
 RUN pnpm exec tsc --build --clean
-RUN pnpm build
+# PORT and BASE_PATH are required by vite.config.ts at build time (dev-server config only)
+RUN PORT=5173 BASE_PATH=/ pnpm build
 
 # Clean dev dependencies for a smaller image size
 RUN pnpm prune --prod
