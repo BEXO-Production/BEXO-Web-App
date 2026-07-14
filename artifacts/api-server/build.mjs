@@ -47,7 +47,6 @@ async function buildAll() {
       "isolated-vm",
       "lightningcss",
       "@grpc/*",
-      "@swc/*",
       "@azure/*",
       "@opentelemetry/*",
       "@google-cloud/*",
