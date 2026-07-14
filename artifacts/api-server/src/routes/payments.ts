@@ -49,7 +49,7 @@ const calculateAmount = (plan: PaidPlan, couponCode?: string) => {
     if (plan === "annual") {
       discount = base - 799; // Reduces base price to 799
     } else if (plan === "lifetime") {
-      discount = base - 2999; // Base remains 2999
+      discount = base - 1999; // Reduces base price to 1999
     }
   } else if (coupon === "BEXO50") {
     discount = base * 0.5;

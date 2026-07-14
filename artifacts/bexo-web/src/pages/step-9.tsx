@@ -44,7 +44,7 @@ export default function Step9Plan() {
     if (appliedCoupon === 'STUDENT') return 200;
     if (appliedCoupon === 'BEXO2026' || appliedCoupon === 'PROMO2026') {
       if (plan === 'annual') return basePrice - 799; // reduces price to 799
-      if (plan === 'lifetime') return basePrice - 2999; // reduces price to 2999
+      if (plan === 'lifetime') return basePrice - 1999; // reduces price to 1999
     }
     return 0;
   };
