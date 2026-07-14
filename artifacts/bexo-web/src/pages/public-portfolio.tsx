@@ -71,6 +71,26 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
     }
   }, [profileData, isSubdomainAccess]);
 
+  // IntersectionObserver for fade-in-on-scroll animations
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('portfolio-visible');
+            observer.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.1, rootMargin: '0px 0px -40px 0px' }
+    );
+    setTimeout(() => {
+      document.querySelectorAll('.portfolio-animate').forEach((el) => observer.observe(el));
+    }, 100);
+    return () => observer.disconnect();
+  }, [profileData]);
+
+
   if (loading) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-slate-50">
@@ -260,24 +280,7 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
 
   const templateId = user.templateId || 'minimal';
 
-  // IntersectionObserver for fade-in-on-scroll animations
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add('portfolio-visible');
-            observer.unobserve(entry.target);
-          }
-        });
-      },
-      { threshold: 0.1, rootMargin: '0px 0px -40px 0px' }
-    );
-    setTimeout(() => {
-      document.querySelectorAll('.portfolio-animate').forEach((el) => observer.observe(el));
-    }, 100);
-    return () => observer.disconnect();
-  }, [profileData]);
+
 
   const renderMinimalLayout = () => {
     return (
