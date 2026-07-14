@@ -673,6 +673,12 @@ importers:
 
   scripts:
     dependencies:
+      '@aws-sdk/client-s3':
+        specifier: ^3.1085.0
+        version: 3.1085.0
+      '@workspace/db':
+        specifier: workspace:*
+        version: link:../lib/db
       drizzle-orm:
         specifier: 'catalog:'
         version: 0.45.2(@types/pg@8.20.0)(pg@8.22.0)

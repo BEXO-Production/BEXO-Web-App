@@ -65,6 +65,7 @@ export default function Step3Info() {
   const [dobYear, setDobYear] = useState(initialDob.year);
   const [nationality, setNationality] = useState(data.nationality || 'India');
   const [pronouns, setPronouns] = useState(data.pronouns || 'She/Her');
+  const [email, setEmail] = useState('');
 
   const [firstNameError, setFirstNameError] = useState('');
   const [lastNameError, setLastNameError] = useState('');
@@ -108,7 +109,9 @@ export default function Step3Info() {
     const fetchGoogleDetails = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.user) return;
+        if (!session || !session.user) return;
+        const emailVal = session.user.email || '';
+        if (emailVal) setEmail(emailVal);
 
         let fName = '';
         let lName = '';
@@ -359,6 +362,7 @@ export default function Step3Info() {
       firstName: firstName.trim(),
       lastName: lastName.trim(),
       name: `${firstName.trim()} ${lastName.trim()}`,
+      email: email || undefined,
       dob: dobString,
       nationality,
       pronouns

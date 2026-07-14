@@ -138,7 +138,11 @@ function Router() {
         )}
       </Route>
       <Route path="/dashboard">
-        {hasToken ? <Dashboard /> : <Redirect to="/" />}
+        {hasToken ? (
+          data.hasCompletedOnboarding ? <Dashboard /> : <Redirect to={`/step/${maxAllowedStep}`} />
+        ) : (
+          <Redirect to="/" />
+        )}
       </Route>
       <Route path="/billing">
         {hasToken ? (

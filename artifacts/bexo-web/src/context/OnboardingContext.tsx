@@ -42,6 +42,7 @@ export type OnboardingData = {
   handle?: string;
   firstName?: string;
   lastName?: string;
+  email?: string;
   nationality?: string;
   pronouns?: string;
   resumeFileName: string;
@@ -79,6 +80,7 @@ const defaultData: OnboardingData = {
   name: '',
   dob: '',
   handle: '',
+  email: '',
   firstName: '',
   lastName: '',
   nationality: 'India',
@@ -252,6 +254,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
           setData(prev => ({
             ...prev,
             handle: result.profile.handle || prev.handle,
+            email: result.user.email || prev.email,
             firstName: result.user.name?.split(' ')[0] || prev.firstName,
             lastName: result.user.name?.split(' ').slice(1).join(' ') || prev.lastName,
             name: result.user.name || prev.name,
@@ -273,7 +276,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
             isPremium: result.isPremium !== undefined ? result.isPremium : prev.isPremium,
             templateId: result.user?.templateId || prev.templateId,
             themeColor: result.user?.themeColor || prev.themeColor,
-            hasCompletedOnboarding: !!result.profile?.handle
+            hasCompletedOnboarding: !!result.profile?.handle && !!result.plan
           }));
         }
       })

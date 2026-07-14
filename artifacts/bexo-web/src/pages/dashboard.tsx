@@ -31,7 +31,8 @@ import {
   ArrowDown,
   CreditCard,
   CalendarClock,
-  Crown
+  Crown,
+  Share2
 } from 'lucide-react';
 import { cn } from '../design-system/primitives';
 import logo from '../assets/bexo-logo.png';
@@ -322,6 +323,30 @@ export default function Dashboard() {
       description: 'Public URL copied to clipboard.',
     });
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleShareUrl = async () => {
+    const shareUrl = `https://${url}`;
+    const shareTitle = `${data.name || 'My'} Professional Portfolio`;
+    const shareText = `Hi! Check out my newly published professional portfolio on BEXO: ${shareUrl}`;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: shareTitle,
+          text: shareText,
+          url: shareUrl,
+        });
+      } catch (err) {
+        console.error('Web Share failed:', err);
+      }
+    } else {
+      navigator.clipboard.writeText(shareText);
+      toast({
+        title: 'Ready to share!',
+        description: 'Customized portfolio link and description copied to clipboard.',
+      });
+    }
   };
 
   // Edit Profile tab and form states
@@ -1167,10 +1192,18 @@ export default function Dashboard() {
               </div>
 
               {/* Quick Toggle for Hiring Availability */}
-              <div className="mx-3 my-1.5 px-3 py-2 bg-slate-50/50 rounded-xl border border-slate-100/85 flex items-center justify-between">
+              <div className={cn(
+                "mx-3 my-1.5 px-3 py-2 rounded-xl border transition-colors flex items-center justify-between",
+                data.openToHire 
+                  ? "bg-emerald-50/60 border-emerald-100 text-emerald-900" 
+                  : "bg-slate-50/50 border-slate-100/85 text-slate-700"
+              )}>
                 <div className="flex flex-col">
-                  <span className="text-[11px] font-bold text-slate-700">Willing to Work</span>
-                  <span className="text-[9px] text-slate-450">{data.openToHire ? 'Actively looking' : 'Not looking'}</span>
+                  <span className="text-[11px] font-bold">Willing to Work</span>
+                  <span className={cn(
+                    "text-[9px]",
+                    data.openToHire ? "text-emerald-600 font-semibold" : "text-slate-450"
+                  )}>{data.openToHire ? 'Actively looking' : 'Not looking'}</span>
                 </div>
                 <button
                   type="button"
@@ -1180,7 +1213,7 @@ export default function Dashboard() {
                   }}
                   className={cn(
                     "w-9 h-5 rounded-full transition-colors relative focus:outline-none focus:ring-1 focus:ring-indigo-500 shrink-0",
-                    data.openToHire ? "bg-emerald-555" : "bg-slate-200"
+                    data.openToHire ? "bg-emerald-500" : "bg-slate-200"
                   )}
                 >
                   <span 
@@ -1530,6 +1563,10 @@ export default function Dashboard() {
                   <Button variant="outline" size="sm" onClick={handleCopyUrl} className="h-9 px-3 text-xs flex gap-1">
                     {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
                     {copied ? 'Copied' : 'Copy'}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={handleShareUrl} className="h-9 px-3 text-xs flex gap-1">
+                    <Share2 className="w-3.5 h-3.5 text-indigo-500" />
+                    Share
                   </Button>
                   <a href={`https://${url}`} target="_blank" rel="noreferrer">
                     <Button variant="secondary" size="sm" className="h-9 px-3 text-xs flex gap-1">

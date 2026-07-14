@@ -95,36 +95,37 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<voi
 // PATCH /profile
 router.patch("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<void> => {
   const userId = req.user!.id;
-  const { 
-    name, dob, photoUrl, resumeUrl, handle, headline, careerGoal, bio, completionPct, profilePhotoAssetId,
-    openToHire, templateId, themeColor,
-    aboutEntries, educationEntries, experienceEntries, projectEntries, certificateEntries, achievementEntries, researchEntries, contactData
-  } = req.body;
-  try {
-    // Resolve premium status for gating
-    const subscriptionState = await resolveSubscriptionState(userId);
-    const isPremium = subscriptionState.isPremium;
-
-    // Gate template selection for free users
-    if (templateId !== undefined && templateId !== 'minimal' && !isPremium) {
-      res.status(403).json({ error: "Premium templates require a Pro subscription. Upgrade to unlock Academic and Creative layouts." });
-      return;
-    }
-
-    // Update user info if name, dob, etc. is provided
-    const userUpdates: Partial<typeof users.$inferInsert> = {};
-    if (name !== undefined) userUpdates.name = name;
-    if (dob !== undefined) userUpdates.dob = dob;
-    if (photoUrl !== undefined) userUpdates.photoUrl = photoUrl;
-    if (resumeUrl !== undefined) userUpdates.resumeUrl = resumeUrl;
-    if (profilePhotoAssetId !== undefined) userUpdates.profilePhotoAssetId = profilePhotoAssetId;
-    if (openToHire !== undefined) userUpdates.openToHire = !!openToHire;
-    if (templateId !== undefined) userUpdates.templateId = templateId;
-    if (themeColor !== undefined) userUpdates.themeColor = themeColor;
-
-    if (Object.keys(userUpdates).length > 0) {
-      await db.update(users).set(userUpdates).where(eq(users.id, userId));
-    }
+    const { 
+      name, dob, email, photoUrl, resumeUrl, handle, headline, careerGoal, bio, completionPct, profilePhotoAssetId,
+      openToHire, templateId, themeColor,
+      aboutEntries, educationEntries, experienceEntries, projectEntries, certificateEntries, achievementEntries, researchEntries, contactData
+    } = req.body;
+    try {
+      // Resolve premium status for gating
+      const subscriptionState = await resolveSubscriptionState(userId);
+      const isPremium = subscriptionState.isPremium;
+  
+      // Gate template selection for free users
+      if (templateId !== undefined && templateId !== 'minimal' && !isPremium) {
+        res.status(403).json({ error: "Premium templates require a Pro subscription. Upgrade to unlock Academic and Creative layouts." });
+        return;
+      }
+  
+      // Update user info if name, dob, etc. is provided
+      const userUpdates: Partial<typeof users.$inferInsert> = {};
+      if (name !== undefined) userUpdates.name = name;
+      if (dob !== undefined) userUpdates.dob = dob;
+      if (email !== undefined) userUpdates.email = email;
+      if (photoUrl !== undefined) userUpdates.photoUrl = photoUrl;
+      if (resumeUrl !== undefined) userUpdates.resumeUrl = resumeUrl;
+      if (profilePhotoAssetId !== undefined) userUpdates.profilePhotoAssetId = profilePhotoAssetId;
+      if (openToHire !== undefined) userUpdates.openToHire = !!openToHire;
+      if (templateId !== undefined) userUpdates.templateId = templateId;
+      if (themeColor !== undefined) userUpdates.themeColor = themeColor;
+  
+      if (Object.keys(userUpdates).length > 0) {
+        await db.update(users).set(userUpdates).where(eq(users.id, userId));
+      }
 
     // Update profile info
     const profile = await getOrCreateProfile(userId);
@@ -676,15 +677,96 @@ router.post("/resume", requireAuth, upload.single("resume"), async (req: Authent
       { type: "contact", entries: contactData }
     ];
 
+    // Fetch existing profile sections to merge data
+    const existingSections = await db.select().from(profileSections).where(eq(profileSections.profileId, profile.id));
+
     for (const sec of sectionsToSave) {
+      const existingSec = existingSections.find(s => s.type === sec.type);
+      let mergedEntries: any = sec.entries;
+
+      if (existingSec && Array.isArray(existingSec.entries)) {
+        const existingEntries = existingSec.entries;
+
+        if (sec.type === "about") {
+          // Merge "about" fields, preserving existing if filled
+          const existingAbout = existingEntries[0] || {};
+          const newAbout = sec.entries[0] || {};
+          mergedEntries = [{
+            id: "1",
+            title: existingAbout.title || newAbout.title || "",
+            description: existingAbout.description || newAbout.description || "",
+            currentStatus: existingAbout.currentStatus || newAbout.currentStatus || ""
+          }];
+        } else if (sec.type === "contact") {
+          // Merge "contact" fields
+          const existingContact = existingEntries as any;
+          const newContact = sec.entries as any;
+          mergedEntries = {
+            email: existingContact.email || newContact.email || "",
+            phone: existingContact.phone || newContact.phone || "",
+            linkedin: existingContact.linkedin || newContact.linkedin || "",
+            github: existingContact.github || newContact.github || "",
+            portfolio: existingContact.portfolio || newContact.portfolio || "",
+            customLinks: Array.isArray(existingContact.customLinks) ? existingContact.customLinks : (newContact.customLinks || [])
+          };
+        } else {
+          // For list-based sections (education, experience, projects, certificates, achievements)
+          // Filter out incoming items that are duplicates of existing items
+          const incomingEntries = sec.entries;
+          const uniqueIncoming: any[] = [];
+
+          for (const incoming of incomingEntries) {
+            let isDuplicate = false;
+
+            for (const existing of existingEntries) {
+              if (sec.type === "education") {
+                if (
+                  incoming.institution?.trim().toLowerCase() === existing.institution?.trim().toLowerCase() &&
+                  incoming.degree?.trim().toLowerCase() === existing.degree?.trim().toLowerCase()
+                ) {
+                  isDuplicate = true;
+                  break;
+                }
+              } else if (sec.type === "experience") {
+                if (
+                  incoming.company?.trim().toLowerCase() === existing.company?.trim().toLowerCase() &&
+                  incoming.role?.trim().toLowerCase() === existing.role?.trim().toLowerCase()
+                ) {
+                  isDuplicate = true;
+                  break;
+                }
+              } else if (sec.type === "projects" || sec.type === "certificates" || sec.type === "achievements") {
+                if (incoming.title?.trim().toLowerCase() === existing.title?.trim().toLowerCase()) {
+                  isDuplicate = true;
+                  break;
+                }
+              }
+            }
+
+            if (!isDuplicate) {
+              uniqueIncoming.push(incoming);
+            }
+          }
+
+          // Append unique new entries with updated IDs
+          let nextIdIdx = existingEntries.length + 1;
+          const updatedIncoming = uniqueIncoming.map(item => ({
+            ...item,
+            id: String(nextIdIdx++)
+          }));
+
+          mergedEntries = [...existingEntries, ...updatedIncoming];
+        }
+      }
+
       await db.insert(profileSections).values({
         profileId: profile.id,
         type: sec.type,
-        entries: sec.entries,
+        entries: mergedEntries,
         reviewedAt: new Date()
       }).onConflictDoUpdate({
         target: [profileSections.profileId, profileSections.type],
-        set: { entries: sec.entries, reviewedAt: new Date() }
+        set: { entries: mergedEntries, reviewedAt: new Date() }
       });
     }
 
