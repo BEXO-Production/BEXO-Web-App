@@ -57,7 +57,7 @@ export type OnboardingData = {
   achievementEntries: AchievementEntry[];
   researchEntries: ResearchEntry[];
   contactData: ContactData;
-  plan: 'annual' | 'lifetime' | 'activation_code' | null;
+  plan: 'annual' | 'lifetime' | 'activation_code' | 'free' | null;
   templateId: string;
   themeColor: string;
   visitedTabs: string[];
@@ -65,6 +65,7 @@ export type OnboardingData = {
   storageQuotaBytes: number;
   isPremium: boolean;
   hasCompletedOnboarding: boolean;
+  payments?: any[];
 };
 
 interface OnboardingContextType {
@@ -112,6 +113,7 @@ const defaultData: OnboardingData = {
   storageQuotaBytes: 10485760, // 10MB default
   isPremium: false,
   hasCompletedOnboarding: false,
+  payments: [],
 };
 
 const OnboardingContext = createContext<OnboardingContextType | undefined>(undefined);
@@ -276,7 +278,8 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
             isPremium: result.isPremium !== undefined ? result.isPremium : prev.isPremium,
             templateId: result.user?.templateId || prev.templateId,
             themeColor: result.user?.themeColor || prev.themeColor,
-            hasCompletedOnboarding: !!result.profile?.handle && !!result.plan
+            hasCompletedOnboarding: !!result.profile?.handle && !!result.plan,
+            payments: result.payments || prev.payments
           }));
         }
       })

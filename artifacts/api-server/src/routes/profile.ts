@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { requireAuth, AuthenticatedRequest } from "../middlewares/auth";
-import { db, users, profiles, profileSections } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { db, users, profiles, profileSections, payments, subscriptions } from "@workspace/db";
+import { eq, and, desc } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import multer from "multer";
 import { createRequire } from "module";
@@ -58,6 +58,12 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<voi
     const subscriptionState = await resolveSubscriptionState(userId);
     await syncStorageQuota(userId, subscriptionState.storageQuotaBytes, Number(user.storageQuotaBytes));
 
+    const paymentsList = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.userId, userId))
+      .orderBy(desc(payments.createdAt));
+
     res.json({
       profile,
       user: {
@@ -84,7 +90,8 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<voi
       certificateEntries: getEntries("certificates"),
       achievementEntries: getEntries("achievements"),
       researchEntries: getEntries("research"),
-      contactData: contactEntries || { email: user.email || "", phone: user.phone || "", linkedin: "", github: "", portfolio: "" }
+      contactData: contactEntries || { email: user.email || "", phone: user.phone || "", linkedin: "", github: "", portfolio: "" },
+      payments: paymentsList
     });
   } catch (err) {
     logger.error({ err, userId }, "Error fetching profile");
@@ -402,6 +409,48 @@ router.post("/resume", requireAuth, upload.single("resume"), async (req: Authent
 
   if (file.mimetype !== "application/pdf") {
     res.status(400).json({ error: "Only PDF files are supported" });
+    return;
+  }
+
+  // Retrieve current subscription state for parsing limits
+  const subscriptionState = await resolveSubscriptionState(userId);
+  const plan = subscriptionState.plan; // "annual" | "lifetime" | "free" | null
+
+  // 1. Block free tier from parsing
+  if (!plan || plan === "free") {
+    res.status(403).json({ error: "Free tier does not support AI resume parsing. Please upgrade to Pro to unlock." });
+    return;
+  }
+
+  // 2. Fetch user record for parsing limit count
+  const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!user) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  const now = new Date();
+  let parsesCount = user.resumeParsesThisMonth || 0;
+  let resetTime = user.lastResumeParseReset ? new Date(user.lastResumeParseReset) : new Date();
+
+  // Reset counter if more than 30 days passed since last reset
+  const diffDays = Math.floor((now.getTime() - resetTime.getTime()) / (1000 * 60 * 60 * 24));
+  if (diffDays >= 30) {
+    parsesCount = 0;
+    resetTime = now;
+    await db.update(users).set({
+      resumeParsesThisMonth: 0,
+      lastResumeParseReset: now
+    }).where(eq(users.id, userId));
+  }
+
+  // Enforce monthly limits
+  const monthlyLimit = plan === "annual" ? 3 : 1; // Annual gets 3, Lifetime gets 1
+  if (parsesCount >= monthlyLimit) {
+    const daysToReset = Math.max(30 - diffDays, 1);
+    res.status(429).json({ 
+      error: `You have reached your monthly AI resume parsing limit of ${monthlyLimit} parse(s) on the ${plan === "annual" ? "Annual" : "Lifetime"} plan. Quota resets in ${daysToReset} days.` 
+    });
     return;
   }
 
@@ -769,6 +818,11 @@ router.post("/resume", requireAuth, upload.single("resume"), async (req: Authent
         set: { entries: mergedEntries, reviewedAt: new Date() }
       });
     }
+
+    // Increment the parse counter in the database
+    await db.update(users).set({
+      resumeParsesThisMonth: parsesCount + 1
+    }).where(eq(users.id, userId));
 
     res.json({
       success: true,

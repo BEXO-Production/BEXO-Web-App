@@ -91,7 +91,7 @@ export default function Dashboard() {
   const { data, updateData, setToken } = useOnboarding();
   const { toast } = useToast();
   const [currentView, setCurrentView] = useState<'overview' | 'edit-profile' | 'resume' | 'settings'>('overview');
-  const [settingsSubTab, setSettingsSubTab] = useState<'profile' | 'design' | 'storage'>('profile');
+  const [settingsSubTab, setSettingsSubTab] = useState<'profile' | 'design' | 'storage' | 'billing'>('profile');
   const [showLoginToast, setShowLoginToast] = useState(false);
 
   useEffect(() => {
@@ -2252,6 +2252,18 @@ export default function Dashboard() {
                 >
                   <FileText className="w-4 h-4 shrink-0" /> Cloud Storage
                 </button>
+
+                <button
+                  onClick={() => setSettingsSubTab('billing')}
+                  className={cn(
+                    "flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all text-left w-full",
+                    settingsSubTab === 'billing' 
+                      ? "bg-indigo-50 text-indigo-900 shadow-sm ring-1 ring-indigo-100" 
+                      : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                  )}
+                >
+                  <CreditCard className="w-4 h-4 shrink-0" /> Billing & Invoices
+                </button>
               </Card>
 
               {/* Tab Content Cards */}
@@ -2562,6 +2574,64 @@ export default function Dashboard() {
                           </Button>
                         )}
                       </div>
+                    </div>
+                  </Card>
+                )}
+
+                {settingsSubTab === 'billing' && (
+                  <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-6 animate-in fade-in duration-200">
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                        <CreditCard className="w-4 h-4 text-indigo-500" /> Billing History & Invoices
+                      </h3>
+                      <p className="text-slate-500 text-xs mt-0.5">Access and download tax invoices for your Bexo payments.</p>
+                    </div>
+
+                    <div className="space-y-4">
+                      {data.payments && data.payments.length > 0 ? (
+                        <div className="divide-y divide-slate-100">
+                          {data.payments.map((payment: any) => {
+                            const dateStr = new Date(payment.createdAt).toLocaleDateString('en-IN', {
+                              day: 'numeric',
+                              month: 'long',
+                              year: 'numeric'
+                            });
+                            return (
+                              <div key={payment.id} className="py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                                <div>
+                                  <p className="text-sm font-semibold text-slate-900 capitalize">
+                                    Bexo Pro {payment.amount === 299900 ? 'Lifetime Membership' : payment.amount === 99900 ? 'Annual Support Plan' : 'Subscription'}
+                                  </p>
+                                  <p className="text-xs text-slate-555 mt-0.5">
+                                    Paid on {dateStr}  |  Order ID: <span className="font-mono text-slate-400">{payment.razorpayOrderId}</span>
+                                  </p>
+                                </div>
+                                <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto">
+                                  <span className="text-sm font-bold text-slate-900">
+                                    ₹{(payment.amount / 100).toLocaleString('en-IN')}
+                                  </span>
+                                  {payment.invoiceUrl ? (
+                                    <a 
+                                      href={payment.invoiceUrl} 
+                                      target="_blank" 
+                                      rel="noreferrer" 
+                                      className="text-xs font-bold text-indigo-650 bg-indigo-50 hover:bg-indigo-100/70 px-3 py-1.5 rounded-lg border border-indigo-100 transition-colors flex items-center gap-1.5 shrink-0 select-none"
+                                    >
+                                      <FileText className="w-3.5 h-3.5" /> Download Invoice
+                                    </a>
+                                  ) : (
+                                    <span className="text-xs text-slate-400 font-medium italic">Invoice generating...</span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="text-center py-10 rounded-2xl bg-slate-50/50 border border-dashed border-slate-200">
+                          <p className="text-sm text-slate-400 font-medium">No payment history found.</p>
+                        </div>
+                      )}
                     </div>
                   </Card>
                 )}

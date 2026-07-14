@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useLocation } from 'wouter';
 import { useOnboarding } from '../context/OnboardingContext';
 import { Button, Input, Card } from '../design-system/primitives';
-import { Check, ShieldCheck, Loader2, ArrowRight, Tag, ArrowLeft } from 'lucide-react';
+import { Check, ShieldCheck, Loader2, ArrowRight, Tag, ArrowLeft, X } from 'lucide-react';
 import { cn } from '../design-system/primitives';
 import { useToast } from '../hooks/use-toast';
 
@@ -30,11 +30,22 @@ export default function Step9Plan() {
   const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
   const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
 
+  // Free flow states
+  const [freeFlowStep, setFreeFlowStep] = useState<'none' | 'warning' | 'handle'>('none');
+  const [freeHandle, setFreeHandle] = useState(data.handle || '');
+  const [isCheckingHandle, setIsCheckingHandle] = useState(false);
+  const [handleAvailable, setHandleAvailable] = useState<boolean | null>(null);
+  const [handleError, setHandleError] = useState('');
+
   const basePrice = plan === 'annual' ? 999 : 2999;
   
   const getDiscount = () => {
     if (appliedCoupon === 'BEXO50') return basePrice * 0.5;
     if (appliedCoupon === 'STUDENT') return 200;
+    if (appliedCoupon === 'BEXO2026' || appliedCoupon === 'PROMO2026') {
+      if (plan === 'annual') return basePrice - 799; // reduces price to 799
+      if (plan === 'lifetime') return basePrice - 2999; // reduces price to 2999
+    }
     return 0;
   };
 
@@ -65,7 +76,7 @@ export default function Step9Plan() {
     updateData({
       plan,
       isPremium: true,
-      storageQuotaBytes: 50 * 1024 * 1024,
+      storageQuotaBytes: plan === 'annual' ? 100 * 1024 * 1024 : 500 * 1024 * 1024,
     });
     toast({ title: 'Payment Successful', description: 'Your BEXO Pro access is active.' });
     setLocation('/dashboard');
@@ -87,7 +98,7 @@ export default function Step9Plan() {
     setTimeout(() => {
       setIsApplyingCoupon(false);
       const codeUpper = couponCode.toUpperCase();
-      if (codeUpper === 'BEXO50' || codeUpper === 'STUDENT') {
+      if (codeUpper === 'BEXO50' || codeUpper === 'STUDENT' || codeUpper === 'BEXO2026' || codeUpper === 'PROMO2026') {
         setAppliedCoupon(codeUpper);
         toast({ title: 'Coupon Applied', description: 'Discount has been applied to your total.' });
       } else {
@@ -194,7 +205,7 @@ export default function Step9Plan() {
         updateData({
           plan: result.plan || 'annual',
           isPremium: true,
-          storageQuotaBytes: 50 * 1024 * 1024,
+          storageQuotaBytes: (result.plan || 'annual') === 'annual' ? 100 * 1024 * 1024 : 500 * 1024 * 1024,
         });
         toast({ title: 'Account Activated', description: 'Your activation code was successfully redeemed.' });
         setLocation('/dashboard');
@@ -203,6 +214,130 @@ export default function Step9Plan() {
       }
     } catch (err: any) {
       toast({ title: 'Activation Failed', description: err.message, variant: 'destructive' });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const checkHandle = async (handleVal: string) => {
+    const cleanHandle = handleVal.trim().toLowerCase();
+    if (!cleanHandle) {
+      setHandleAvailable(null);
+      setHandleError('Handle cannot be empty');
+      return;
+    }
+
+    if (!/^[a-z0-9-_]{3,20}$/.test(cleanHandle)) {
+      setHandleAvailable(false);
+      setHandleError('3-20 characters, lowercase letters, numbers, hyphens & underscores only');
+      return;
+    }
+
+    setIsCheckingHandle(true);
+    setHandleError('');
+    setHandleAvailable(null);
+
+    try {
+      const token = localStorage.getItem('token');
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      const res = await fetch(`/api/profile/check-handle?handle=${cleanHandle}`, { headers });
+      if (!res.ok) {
+        setHandleAvailable(false);
+        setHandleError('Verification failed');
+        return;
+      }
+      const result = await res.json();
+      if (result.available) {
+        setHandleAvailable(true);
+        setHandleError('');
+      } else {
+        setHandleAvailable(false);
+        setHandleError('Handle is already taken');
+      }
+    } catch (err) {
+      setHandleAvailable(false);
+      setHandleError('Connection failed');
+    } finally {
+      setIsCheckingHandle(false);
+    }
+  };
+
+  React.useEffect(() => {
+    if (freeFlowStep !== 'handle') return;
+    if (!freeHandle) {
+      setHandleAvailable(null);
+      setHandleError('');
+      return;
+    }
+    const timer = setTimeout(() => {
+      checkHandle(freeHandle);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [freeHandle, freeFlowStep]);
+
+  const handleFreePlanActivation = async () => {
+    if (!freeHandle) {
+      toast({ title: 'Handle Required', description: 'Please choose a handle before proceeding.', variant: 'destructive' });
+      return;
+    }
+    if (handleAvailable !== true) {
+      toast({ title: 'Handle Unavailable', description: 'Please choose an available handle.', variant: 'destructive' });
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      const token = localStorage.getItem('token');
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json'
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      // 1. Save handle & template in profile
+      const patchRes = await fetch("/api/profile", {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({
+          handle: freeHandle.trim().toLowerCase(),
+          templateId: 'minimal'
+        })
+      });
+
+      if (!patchRes.ok) {
+        const errData = await patchRes.json();
+        throw new Error(errData.error || "Failed to update profile handle");
+      }
+
+      // 2. Activate free plan subscription
+      const activateRes = await fetch("/api/payments/free-activate", {
+        method: "POST",
+        headers
+      });
+
+      if (!activateRes.ok) {
+        const errData = await activateRes.json();
+        throw new Error(errData.error || "Failed to activate Free plan");
+      }
+
+      updateData({
+        handle: freeHandle.trim().toLowerCase(),
+        templateId: 'minimal',
+        plan: 'free',
+        isPremium: false,
+        storageQuotaBytes: 10 * 1024 * 1024,
+        hasCompletedOnboarding: true
+      });
+
+      toast({ title: 'Welcome to Bexo!', description: 'Your free account is activated.' });
+      setLocation('/dashboard');
+    } catch (err: any) {
+      console.error(err);
+      toast({ title: 'Setup Failed', description: err.message || "Failed to complete free plan setup", variant: 'destructive' });
     } finally {
       setIsProcessing(false);
     }
@@ -310,6 +445,186 @@ export default function Step9Plan() {
     );
   }
 
+  if (freeFlowStep === 'warning') {
+    return (
+      <div className="flex flex-col h-full max-w-md w-full mx-auto justify-center pb-10 animate-in fade-in slide-in-from-right-4">
+        <button 
+          onClick={() => setFreeFlowStep('none')}
+          className="flex items-center text-slate-500 hover:text-slate-900 mb-6 transition-colors w-fit text-sm font-medium"
+        >
+          <ArrowLeft className="w-4 h-4 mr-1" /> Back to Plans
+        </button>
+
+        <h2 className="font-serif text-2xl font-bold text-slate-900 mb-2">Are you sure you want to proceed with Free?</h2>
+        <p className="text-slate-500 text-sm mb-6">Here is what you will lose by continuing on the Free tier:</p>
+
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 mb-6 space-y-4">
+          <div className="flex items-start gap-3 pb-3 border-b border-slate-100">
+            <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center shrink-0">
+              <span className="text-red-600 font-bold text-sm">90%</span>
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-900">Less Storage Space</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">Your storage limit drops to 10MB (Pro offers 500MB for lifetime or 100MB for annual).</p>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-3 pb-3 border-b border-slate-100">
+            <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center shrink-0">
+              <X className="w-4.5 h-4.5 text-red-600 shrink-0" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-900">No AI Resume Parsing</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">You lose access to monthly AI resume data extraction (Pro includes up to 3 parses/month).</p>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-3 pb-3 border-b border-slate-100">
+            <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center shrink-0">
+              <X className="w-4.5 h-4.5 text-red-600 shrink-0" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-900">Locked Layout Templates</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">You can only use the Minimal template (Creative & Academic designs are locked).</p>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center shrink-0">
+              <X className="w-4.5 h-4.5 text-red-600 shrink-0" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-900">No Custom Subdomains</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">Your portfolio will live at mybexo.com/handle instead of custom subdomains.</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <button
+            type="button"
+            className="w-full h-14 bg-indigo-650 hover:bg-indigo-700 text-white rounded-2xl font-semibold text-sm transition-all duration-200 shadow-md shadow-indigo-600/10 flex items-center justify-center gap-2 cursor-pointer border-none"
+            onClick={() => setFreeFlowStep('none')}
+          >
+            Upgrade to Pro Now
+          </button>
+          
+          <button
+            type="button"
+            className="w-full h-12 bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 rounded-2xl font-semibold text-xs transition-all duration-150 flex items-center justify-center gap-2 cursor-pointer"
+            onClick={() => setFreeFlowStep('handle')}
+          >
+            I still want to continue with Free
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (freeFlowStep === 'handle') {
+    return (
+      <div className="flex flex-col h-full max-w-md w-full mx-auto justify-center pb-10 animate-in fade-in slide-in-from-right-4">
+        <button 
+          onClick={() => setFreeFlowStep('warning')}
+          className="flex items-center text-slate-500 hover:text-slate-900 mb-6 transition-colors w-fit text-sm font-medium"
+        >
+          <ArrowLeft className="w-4 h-4 mr-1" /> Back
+        </button>
+
+        <h2 className="font-serif text-2xl font-bold text-slate-900 mb-2">Claim Your Handle</h2>
+        <p className="text-slate-500 text-sm mb-6">Choose your personal mybexo.com link to activate your free portfolio.</p>
+
+        <div className="space-y-6 mb-8">
+          <div className="space-y-2">
+            <div className="relative flex">
+              <span className="inline-flex items-center px-4 rounded-l-2xl border border-r-0 border-slate-200 bg-slate-50 text-slate-500 text-sm font-semibold select-none">
+                mybexo.com/
+              </span>
+              <Input 
+                placeholder="yourhandle" 
+                className={cn(
+                  "rounded-l-none rounded-r-2xl h-12 font-semibold text-slate-800",
+                  handleAvailable === true ? "border-green-400 focus-visible:ring-green-400" : "",
+                  handleAvailable === false ? "border-red-400 focus-visible:ring-red-400" : ""
+                )}
+                value={freeHandle}
+                onChange={(e) => {
+                  setFreeHandle(e.target.value.toLowerCase().replace(/[^a-z0-9-_]/g, ''));
+                  setHandleAvailable(null);
+                  setHandleError('');
+                }}
+              />
+            </div>
+            
+            {isCheckingHandle && (
+              <p className="text-slate-400 text-xs flex items-center gap-1.5 px-1 font-medium">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Verifying availability...
+              </p>
+            )}
+            
+            {handleAvailable === true && (
+              <p className="text-green-600 text-xs flex items-center gap-1 px-1 font-semibold">
+                <Check className="w-4 h-4" /> This handle is available!
+              </p>
+            )}
+
+            {handleError && (
+              <p className="text-red-500 text-xs px-1 font-semibold">
+                {handleError}
+              </p>
+            )}
+          </div>
+
+          {/* Minimal Free Template Preview */}
+          <div className="space-y-2.5">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider px-0.5">Free Layout Preview</span>
+            <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-4 shadow-sm flex flex-col gap-3">
+              <div className="w-full h-32 bg-white rounded-xl border border-slate-200 shadow-inner relative flex flex-col overflow-hidden">
+                <div className="h-4 bg-slate-100 border-b border-slate-200 flex items-center px-2 gap-1 shrink-0">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-yellow-400" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                  <span className="text-[9px] font-mono text-slate-400 ml-2">mybexo.com/{freeHandle || 'handle'}</span>
+                </div>
+                <div className="flex-1 p-2.5 flex flex-col justify-between">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <div className="h-3 w-20 bg-slate-200 rounded animate-pulse" />
+                      <div className="h-2 w-14 bg-slate-100 rounded mt-1.5" />
+                    </div>
+                    <div className="w-8 h-8 rounded-full bg-slate-200 shrink-0" />
+                  </div>
+                  <div className="flex gap-1.5">
+                    <span className="h-4 px-2 bg-indigo-50 border border-indigo-100 rounded text-[8px] font-bold text-indigo-650 flex items-center">Minimal Theme</span>
+                    <span className="h-4 px-2 bg-slate-100 rounded text-[8px] font-semibold text-slate-500 flex items-center">Responsive</span>
+                  </div>
+                </div>
+              </div>
+              <p className="text-[10px] text-slate-400 leading-normal px-1 text-center">
+                Your portfolio will use the free <strong>Minimal</strong> theme layout with standard blue accents.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          className="w-full h-14 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-semibold text-base transition-all duration-200 flex items-center justify-center gap-2 shadow-lg shadow-slate-900/20 disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
+          onClick={handleFreePlanActivation}
+          disabled={isProcessing || !freeHandle || handleAvailable !== true}
+        >
+          {isProcessing ? (
+            <Loader2 className="w-5 h-5 animate-spin" />
+          ) : (
+            <>
+              Activate Free Portfolio <ArrowRight className="w-4 h-4 ml-1" />
+            </>
+          )}
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full max-w-lg w-full mx-auto justify-center pb-10">
       <div className="mb-8 text-center">
@@ -350,26 +665,37 @@ export default function Step9Plan() {
           <Card 
             className={cn(
               "p-6 cursor-pointer border-2 transition-all relative overflow-hidden",
-              plan === 'lifetime' ? "border-indigo-600 bg-indigo-50/30" : "border-slate-200 hover:border-indigo-300"
+              plan === 'lifetime' ? "border-indigo-600 bg-indigo-50/10" : "border-slate-200 hover:border-indigo-300"
             )}
             onClick={() => setPlan('lifetime')}
           >
-            {plan === 'lifetime' && (
-              <div className="absolute top-0 right-0 bg-indigo-600 text-white text-xs font-bold px-3 py-1 rounded-bl-lg">
-                POPULAR
+            <div className="absolute top-0 right-0 bg-gradient-to-l from-emerald-600 to-indigo-600 text-white text-[9px] font-extrabold px-3 py-1 rounded-bl-lg tracking-wider uppercase">
+              STUDENT PROMO
+            </div>
+            
+            <div className="flex justify-between items-start mb-2">
+              <div>
+                <h3 className="text-xl font-bold text-slate-900 flex items-center gap-1.5">
+                  Lifetime Pro
+                </h3>
+                <p className="text-xs text-indigo-600 font-bold mt-0.5">Expose your skills & profile forever</p>
               </div>
-            )}
-            <div className="flex justify-between items-center mb-2">
-              <h3 className="text-xl font-bold text-slate-900">Lifetime</h3>
               <div className="text-right">
                 <span className="text-2xl font-bold text-slate-900">₹2,999</span>
+                <span className="text-[10px] text-slate-400 block">excl. GST</span>
               </div>
             </div>
-            <p className="text-sm text-slate-500 mb-4">Pay once, keep your portfolio forever.</p>
+            <p className="text-xs text-slate-500 mb-4">Pay once, hosting & live portfolio is yours for life.</p>
             <ul className="space-y-2">
-              {['Includes all Premium features', 'Custom mybexo.com domain', 'Unlimited resume parses', 'All premium templates'].map((feat, i) => (
-                <li key={i} className="flex items-center text-sm text-slate-600">
-                  <Check className="w-4 h-4 text-indigo-500 mr-2 shrink-0" /> {feat}
+              {[
+                '500MB Premium Cloud Storage (photos & assets)',
+                '1 AI Resume Parse per month (resets every 30 days)',
+                'Personalized subdomain (yourname.mybexo.com)',
+                'Full access to Academic & Creative layouts',
+                'Expose exposure and portfolio to placement cells'
+              ].map((feat, i) => (
+                <li key={i} className="flex items-center text-xs text-slate-600">
+                  <Check className="w-4 h-4 text-emerald-500 mr-2 shrink-0" /> {feat}
                 </li>
               ))}
             </ul>
@@ -378,23 +704,33 @@ export default function Step9Plan() {
           {/* Annual Support Plan (Secondary) */}
           <Card 
             className={cn(
-              "p-6 cursor-pointer border-2 transition-all",
-              plan === 'annual' ? "border-indigo-600 bg-indigo-50/30" : "border-slate-200 hover:border-indigo-300"
+              "p-6 cursor-pointer border-2 transition-all relative overflow-hidden",
+              plan === 'annual' ? "border-indigo-600 bg-indigo-50/10" : "border-slate-200 hover:border-indigo-300"
             )}
             onClick={() => setPlan('annual')}
           >
-            <div className="flex justify-between items-center mb-2">
-              <h3 className="text-xl font-bold text-slate-900">Annual Support Plan</h3>
+            <div className="flex justify-between items-start mb-2">
+              <div>
+                <h3 className="text-xl font-bold text-slate-900">Annual Support Plan</h3>
+                <p className="text-xs text-slate-500 mt-0.5 font-medium">Billed annually. Help Bexo run & grow.</p>
+              </div>
               <div className="text-right">
                 <span className="text-2xl font-bold text-slate-900">₹999</span>
-                <span className="text-sm text-slate-500">/year</span>
+                <span className="text-xs text-slate-500">/year</span>
+                <span className="text-[10px] text-slate-400 block">excl. GST</span>
               </div>
             </div>
-            <p className="text-sm text-slate-500 mb-4 font-medium">A support plan to help Bexo run and grow.</p>
-            <ul className="space-y-2">
-              <li className="flex items-center text-sm text-slate-600">
-                <Check className="w-4 h-4 text-indigo-500 mr-2 shrink-0" /> Get all Premium features (billed annually)
-              </li>
+            <ul className="space-y-2 mt-4">
+              {[
+                '100MB Cloud Storage space capacity',
+                '3 AI Resume Parses per month (resets every 30 days)',
+                'Personalized subdomain (yourname.mybexo.com)',
+                'Full access to Academic & Creative layouts'
+              ].map((feat, i) => (
+                <li key={i} className="flex items-center text-xs text-slate-600">
+                  <Check className="w-4 h-4 text-indigo-500 mr-2 shrink-0" /> {feat}
+                </li>
+              ))}
             </ul>
           </Card>
         </div>
@@ -445,9 +781,25 @@ export default function Step9Plan() {
           )}
         </button>
         
-        {tab === 'pay' && (
+        {tab === 'pay' ? (
+          <>
+            <p className="text-center text-xs text-slate-400 mt-4 flex items-center justify-center gap-1">
+              <ShieldCheck className="w-3.5 h-3.5" /> Secure encrypted checkout
+            </p>
+            <p className="text-center text-xs text-slate-400 mt-3 select-none">
+              or{" "}
+              <button
+                type="button"
+                onClick={() => setFreeFlowStep('warning')}
+                className="font-bold text-slate-600 hover:text-slate-900 underline transition-colors cursor-pointer border-none bg-transparent p-0"
+              >
+                Continue for free
+              </button>
+            </p>
+          </>
+        ) : (
           <p className="text-center text-xs text-slate-400 mt-4 flex items-center justify-center gap-1">
-            <ShieldCheck className="w-3.5 h-3.5" /> Secure encrypted checkout
+            <ShieldCheck className="w-3.5 h-3.5" /> Secure encrypted activation
           </p>
         )}
       </div>

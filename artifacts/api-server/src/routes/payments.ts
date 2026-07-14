@@ -6,7 +6,9 @@ import Razorpay from "razorpay";
 import crypto from "crypto";
 import { sendBillingEmail, sendBillingWhatsApp } from "../lib/billing";
 import {
-  PRO_STORAGE_BYTES,
+  FREE_STORAGE_BYTES,
+  ANNUAL_STORAGE_BYTES,
+  LIFETIME_STORAGE_BYTES,
   addAnnualTerm,
   resolveSubscriptionState,
 } from "../lib/subscriptions";
@@ -39,7 +41,17 @@ const calculateAmount = (plan: PaidPlan, couponCode?: string) => {
   const coupon = normalizeCoupon(couponCode);
   let discount = 0;
 
-  if (coupon === "BEXO50") {
+  const now = new Date();
+  const expiryDate = new Date("2026-12-31T23:59:59Z");
+  const isPromoValid = now.getTime() <= expiryDate.getTime();
+
+  if (isPromoValid && (coupon === "BEXO2026" || coupon === "PROMO2026")) {
+    if (plan === "annual") {
+      discount = base - 799; // Reduces base price to 799
+    } else if (plan === "lifetime") {
+      discount = base - 2999; // Base remains 2999
+    }
+  } else if (coupon === "BEXO50") {
     discount = base * 0.5;
   } else if (coupon === "STUDENT") {
     discount = 200;
@@ -90,7 +102,8 @@ const activateSubscription = async (userId: string, plan: PaidPlan, expiresAt: D
     });
   }
 
-  await db.update(users).set({ storageQuotaBytes: PRO_STORAGE_BYTES }).where(eq(users.id, userId));
+  const quotaBytes = plan === "annual" ? ANNUAL_STORAGE_BYTES : LIFETIME_STORAGE_BYTES;
+  await db.update(users).set({ storageQuotaBytes: quotaBytes }).where(eq(users.id, userId));
 };
 
 const sendBillingReceipts = async (userId: string, plan: PaidPlan | "activation_code", amountPaid: number, reference: string) => {
@@ -330,6 +343,37 @@ router.post("/activation", async (req: any, res: any) => {
   } catch (error) {
     logger.error({ error, userId }, "Failed to process activation code");
     res.status(500).json({ error: "Unable to redeem activation code right now." });
+  }
+});
+
+router.post("/free-activate", async (req: any, res: any) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+  try {
+    const existing = await db.select().from(subscriptions).where(eq(subscriptions.userId, userId)).limit(1);
+
+    if (existing.length > 0) {
+      await db
+        .update(subscriptions)
+        .set({ plan: "free", status: "free", expiresAt: null })
+        .where(eq(subscriptions.userId, userId));
+    } else {
+      await db.insert(subscriptions).values({
+        userId,
+        plan: "free",
+        status: "free",
+        expiresAt: null,
+      });
+    }
+
+    // Free plan gets 10MB storage limit
+    await db.update(users).set({ storageQuotaBytes: FREE_STORAGE_BYTES }).where(eq(users.id, userId));
+
+    res.json({ success: true, message: "Free plan activated successfully", plan: "free", isPremium: false });
+  } catch (error) {
+    logger.error({ error, userId }, "Failed to activate free plan");
+    res.status(500).json({ error: "Unable to activate free plan right now." });
   }
 });
 

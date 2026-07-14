@@ -2,13 +2,14 @@ import { db, subscriptions, users } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 
 export const FREE_STORAGE_BYTES = 10 * 1024 * 1024;
-export const PRO_STORAGE_BYTES = 50 * 1024 * 1024;
+export const ANNUAL_STORAGE_BYTES = 100 * 1024 * 1024;
+export const LIFETIME_STORAGE_BYTES = 500 * 1024 * 1024;
 
 type SubscriptionRecord = typeof subscriptions.$inferSelect;
 
 export type SubscriptionState = {
   subscription: SubscriptionRecord | null;
-  plan: "annual" | "lifetime" | null;
+  plan: "annual" | "lifetime" | "free" | null;
   status: "free" | "active" | "expired";
   isPremium: boolean;
   expiresAt: Date | null;
@@ -52,11 +53,14 @@ export async function resolveSubscriptionState(userId: string): Promise<Subscrip
   }
 
   const isPremium = subscription?.status === "active" && (subscription.plan === "annual" || subscription.plan === "lifetime");
-  const storageQuotaBytes = isPremium ? PRO_STORAGE_BYTES : FREE_STORAGE_BYTES;
+  let storageQuotaBytes = FREE_STORAGE_BYTES;
+  if (isPremium) {
+    storageQuotaBytes = subscription.plan === "annual" ? ANNUAL_STORAGE_BYTES : LIFETIME_STORAGE_BYTES;
+  }
 
   return {
     subscription: subscription || null,
-    plan: isPremium ? (subscription.plan as "annual" | "lifetime") : null,
+    plan: isPremium ? (subscription.plan as "annual" | "lifetime") : (subscription?.plan === "free" ? "free" : null),
     status: isPremium ? "active" : subscription?.status === "expired" ? "expired" : "free",
     isPremium: !!isPremium,
     expiresAt: subscription?.expiresAt || null,
