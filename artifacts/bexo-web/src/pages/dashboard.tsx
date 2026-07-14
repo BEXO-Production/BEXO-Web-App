@@ -208,7 +208,14 @@ export default function Dashboard() {
   const url = data.isPremium 
     ? `${handleString}.mybexo.com` 
     : `mybexo.com/${handleString}`;
+  const correctVisitUrl = `${window.location.protocol}//${window.location.host}/${handleString}`;
   const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (data.openToHire) {
+      localStorage.setItem('bexo_hiring_availability_ever_enabled', 'true');
+    }
+  }, [data.openToHire]);
 
   // Compute storage dynamically
   const [calculatedUsedStorage, setCalculatedUsedStorage] = useState(0);
@@ -311,7 +318,7 @@ export default function Dashboard() {
       ? { label: 'Attach resume', detail: 'A resume improves the downloadable version and future parsing.', action: () => setCurrentView('resume'), icon: FileText }
       : !data.isPremium
         ? { label: 'Unlock Pro publishing', detail: 'Move to custom subdomain, premium templates, and 50MB storage.', action: openBilling, icon: Crown }
-        : { label: 'Review live portfolio', detail: 'Your public page is ready for recruiters and applications.', action: () => window.open(`https://${url}`, '_blank', 'noopener,noreferrer'), icon: ExternalLink };
+        : { label: 'Review live portfolio', detail: 'Your public page is ready for recruiters and applications.', action: () => window.open(correctVisitUrl, '_blank', 'noopener,noreferrer'), icon: ExternalLink };
   const NextActionIcon = nextAction.icon;
 
   const handleCopyUrl = () => {
@@ -1276,7 +1283,7 @@ export default function Dashboard() {
                 <Button onClick={() => setCurrentView('edit-profile')} className="h-10 px-4 text-xs gap-2">
                   <Pencil className="w-4 h-4" /> Edit profile
                 </Button>
-                <a href={`https://${url}`} target="_blank" rel="noreferrer">
+                <a href={correctVisitUrl} target="_blank" rel="noreferrer">
                   <Button variant="outline" className="h-10 px-4 text-xs gap-2">
                     <ExternalLink className="w-4 h-4" /> View live
                   </Button>
@@ -1496,7 +1503,7 @@ export default function Dashboard() {
             </div>
 
             {/* Hiring Availability Card */}
-            {!data.openToHire && (
+            {!(data.openToHire || localStorage.getItem('bexo_hiring_availability_ever_enabled') === 'true') && (
               <Card className="p-6 bg-white border border-slate-200 shadow-sm animate-in slide-in-from-bottom duration-300">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                   <div className="space-y-1">
@@ -1524,6 +1531,9 @@ export default function Dashboard() {
                       onClick={() => {
                         const newStatus = !data.openToHire;
                         updateData({ openToHire: newStatus });
+                        if (newStatus) {
+                          localStorage.setItem('bexo_hiring_availability_ever_enabled', 'true');
+                        }
                         toast({
                           title: newStatus ? "Open for Opportunities" : "Status Changed",
                           description: newStatus 
@@ -1567,7 +1577,7 @@ export default function Dashboard() {
                     <Share2 className="w-3.5 h-3.5 text-indigo-500" />
                     Share
                   </Button>
-                  <a href={`https://${url}`} target="_blank" rel="noreferrer">
+                  <a href={correctVisitUrl} target="_blank" rel="noreferrer">
                     <Button variant="secondary" size="sm" className="h-9 px-3 text-xs flex gap-1">
                       Visit <ExternalLink className="w-3.5 h-3.5" />
                     </Button>
