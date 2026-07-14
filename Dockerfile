@@ -20,7 +20,7 @@ RUN pnpm exec tsc --build --clean
 RUN PORT=5173 BASE_PATH=/ pnpm build
 
 # Clean dev dependencies for a smaller image size
-RUN pnpm prune --prod
+RUN CI=true pnpm prune --prod
 
 ENV NODE_ENV=production
 
