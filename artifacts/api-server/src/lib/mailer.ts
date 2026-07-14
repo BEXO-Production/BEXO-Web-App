@@ -1,15 +1,22 @@
 import nodemailer from 'nodemailer';
 import { logger } from './logger';
 
-export const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: parseInt(process.env.SMTP_PORT || '587'),
-  secure: process.env.SMTP_PORT === '465',
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-});
+let transporter: nodemailer.Transporter | null = null;
+
+const getTransporter = () => {
+  if (!transporter) {
+    transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST || 'smtp.gmail.com',
+      port: parseInt(process.env.SMTP_PORT || '587'),
+      secure: process.env.SMTP_PORT === '465',
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+    });
+  }
+  return transporter;
+};
 
 export const sendEmail = async (to: string, subject: string, html: string, attachments?: nodemailer.SendMailOptions['attachments']) => {
   if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
@@ -18,7 +25,8 @@ export const sendEmail = async (to: string, subject: string, html: string, attac
   }
 
   try {
-    const info = await transporter.sendMail({
+    const mailTransporter = getTransporter();
+    const info = await mailTransporter.sendMail({
       from: `"Bexo Support" <${process.env.SMTP_USER}>`,
       to,
       subject,

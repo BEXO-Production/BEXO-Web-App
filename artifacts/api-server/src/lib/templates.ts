@@ -258,30 +258,50 @@ export const getSiteLiveEmail = (userName: string, siteUrl: string) => {
 
 export const getBillingReceiptEmail = (userName: string, plan: string, amount: number, transactionId: string) => {
   const planName = plan === 'annual' ? 'Pro Annual' : plan === 'lifetime' ? 'Pro Lifetime' : 'Premium Access';
+  const planDesc = plan === 'lifetime' 
+    ? 'Lifetime access to all Bexo Pro features with no recurring charges.' 
+    : plan === 'annual'
+    ? '12-month access to Bexo Pro features, templates, and AI tools.'
+    : 'Premium access to Bexo Pro portfolio features.';
   
   const content = `
-    <h2 class="content-title">Payment Successful 💳</h2>
+    <h2 class="content-title">Payment Received Successfully</h2>
     <p class="content-text">Hi ${userName},</p>
-    <p class="content-text">Thank you for upgrading to Bexo Pro! Your payment has been securely processed and your premium features are instantly unlocked.</p>
+    <p class="content-text">Thank you for your purchase! Your payment has been securely processed and your Bexo Pro features are now active. Please find your detailed tax invoice attached to this email as a PDF.</p>
     
     <table class="receipt-table">
       <tr>
-        <td class="receipt-label">Plan Upgraded</td>
+        <td class="receipt-label">Plan</td>
         <td class="receipt-val">${planName}</td>
+      </tr>
+      <tr>
+        <td class="receipt-label">Description</td>
+        <td class="receipt-val" style="font-size: 13px; color: #64748b;">${planDesc}</td>
       </tr>
       <tr>
         <td class="receipt-label">Transaction ID</td>
         <td class="receipt-val" style="font-family: monospace; font-size: 13px;">${transactionId}</td>
       </tr>
       <tr>
-        <td class="receipt-label" style="font-weight: 700; color: #0f172a;">Total Amount</td>
-        <td class="receipt-val receipt-amount">₹${amount}</td>
+        <td class="receipt-label">Date</td>
+        <td class="receipt-val">${new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</td>
+      </tr>
+      <tr>
+        <td class="receipt-label" style="font-weight: 700; color: #0f172a;">Total Paid</td>
+        <td class="receipt-val receipt-amount">${amount > 0 ? `₹${amount.toLocaleString('en-IN')}` : 'Activation Code (Free)'}</td>
       </tr>
     </table>
+
+    <div class="highlight-box" style="border-left: 4px solid #4f46e5; text-align: left;">
+      <p style="margin: 0 0 8px 0; font-weight: 600; color: #1e293b; font-size: 14px;">📎 Tax Invoice Attached</p>
+      <p style="margin: 0; font-size: 13px; color: #64748b; line-height: 1.5;">A detailed tax invoice (PDF) from Ace Digital Private Limited has been attached to this email for your records. You can also download it anytime from your Bexo dashboard.</p>
+    </div>
     
     <div class="btn-container">
-      <a href="https://mybexo.com/dashboard" class="btn">Access Pro Features</a>
+      <a href="https://mybexo.com/dashboard" class="btn">Go to Dashboard</a>
     </div>
+
+    <p class="content-text" style="font-size: 13px; color: #94a3b8; text-align: center;">For billing queries, reach out to <a href="mailto:billing@mybexo.com" style="color: #4f46e5;">billing@mybexo.com</a></p>
   `;
   return wrapHtml("Bexo Payment Receipt", content);
 };

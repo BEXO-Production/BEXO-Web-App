@@ -1,4 +1,4 @@
-import { sendBillingEmail } from './dist/lib/billing.js';
+import { sendBillingEmail } from './src/lib/billing';
 import dotenv from 'dotenv';
 import path from 'path';
 
