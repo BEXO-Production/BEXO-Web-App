@@ -38,9 +38,9 @@ export default function Step3Info() {
 
   // Helper to parse initial dob (YYYY-MM-DD) into Day, Month, Year
   const parseInitialDob = () => {
-    let day = '14';
-    let month = 'March';
-    let year = '2001';
+    let day = '';
+    let month = '';
+    let year = '';
 
     if (data.dob && data.dob.includes('-')) {
       const [y, m, d] = data.dob.split('-');
@@ -108,52 +108,79 @@ export default function Step3Info() {
     const fetchGoogleDetails = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.provider_token) return;
+        if (!session?.user) return;
 
-        const response = await fetch(
-          'https://people.googleapis.com/v1/people/me?personFields=names,birthdays,genders',
-          {
-            headers: {
-              Authorization: `Bearer ${session.provider_token}`,
-            },
-          }
-        );
-
-        if (!response.ok) {
-          console.warn('Failed to fetch details from Google People API');
-          return;
-        }
-
-        const personData = await response.json();
-        
-        // 1. Extract Name
-        const nameObj = personData.names?.[0];
         let fName = '';
         let lName = '';
-        if (nameObj) {
-          fName = nameObj.givenName || '';
-          lName = nameObj.familyName || '';
-        }
-
-        // 2. Extract Birthday
         let dDay = '';
         let dMonth = '';
         let dYear = '';
-        const birthdayObj = personData.birthdays?.find((b: any) => b.date);
-        if (birthdayObj?.date) {
-          const { day, month, year } = birthdayObj.date;
-          if (day) dDay = String(day);
-          if (month && month >= 1 && month <= 12) dMonth = MONTHS[month - 1];
-          if (year) dYear = String(year);
+        let extractedPronouns = '';
+
+        // 1. Try to fetch details from Google People API
+        if (session.provider_token) {
+          try {
+            const response = await fetch(
+              'https://people.googleapis.com/v1/people/me?personFields=names,birthdays,genders',
+              {
+                headers: {
+                  Authorization: `Bearer ${session.provider_token}`,
+                },
+              }
+            );
+
+            if (response.ok) {
+              const personData = await response.json();
+              
+              // Extract Names
+              const nameObj = personData.names?.[0];
+              if (nameObj) {
+                fName = nameObj.givenName || '';
+                lName = nameObj.familyName || '';
+              }
+
+              // Extract Birthday
+              const birthdayObj = personData.birthdays?.find((b: any) => b.date);
+              if (birthdayObj?.date) {
+                const { day, month, year } = birthdayObj.date;
+                if (day) dDay = String(day);
+                if (month && month >= 1 && month <= 12) dMonth = MONTHS[month - 1];
+                if (year) dYear = String(year);
+              }
+
+              // Extract Gender/Pronouns
+              const genderObj = personData.genders?.[0];
+              if (genderObj?.value) {
+                if (genderObj.value === 'female') {
+                  extractedPronouns = 'She/Her';
+                } else if (genderObj.value === 'male') {
+                  extractedPronouns = 'He/Him';
+                } else {
+                  extractedPronouns = 'They/Them';
+                }
+              }
+            }
+          } catch (apiErr) {
+            console.warn('Google People API fetch failed:', apiErr);
+          }
         }
 
-        // 3. Extract Gender/Pronouns
-        let extractedPronouns = '';
-        const genderObj = personData.genders?.[0];
-        if (genderObj?.value) {
-          if (genderObj.value === 'female') {
+        // 2. Fall back to Supabase user_metadata for names if still empty
+        const metadata = session.user.user_metadata;
+        if ((!fName || !lName) && metadata?.full_name) {
+          const nameParts = metadata.full_name.trim().split(/\s+/);
+          if (!fName) fName = nameParts[0] || '';
+          if (!lName) lName = nameParts.slice(1).join(' ') || '';
+        }
+
+        // 3. Deduce/guess pronouns based on First Name if empty
+        if (!extractedPronouns && fName) {
+          const nameLower = fName.toLowerCase();
+          const femaleNames = ['priya', 'sharma', 'ananya', 'sneha', 'pooja', 'aditi', 'rachel', 'sarah', 'emily', 'jessica', 'kavya', 'divya', 'neha'];
+          const maleNames = ['kavin', 'balaji', 'amit', 'rahul', 'rohit', 'sanjay', 'john', 'david', 'michael', 'james', 'arun', 'vijay'];
+          if (femaleNames.some(n => nameLower.includes(n))) {
             extractedPronouns = 'She/Her';
-          } else if (genderObj.value === 'male') {
+          } else if (maleNames.some(n => nameLower.includes(n))) {
             extractedPronouns = 'He/Him';
           } else {
             extractedPronouns = 'They/Them';
@@ -163,10 +190,10 @@ export default function Step3Info() {
         // 4. Set state only if not already set by user/db
         setFirstName(prev => prev || fName);
         setLastName(prev => prev || lName);
-        setDobDay(prev => prev === '14' && dDay ? dDay : prev);
-        setDobMonth(prev => prev === 'March' && dMonth ? dMonth : prev);
-        setDobYear(prev => prev === '2001' && dYear ? dYear : prev);
-        setPronouns(prev => prev === 'She/Her' && extractedPronouns ? extractedPronouns : prev);
+        setDobDay(prev => (prev === '14' || !prev) && dDay ? dDay : prev);
+        setDobMonth(prev => (prev === 'March' || !prev) && dMonth ? dMonth : prev);
+        setDobYear(prev => (prev === '2001' || !prev) && dYear ? dYear : prev);
+        setPronouns(prev => (prev === 'She/Her' || !prev) && extractedPronouns ? extractedPronouns : prev);
 
         // 5. Query suggested handle from backend
         if (fName && !handle) {
@@ -464,6 +491,7 @@ export default function Step3Info() {
                     setDobError('');
                   }}
                 >
+                  <option value="">Day</option>
                   {DAYS.map(d => (
                     <option key={d} value={d}>{d}</option>
                   ))}
@@ -482,6 +510,7 @@ export default function Step3Info() {
                     setDobError('');
                   }}
                 >
+                  <option value="">Month</option>
                   {MONTHS.map(m => (
                     <option key={m} value={m}>{m}</option>
                   ))}
@@ -500,6 +529,7 @@ export default function Step3Info() {
                     setDobError('');
                   }}
                 >
+                  <option value="">Year</option>
                   {YEARS.map(y => (
                     <option key={y} value={y}>{y}</option>
                   ))}
