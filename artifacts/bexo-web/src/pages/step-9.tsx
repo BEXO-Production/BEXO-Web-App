@@ -50,6 +50,14 @@ export default function Step9Plan() {
   const [handleError, setHandleError] = useState('');
   const [showFreePreview, setShowFreePreview] = useState(false);
 
+  // Build the full portfolio HTML from the user's real onboarding data.
+  // This re-builds whenever theme or handle changes — no API call needed.
+  // Defined at the top level to adhere to the Rules of Hooks.
+  const portfolioHTML = useMemo(
+    () => buildMinimalPortfolioHTML(data, freeTheme, freeHandle || 'yourhandle'),
+    [data, freeTheme, freeHandle]
+  );
+
   const basePrice = plan === 'annual' ? 999 : 2999;
   
   const getDiscount = () => {
@@ -537,15 +545,6 @@ export default function Step9Plan() {
   // ──────────────────────────────────────────────────────────────────────
   if (freeFlowStep === 'handle') {
     const selectedThemeObj = THEMES.find(t => t.id === freeTheme) || THEMES[0];
-
-    // Build the full portfolio HTML from the user's real onboarding data.
-    // This re-builds whenever theme or handle changes — no API call needed.
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    const portfolioHTML = useMemo(
-      () => buildMinimalPortfolioHTML(data, freeTheme, freeHandle || 'yourhandle'),
-      [data, freeTheme, freeHandle]
-    );
-
     const previewUrl = `mybexo.com/${freeHandle || 'yourhandle'}`;
 
     return (
@@ -691,11 +690,11 @@ export default function Step9Plan() {
           )}
         </button>
 
-        {/* Full Preview Portal — uses srcdoc so no external URL needed */}
+        {/* Full Preview Portal — opens in the same tab as a centered popup modal dialog */}
         {showFreePreview && createPortal(
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 md:p-6 animate-in fade-in">
-            <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setShowFreePreview(false)} />
-            <div className="bg-white w-full h-[92vh] max-w-4xl rounded-2xl shadow-2xl relative flex flex-col overflow-hidden animate-in zoom-in-95">
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]" onClick={() => setShowFreePreview(false)} />
+            <div className="bg-white w-full max-w-2xl h-[70vh] rounded-2xl shadow-2xl relative flex flex-col overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-200">
               {/* Browser chrome */}
               <div className="bg-slate-100 border-b border-slate-200 px-4 py-2.5 flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-2">
@@ -703,12 +702,12 @@ export default function Step9Plan() {
                   <div className="w-3 h-3 rounded-full bg-yellow-400" />
                   <div className="w-3 h-3 rounded-full bg-green-400" />
                   <div className="ml-3 bg-white border border-slate-200 rounded-lg px-3 py-1 flex items-center gap-1.5">
-                    <Globe className="w-3 h-3 text-slate-400" />
+                    <Globe className="w-3.5 h-3.5 text-slate-400" />
                     <span className="text-xs font-mono text-slate-600">{previewUrl}</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-slate-400 font-medium">Preview Mode</span>
+                  <span className="text-[10px] text-slate-400 font-bold tracking-wider uppercase bg-slate-200/50 px-2 py-0.5 rounded">Preview Mode</span>
                   <button
                     onClick={() => setShowFreePreview(false)}
                     className="p-1.5 rounded-lg hover:bg-slate-200 transition-colors"
@@ -718,7 +717,7 @@ export default function Step9Plan() {
                 </div>
               </div>
               {/* Full-size iframe with your actual portfolio data */}
-              <div className="flex-1 relative overflow-hidden">
+              <div className="flex-1 relative overflow-hidden bg-white">
                 <iframe
                   key={'fullpreview-' + freeTheme + freeHandle}
                   srcDoc={portfolioHTML}
