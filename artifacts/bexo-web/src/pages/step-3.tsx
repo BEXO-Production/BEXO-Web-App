@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useOnboarding } from '../context/OnboardingContext';
 import { Label, cn } from '../design-system/primitives';
 import { ArrowRight, User, Calendar, Globe, CheckCircle2 } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -69,6 +70,84 @@ export default function Step3Info() {
   const [handleError, setHandleError] = useState('');
   const [dobError, setDobError] = useState('');
   const [isSwooshing, setIsSwooshing] = useState(false);
+
+  useEffect(() => {
+    const fetchGoogleDetails = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.provider_token) return;
+
+        const response = await fetch(
+          'https://people.googleapis.com/v1/people/me?personFields=names,birthdays,genders',
+          {
+            headers: {
+              Authorization: `Bearer ${session.provider_token}`,
+            },
+          }
+        );
+
+        if (!response.ok) {
+          console.warn('Failed to fetch details from Google People API');
+          return;
+        }
+
+        const personData = await response.json();
+        
+        // 1. Extract Name
+        const nameObj = personData.names?.[0];
+        let fName = '';
+        let lName = '';
+        if (nameObj) {
+          fName = nameObj.givenName || '';
+          lName = nameObj.familyName || '';
+        }
+
+        // 2. Extract Birthday
+        let dDay = '';
+        let dMonth = '';
+        let dYear = '';
+        const birthdayObj = personData.birthdays?.find((b: any) => b.date);
+        if (birthdayObj?.date) {
+          const { day, month, year } = birthdayObj.date;
+          if (day) dDay = String(day);
+          if (month && month >= 1 && month <= 12) dMonth = MONTHS[month - 1];
+          if (year) dYear = String(year);
+        }
+
+        // 3. Extract Gender/Pronouns
+        let extractedPronouns = '';
+        const genderObj = personData.genders?.[0];
+        if (genderObj?.value) {
+          if (genderObj.value === 'female') {
+            extractedPronouns = 'She/Her';
+          } else if (genderObj.value === 'male') {
+            extractedPronouns = 'He/Him';
+          } else {
+            extractedPronouns = 'They/Them';
+          }
+        }
+
+        // 4. Set state only if not already set by user/db
+        setFirstName(prev => prev || fName);
+        setLastName(prev => prev || lName);
+        setDobDay(prev => prev === '14' && dDay ? dDay : prev);
+        setDobMonth(prev => prev === 'March' && dMonth ? dMonth : prev);
+        setDobYear(prev => prev === '2001' && dYear ? dYear : prev);
+        setPronouns(prev => prev === 'She/Her' && extractedPronouns ? extractedPronouns : prev);
+
+        // 5. Generate handle suggestion if empty
+        if (fName) {
+          const suggestedHandle = `${fName}${lName || ''}`.toLowerCase().replace(/[^a-z0-9]/g, '');
+          setHandle(prev => prev || suggestedHandle);
+        }
+
+      } catch (err) {
+        console.error('Error fetching Google profile details:', err);
+      }
+    };
+
+    fetchGoogleDetails();
+  }, []);
 
   React.useEffect(() => {
     if (!handle.trim()) {

@@ -42,7 +42,8 @@ export default function Step2Auth() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/step/2`
+          redirectTo: `${window.location.origin}/step/2`,
+          scopes: 'openid email profile https://www.googleapis.com/auth/user.birthday.read'
         }
       });
       if (error) throw error;
