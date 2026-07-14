@@ -112,10 +112,11 @@ function buildFeaturedCardHTML(title: string, sub: string, date: string, descrip
     </div>`;
 }
 
-export function buildMinimalPortfolioHTML(data: OnboardingData, themeColor: string, handle: string): string {
+export function buildMinimalPortfolioHTML(data: OnboardingData, themeColor: string, handle: string, themeBg?: string): string {
   const accent = THEME_HEX[themeColor] || THEME_HEX['blue'];
   const accentLight = accent + '12';
   const accentMid = accent + '30';
+  const bgStyle = themeBg || data.themeBg || 'grid';
 
   const name = esc(data.name || `${data.firstName || ''} ${data.lastName || ''}`.trim() || 'Your Name');
   const photoUrl = data.photoUrl || '';
@@ -312,6 +313,69 @@ export function buildMinimalPortfolioHTML(data: OnboardingData, themeColor: stri
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    ${bgStyle === 'dots' ? `
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: #f8fafc;
+      color: #334155;
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+    }
+    body::before {
+      content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      background-image: radial-gradient(#e2e8f0 1.5px, transparent 1.5px);
+      background-size: 24px 24px;
+    }
+    body::after {
+      content: ''; position: fixed; width: 320px; height: 320px; border-radius: 50%;
+      background: ${accent}12; filter: blur(80px); top: 10%; right: 10%; z-index: -1;
+      pointer-events: none;
+    }
+    .wrapper::before {
+      content: ''; position: fixed; width: 420px; height: 420px; border-radius: 50%;
+      background: ${accent}08; filter: blur(100px); bottom: 10%; left: -10%; z-index: -1;
+      pointer-events: none;
+    }
+    ` : bgStyle === 'waves' ? `
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: #f8fafc;
+      color: #334155;
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    body::before {
+      content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      background-image: 
+        radial-gradient(at 0% 0%, ${accentLight} 0px, transparent 50%),
+        radial-gradient(at 50% 0%, ${accentLight} 0px, transparent 50%),
+        radial-gradient(at 100% 100%, ${accentLight} 0px, transparent 50%);
+      background-size: 100% 100%;
+      filter: saturate(1.2);
+    }
+    body::after {
+      content: ''; position: fixed; bottom: 0; left: 0; right: 0; height: 40vh;
+      background: linear-gradient(180deg, transparent, ${accent}08);
+      clip-path: ellipse(80% 50% at 50% 100%);
+      z-index: -1;
+      pointer-events: none;
+    }
+    ` : bgStyle === 'solid' ? `
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: linear-gradient(135deg, ${accent}08 0%, ${accent}18 50%, ${accent}12 100%);
+      color: #334155;
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+    }
+    body::before {
+      content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      background-image: 
+        radial-gradient(circle at 20% 30%, ${accent}0c 0%, transparent 40%),
+        radial-gradient(circle at 80% 70%, ${accent}12 0%, transparent 40%);
+    }
+    ` : `
     body {
       font-family: 'Inter', -apple-system, sans-serif;
       background: linear-gradient(135deg, #f8fafc 0%, ${accentLight} 30%, #f1f5f9 60%, ${accentLight} 100%);
@@ -319,12 +383,12 @@ export function buildMinimalPortfolioHTML(data: OnboardingData, themeColor: stri
       -webkit-font-smoothing: antialiased;
       min-height: 100vh;
     }
-    /* Grid pattern overlay */
     body::before {
       content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
       background: linear-gradient(to right, #8080800a 1px, transparent 1px), linear-gradient(to bottom, #8080800a 1px, transparent 1px);
       background-size: 14px 24px;
     }
+    `}
     /* Accent top bar */
     .accent-bar {
       height: 6px; width: 100%; position: sticky; top: 0; z-index: 50;

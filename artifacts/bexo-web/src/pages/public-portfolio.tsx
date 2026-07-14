@@ -1094,14 +1094,70 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
     );
   };
 
-  return (
-    <div className="min-h-screen pb-20 font-sans relative overflow-x-hidden transition-colors duration-300 text-slate-800" style={{ background: `linear-gradient(135deg, #f8fafc 0%, ${accentLight} 30%, #f1f5f9 60%, ${accentLight} 100%)` }}>
-      {/* Grid overlay background */}
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#8080800a_1px,transparent_1px),linear-gradient(to_bottom,#8080800a_1px,transparent_1px)] bg-[size:14px_24px] pointer-events-none opacity-100" />
+  const bgStyle = (user as any).themeBg || 'grid';
 
-      {/* Decorative background glows — themed */}
-      <div className="absolute top-[-10%] left-[-5%] w-[500px] h-[500px] rounded-full blur-[120px] pointer-events-none" style={{ background: `${accentHex}08` }} />
-      <div className="absolute bottom-[20%] right-[-5%] w-[450px] h-[450px] rounded-full blur-[100px] pointer-events-none" style={{ background: `${accentHex}06` }} />
+  return (
+    <div 
+      className="min-h-screen pb-20 font-sans relative overflow-x-hidden transition-colors duration-300 text-slate-800" 
+      style={{ 
+        background: bgStyle === 'dots' || bgStyle === 'waves'
+          ? '#f8fafc'
+          : bgStyle === 'solid'
+            ? `linear-gradient(135deg, ${accentHex}08 0%, ${accentHex}18 50%, ${accentHex}12 100%)`
+            : `linear-gradient(135deg, #f8fafc 0%, ${accentLight} 30%, #f1f5f9 60%, ${accentLight} 100%)`
+      }}
+    >
+      {/* Dynamic Background Overlays */}
+      {bgStyle === 'grid' && (
+        <>
+          <div className="absolute inset-0 bg-[linear-gradient(to_right,#8080800a_1px,transparent_1px),linear-gradient(to_bottom,#8080800a_1px,transparent_1px)] bg-[size:14px_24px] pointer-events-none opacity-100" />
+          <div className="absolute top-[-10%] left-[-5%] w-[500px] h-[500px] rounded-full blur-[120px] pointer-events-none" style={{ background: `${accentHex}08` }} />
+          <div className="absolute bottom-[20%] right-[-5%] w-[450px] h-[450px] rounded-full blur-[100px] pointer-events-none" style={{ background: `${accentHex}06` }} />
+        </>
+      )}
+
+      {bgStyle === 'dots' && (
+        <>
+          <div className="absolute inset-0 bg-[radial-gradient(#e2e8f0_1.5px,transparent_1.5px)] bg-[size:24px_24px] pointer-events-none" />
+          <div className="absolute top-[10%] right-[10%] w-[320px] h-[320px] rounded-full blur-[80px] pointer-events-none" style={{ background: `${accentHex}12` }} />
+          <div className="absolute bottom-[10%] left-[-10%] w-[420px] h-[420px] rounded-full blur-[100px] pointer-events-none" style={{ background: `${accentHex}08` }} />
+        </>
+      )}
+
+      {bgStyle === 'waves' && (
+        <>
+          <div 
+            className="absolute inset-0 pointer-events-none saturate-[1.2]" 
+            style={{ 
+              backgroundImage: `
+                radial-gradient(at 0% 0%, ${accentLight} 0px, transparent 50%),
+                radial-gradient(at 50% 0%, ${accentLight} 0px, transparent 50%),
+                radial-gradient(at 100% 100%, ${accentLight} 0px, transparent 50%)
+              `,
+              backgroundSize: '100% 100%'
+            }} 
+          />
+          <div 
+            className="absolute bottom-0 left-0 right-0 h-[40vh] pointer-events-none -z-10" 
+            style={{ 
+              background: `linear-gradient(180deg, transparent, ${accentHex}08)`, 
+              clipPath: 'ellipse(80% 50% at 50% 100%)' 
+            }} 
+          />
+        </>
+      )}
+
+      {bgStyle === 'solid' && (
+        <div 
+          className="absolute inset-0 pointer-events-none" 
+          style={{
+            backgroundImage: `
+              radial-gradient(circle at 20% 30%, ${accentHex}0c 0%, transparent 40%),
+              radial-gradient(circle at 80% 70%, ${accentHex}12 0%, transparent 40%)
+            `
+          }}
+        />
+      )}
 
       {/* Portfolio Header Accent Bar */}
       {templateId === 'minimal' && (

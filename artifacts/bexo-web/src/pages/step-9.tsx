@@ -45,6 +45,7 @@ export default function Step9Plan() {
   const [freeFlowStep, setFreeFlowStep] = useState<'none' | 'warning' | 'handle'>('none');
   const [freeHandle, setFreeHandle] = useState(data.handle || '');
   const [freeTheme, setFreeTheme] = useState(data.themeColor || 'blue');
+  const [freeThemeBg, setFreeThemeBg] = useState(data.themeBg || 'grid');
   const [isCheckingHandle, setIsCheckingHandle] = useState(false);
   const [handleAvailable, setHandleAvailable] = useState<boolean | null>(null);
   const [handleError, setHandleError] = useState('');
@@ -54,8 +55,8 @@ export default function Step9Plan() {
   // This re-builds whenever theme or handle changes — no API call needed.
   // Defined at the top level to adhere to the Rules of Hooks.
   const portfolioHTML = useMemo(
-    () => buildMinimalPortfolioHTML(data, freeTheme, freeHandle || 'yourhandle'),
-    [data, freeTheme, freeHandle]
+    () => buildMinimalPortfolioHTML(data, freeTheme, freeHandle || 'yourhandle', freeThemeBg),
+    [data, freeTheme, freeHandle, freeThemeBg]
   );
 
   const basePrice = plan === 'annual' ? 999 : 2999;
@@ -318,7 +319,8 @@ export default function Step9Plan() {
         body: JSON.stringify({
           handle: freeHandle.trim().toLowerCase(),
           templateId: 'minimal',
-          themeColor: freeTheme
+          themeColor: freeTheme,
+          themeBg: freeThemeBg
         })
       });
 
@@ -341,6 +343,7 @@ export default function Step9Plan() {
         handle: freeHandle.trim().toLowerCase(),
         templateId: 'minimal',
         themeColor: freeTheme,
+        themeBg: freeThemeBg,
         plan: 'free',
         isPremium: false,
         storageQuotaBytes: 10 * 1024 * 1024,
@@ -624,6 +627,42 @@ export default function Step9Plan() {
             </p>
           </div>
 
+          {/* Background Style Picker */}
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Background Style</label>
+            <div className="grid grid-cols-2 gap-2.5">
+              {[
+                { id: 'grid', label: 'Clean Grid', desc: 'Subtle blueprint' },
+                { id: 'dots', label: 'Minimalist Dots', desc: 'Clean dot matrix' },
+                { id: 'waves', label: 'Abstract Waves', desc: 'Soft vector waves' },
+                { id: 'solid', label: 'Accent Gradient', desc: 'Slate-accent blend' },
+              ].map(bg => {
+                const isSelected = freeThemeBg === bg.id;
+                return (
+                  <button
+                    key={bg.id}
+                    type="button"
+                    onClick={() => setFreeThemeBg(bg.id)}
+                    className={cn(
+                      "relative p-3 rounded-xl border text-left transition-all hover:scale-[1.01] flex flex-col justify-center min-h-[58px]",
+                      isSelected 
+                        ? "border-slate-950 bg-slate-950/5 ring-1 ring-slate-950" 
+                        : "border-slate-200 bg-white hover:border-slate-300"
+                    )}
+                  >
+                    <p className="text-xs font-bold text-slate-950">{bg.label}</p>
+                    <p className="text-[9px] text-slate-500 leading-tight mt-0.5">{bg.desc}</p>
+                    {isSelected && (
+                      <span className="absolute top-2 right-2 w-3.5 h-3.5 rounded-full bg-slate-950 text-white flex items-center justify-center">
+                        <Check className="w-2 h-2" />
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {/* REAL Portfolio Preview — scaled iframe using srcdoc */}
           <div className="space-y-2.5">
             <div className="flex items-center justify-between">
@@ -653,7 +692,7 @@ export default function Step9Plan() {
                 {/* Real portfolio HTML rendered inside iframe via srcdoc — scaled down to fit */}
                 <div className="flex-1 relative overflow-hidden bg-white">
                   <iframe
-                    key={freeTheme + freeHandle}
+                    key={freeTheme + freeThemeBg + freeHandle}
                     srcDoc={portfolioHTML}
                     title="Your Portfolio Preview"
                     sandbox="allow-same-origin"
@@ -719,7 +758,7 @@ export default function Step9Plan() {
               {/* Full-size iframe with your actual portfolio data */}
               <div className="flex-1 relative overflow-hidden bg-white">
                 <iframe
-                  key={'fullpreview-' + freeTheme + freeHandle}
+                  key={'fullpreview-' + freeTheme + freeThemeBg + freeHandle}
                   srcDoc={portfolioHTML}
                   title="Your Full Portfolio Preview"
                   sandbox="allow-same-origin allow-popups"

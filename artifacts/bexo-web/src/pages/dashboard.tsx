@@ -741,6 +741,14 @@ export default function Dashboard() {
     });
   };
 
+  const handleBgSelect = (id: string) => {
+    updateData({ themeBg: id });
+    toast({
+      title: 'Background Updated',
+      description: `Background style set to ${id.toUpperCase()}`,
+    });
+  };
+
   const getThemeClass = (isBg = true) => {
     const t = THEMES.find(t => t.id === data.themeColor);
     return t ? (isBg ? t.hex : t.textHex) : 'bg-indigo-600';
@@ -2408,30 +2416,71 @@ export default function Dashboard() {
                   <div className="space-y-6 animate-in fade-in duration-200">
                     {/* Theme selector - ONLY for Free template */}
                     {data.templateId === 'minimal' && (
-                      <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-4">
-                        <div>
-                          <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                            <Palette className="w-4 h-4 text-indigo-500" /> Accent Color
-                          </h3>
-                          <p className="text-slate-500 text-xs mt-0.5">Select a brand color accent for your portfolio template layouts.</p>
-                        </div>
-                        <div className="flex gap-2.5 pt-1">
-                          {THEMES.map(theme => (
-                            <button
-                              key={theme.id}
-                              onClick={() => handleThemeSelect(theme.id)}
-                              className={cn(
-                                "w-9 h-9 rounded-full flex items-center justify-center transition-all hover:scale-105 shadow-sm ring-offset-2",
-                                theme.hex,
-                                data.themeColor === theme.id ? "ring-2 ring-slate-900 scale-105" : ""
-                              )}
-                              title={theme.label}
-                            >
-                              {data.themeColor === theme.id && <Check className="w-4 h-4 text-white" />}
-                            </button>
-                          ))}
-                        </div>
-                      </Card>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-4">
+                          <div>
+                            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                              <Palette className="w-4 h-4 text-indigo-500" /> Accent Color
+                            </h3>
+                            <p className="text-slate-500 text-xs mt-0.5">Select a brand color accent for your portfolio template layouts.</p>
+                          </div>
+                          <div className="flex gap-2.5 pt-1">
+                            {THEMES.map(theme => (
+                              <button
+                                key={theme.id}
+                                onClick={() => handleThemeSelect(theme.id)}
+                                className={cn(
+                                  "w-9 h-9 rounded-full flex items-center justify-center transition-all hover:scale-105 shadow-sm ring-offset-2",
+                                  theme.hex,
+                                  data.themeColor === theme.id ? "ring-2 ring-slate-900 scale-105" : ""
+                                )}
+                                title={theme.label}
+                              >
+                                {data.themeColor === theme.id && <Check className="w-4 h-4 text-white" />}
+                              </button>
+                            ))}
+                          </div>
+                        </Card>
+
+                        <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-4">
+                          <div>
+                            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                              <Palette className="w-4 h-4 text-indigo-500" /> Background Style
+                            </h3>
+                            <p className="text-slate-500 text-xs mt-0.5">Choose a design texture or gradient for your portfolio page.</p>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2.5 pt-1">
+                            {[
+                              { id: 'grid', label: 'Clean Grid', desc: 'Subtle blueprint canvas' },
+                              { id: 'dots', label: 'Minimalist Dots', desc: 'Clean dot matrix overlay' },
+                              { id: 'waves', label: 'Abstract Waves', desc: 'Soft vector wave curves' },
+                              { id: 'solid', label: 'Accent Gradient', desc: 'Vibrant color blend' },
+                            ].map(bg => {
+                              const isSelected = (data.themeBg || 'grid') === bg.id;
+                              return (
+                                <button
+                                  key={bg.id}
+                                  onClick={() => handleBgSelect(bg.id)}
+                                  className={cn(
+                                    "relative p-3 rounded-xl border text-left transition-all hover:scale-[1.01] flex flex-col justify-center min-h-[58px]",
+                                    isSelected 
+                                      ? "border-slate-950 bg-slate-950/5 ring-1 ring-slate-950" 
+                                      : "border-slate-200 bg-white hover:border-slate-300"
+                                  )}
+                                >
+                                  <p className="text-xs font-bold text-slate-950">{bg.label}</p>
+                                  <p className="text-[9px] text-slate-500 leading-tight mt-0.5">{bg.desc}</p>
+                                  {isSelected && (
+                                    <span className="absolute top-2 right-2 w-3.5 h-3.5 rounded-full bg-slate-950 text-white flex items-center justify-center">
+                                      <Check className="w-2 h-2" />
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </Card>
+                      </div>
                     )}
 
                     {/* Visual Page Template + Live Preview — split layout */}
@@ -2555,7 +2604,7 @@ export default function Dashboard() {
                             {/* iframe */}
                             <div className="relative w-full overflow-hidden" style={{ height: '520px' }}>
                               <iframe
-                                key={`${data.templateId || 'minimal'}-${data.themeColor || 'indigo'}`}
+                                key={`${data.templateId || 'minimal'}-${data.themeColor || 'indigo'}-${data.themeBg || 'grid'}`}
                                 src={`/${handleString}`}
                                 title="Live Portfolio Preview"
                                 className="absolute top-0 left-0 border-0 bg-white"

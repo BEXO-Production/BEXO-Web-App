@@ -79,7 +79,8 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<voi
         storageQuotaBytes: subscriptionState.storageQuotaBytes,
         openToHire: user.openToHire ?? false,
         templateId: user.templateId ?? 'minimal',
-        themeColor: user.themeColor ?? 'blue'
+        themeColor: user.themeColor ?? 'blue',
+        themeBg: user.themeBg ?? 'grid'
       },
       plan: subscriptionState.plan,
       isPremium: subscriptionState.isPremium,
@@ -104,7 +105,7 @@ router.patch("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<v
   const userId = req.user!.id;
     const { 
       name, dob, email, photoUrl, resumeUrl, handle, headline, careerGoal, bio, completionPct, profilePhotoAssetId,
-      openToHire, templateId, themeColor,
+      openToHire, templateId, themeColor, themeBg,
       aboutEntries, educationEntries, experienceEntries, projectEntries, certificateEntries, achievementEntries, researchEntries, contactData
     } = req.body;
     try {
@@ -129,6 +130,7 @@ router.patch("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<v
       if (openToHire !== undefined) userUpdates.openToHire = !!openToHire;
       if (templateId !== undefined) userUpdates.templateId = templateId;
       if (themeColor !== undefined) userUpdates.themeColor = themeColor;
+      if (themeBg !== undefined) userUpdates.themeBg = themeBg;
   
       if (Object.keys(userUpdates).length > 0) {
         await db.update(users).set(userUpdates).where(eq(users.id, userId));
@@ -910,11 +912,11 @@ router.get("/public/:handle", async (req, res): Promise<void> => {
 
     const subscriptionState = await resolveSubscriptionState(user.id);
     const isPremium = subscriptionState.isPremium;
-
-    // Enforce tier design limits:
+        // Enforce tier design limits:
     // If not premium, override template to minimal. Custom theme color is allowed.
     const templateId = isPremium ? (user.templateId || 'minimal') : 'minimal';
     const themeColor = user.themeColor || 'blue';
+    const themeBg = user.themeBg || 'grid';
 
     res.json({
       profile: {
@@ -928,6 +930,7 @@ router.get("/public/:handle", async (req, res): Promise<void> => {
         resumeUrl: user.resumeUrl,
         templateId,
         themeColor,
+        themeBg,
         openToHire: user.openToHire ?? false,
       },
       isPremium,

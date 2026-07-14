@@ -60,6 +60,7 @@ export type OnboardingData = {
   plan: 'annual' | 'lifetime' | 'activation_code' | 'free' | null;
   templateId: string;
   themeColor: string;
+  themeBg: string;
   visitedTabs: string[];
   openToHire: boolean;
   storageQuotaBytes: number;
@@ -108,6 +109,7 @@ const defaultData: OnboardingData = {
   plan: null,
   templateId: 'minimal',
   themeColor: 'blue',
+  themeBg: 'grid',
   visitedTabs: [],
   openToHire: false,
   storageQuotaBytes: 10485760, // 10MB default
@@ -278,6 +280,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
             isPremium: result.isPremium !== undefined ? result.isPremium : prev.isPremium,
             templateId: result.user?.templateId || prev.templateId,
             themeColor: result.user?.themeColor || prev.themeColor,
+            themeBg: result.user?.themeBg || prev.themeBg,
             hasCompletedOnboarding: !!result.profile?.handle && !!result.plan,
             payments: result.payments || prev.payments
           }));

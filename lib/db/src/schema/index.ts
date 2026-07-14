@@ -18,6 +18,7 @@ export const users = pgTable("users", {
   openToHire: boolean("open_to_hire").default(false),
   templateId: text("template_id").default("minimal"),
   themeColor: text("theme_color").default("blue"),
+  themeBg: text("theme_bg").default("grid"),
   resumeParsesThisMonth: integer("resume_parses_this_month").default(0),
   lastResumeParseReset: timestamp("last_resume_parse_reset", { withTimezone: true }).defaultNow(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
