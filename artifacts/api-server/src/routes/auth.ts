@@ -86,8 +86,18 @@ const phonePattern = /^\d{10,15}$/;
 const otpPattern = /^\d{6}$/;
 
 function isDatabaseUnavailable(error: unknown): boolean {
-  const code = (error as { code?: string } | undefined)?.code;
-  return ["ECONNREFUSED", "ETIMEDOUT", "ENOTFOUND", "57P01", "57P03"].includes(code ?? "");
+  if (!error || typeof error !== "object") return false;
+  const code = (error as { code?: string }).code;
+  // Direct code match (pg driver, Node DNS, etc.)
+  if (["ECONNREFUSED", "ETIMEDOUT", "ENOTFOUND", "EHOSTUNREACH", "ENETUNREACH", "57P01", "57P03", "57P02", "08001", "08006"].includes(code ?? "")) {
+    return true;
+  }
+  // Drizzle wraps the original error in its message
+  const msg = String((error as { message?: string }).message ?? "");
+  if (msg.includes("ENOTFOUND") || msg.includes("ECONNREFUSED") || msg.includes("ETIMEDOUT") || msg.includes("tenant/user") || msg.includes("connection terminated")) {
+    return true;
+  }
+  return false;
 }
 
 // POST /auth/phone/otp
@@ -275,13 +285,23 @@ router.post("/phone/otp/verify", async (req, res): Promise<void> => {
         email: user.email,
       }
     });
-  } catch (err) {
-    logger.error({ err, requestId, phone }, "OTP verification failed");
-    const status = isDatabaseUnavailable(err) ? 503 : 500;
-    res.status(status).json({
-      error: "We couldn't complete verification right now. Please try again in a moment.",
-      requestId,
-    });
+  } catch (err: any) {
+    const dbDown = isDatabaseUnavailable(err);
+    logger.error(
+      { err, requestId, phone, isDatabaseError: dbDown, errorCode: err?.code, errorMessage: err?.message },
+      "OTP verification failed",
+    );
+    if (dbDown) {
+      res.status(503).json({
+        error: "Our database is temporarily unreachable. Please try again in a few seconds.",
+        requestId,
+      });
+    } else {
+      res.status(500).json({
+        error: "We couldn't complete verification right now. Please try again in a moment.",
+        requestId,
+      });
+    }
   }
 });
 

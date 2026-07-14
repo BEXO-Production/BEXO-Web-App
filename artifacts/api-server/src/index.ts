@@ -29,6 +29,7 @@ try {
 
 import app from "./app";
 import { logger } from "./lib/logger";
+import { checkDatabaseConnection } from "@workspace/db";
 
 const rawPort = process.env["PORT"];
 
@@ -42,6 +43,16 @@ const port = Number(rawPort);
 
 if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
+}
+
+// Validate database connectivity before accepting traffic.  A misconfigured
+// DATABASE_URL (e.g. DNS typo) will crash the process immediately with a
+// clear error instead of silently returning 500s on every request.
+try {
+  await checkDatabaseConnection();
+} catch (err) {
+  logger.fatal({ err }, "Cannot start server – database connection failed");
+  process.exit(1);
 }
 
 app.listen(port, (err) => {

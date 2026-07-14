@@ -56,6 +56,37 @@ if (!process.env.DATABASE_URL) {
 }
 
 export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+// Surface connection-pool errors immediately (DNS typos, credential issues, etc.)
+pool.on("error", (err) => {
+  console.error("[DB POOL ERROR] Unexpected error on idle client:", err.message);
+});
+
 export const db = drizzle(pool, { schema });
+
+/**
+ * Validate database connectivity at startup.  Call this once from your server
+ * entry-point so a misconfigured DATABASE_URL fails fast instead of silently
+ * returning 500s on every request.
+ */
+export async function checkDatabaseConnection(): Promise<void> {
+  let client;
+  try {
+    client = await pool.connect();
+    await client.query("SELECT 1");
+    console.log("[DB] Database connection verified successfully.");
+  } catch (err: any) {
+    console.error(
+      "[DB] *** DATABASE CONNECTION FAILED ***",
+      "\n  URL host:",
+      process.env.DATABASE_URL?.replace(/\/\/.*@/, "//***@"),
+      "\n  Error:",
+      err.message,
+    );
+    throw new Error(`Database connection failed: ${err.message}`);
+  } finally {
+    client?.release();
+  }
+}
 
 export * from "./schema";
