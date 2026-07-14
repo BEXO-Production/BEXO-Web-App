@@ -19,9 +19,7 @@ RUN pnpm exec tsc --build --clean
 # PORT and BASE_PATH are required by vite.config.ts at build time (dev-server config only)
 RUN PORT=5173 BASE_PATH=/ pnpm build
 
-# Clean dev dependencies for a smaller image size
-RUN CI=true pnpm prune --prod
-
+# Clean dev dependencies step removed to prevent pruning runtime peer-dependencies in monorepo
 ENV NODE_ENV=production
 
 EXPOSE 8080
