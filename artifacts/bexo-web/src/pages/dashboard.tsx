@@ -97,6 +97,25 @@ export default function Dashboard() {
   const [currentView, setCurrentView] = useState<'overview' | 'edit-profile' | 'resume' | 'settings'>('overview');
   const [settingsSubTab, setSettingsSubTab] = useState<'profile' | 'design' | 'storage' | 'billing'>('profile');
   const [showLoginToast, setShowLoginToast] = useState(false);
+  
+  // FAB & Update State
+  const [showFabMenu, setShowFabMenu] = useState(false);
+  const [showPostUpdateModal, setShowPostUpdateModal] = useState(false);
+  const [newUpdateText, setNewUpdateText] = useState("");
+  const fabRef = useRef<HTMLDivElement>(null);
+
+  // Click outside listener for FAB
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (fabRef.current && !fabRef.current.contains(event.target as Node)) {
+        setShowFabMenu(false);
+      }
+    }
+    if (showFabMenu) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showFabMenu]);
 
   useEffect(() => {
     let timer: number | undefined;
@@ -212,7 +231,9 @@ export default function Dashboard() {
   const url = data.isPremium 
     ? `${handleString}.mybexo.com` 
     : `mybexo.com/${handleString}`;
-  const correctVisitUrl = `${window.location.protocol}//${window.location.host}/${handleString}`;
+  const correctVisitUrl = data.isPremium
+    ? `https://${handleString}.mybexo.com`
+    : `${window.location.protocol}//${window.location.host}/${handleString}`;
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -2017,9 +2038,9 @@ export default function Dashboard() {
                     <div className="flex justify-between items-center border-b pb-2">
                       <h3 className="text-lg font-bold text-slate-900 capitalize">{activeEditorTab} List</h3>
                       {editingId === null && (
-                        <Button onClick={handleAdd} size="sm" className="h-9 px-3 text-xs flex gap-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100">
-                          <Plus className="w-3.5 h-3.5" /> Add New
-                        </Button>
+                        <div className="text-xs text-slate-400 italic flex items-center">
+                          Use the <Plus className="w-3 h-3 mx-1" /> button on the dashboard to add entries.
+                        </div>
                       )}
                     </div>
 
@@ -2973,6 +2994,106 @@ export default function Dashboard() {
                   onClick={() => setShowCompletionModal(false)}
                 >
                   Close Window
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Floating Action Button */}
+        <div ref={fabRef} className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3 animate-in slide-in-from-bottom-8 fade-in duration-300">
+          {showFabMenu && (
+            <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col w-56 animate-in slide-in-from-bottom-4 fade-in duration-200 origin-bottom-right">
+              <button
+                onClick={() => {
+                  setShowFabMenu(false);
+                  setCurrentView('edit-profile');
+                  setActiveEditorTab('about'); // or wherever the file upload is located
+                  // We'll jump to settings if they need to upload there, or just open edit-profile
+                }}
+                className="flex items-center gap-3 px-4 py-3.5 hover:bg-indigo-50 text-left text-sm font-semibold text-slate-800 hover:text-indigo-700 transition-colors border-b border-slate-100"
+              >
+                <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
+                  <UploadCloud className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="leading-none mb-1">Parse My Resume</div>
+                  <div className="text-[10px] text-slate-500 font-normal leading-tight">Auto-fill via AI</div>
+                </div>
+              </button>
+              
+              <button
+                onClick={() => {
+                  setShowFabMenu(false);
+                  setShowPostUpdateModal(true);
+                }}
+                className="flex items-center gap-3 px-4 py-3.5 hover:bg-emerald-50 text-left text-sm font-semibold text-slate-800 hover:text-emerald-700 transition-colors"
+              >
+                <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                  <Plus className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="leading-none mb-1">Post an Update</div>
+                  <div className="text-[10px] text-slate-500 font-normal leading-tight">Add a quick achievement</div>
+                </div>
+              </button>
+            </div>
+          )}
+
+          <button
+            onClick={() => setShowFabMenu(!showFabMenu)}
+            className="w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full flex items-center justify-center shadow-[0_8px_30px_rgb(0,0,0,0.12)] hover:shadow-[0_8px_30px_rgb(79,70,229,0.3)] transition-all duration-300 hover:scale-105"
+          >
+            {showFabMenu ? <X className="w-6 h-6" /> : <Plus className="w-6 h-6" />}
+          </button>
+        </div>
+
+        {/* Post Update Modal */}
+        {showPostUpdateModal && (
+          <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+              <div className="flex items-center justify-between p-4 border-b border-slate-100">
+                <h3 className="font-bold text-slate-900">Post an Update</h3>
+                <button onClick={() => setShowPostUpdateModal(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-full transition-colors">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="p-5 space-y-4">
+                <div>
+                  <Label>What's new?</Label>
+                  <textarea 
+                    value={newUpdateText}
+                    onChange={(e) => setNewUpdateText(e.target.value)}
+                    placeholder="E.g., Just earned my AWS Solutions Architect certification!"
+                    className="w-full h-32 px-3 py-2 mt-1.5 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 resize-none"
+                  />
+                </div>
+                <Button 
+                  className="w-full h-11"
+                  onClick={() => {
+                    if (newUpdateText.trim()) {
+                      const newAchievement = {
+                        id: Date.now().toString(),
+                        title: newUpdateText.trim(),
+                        date: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short' }),
+                        organization: "",
+                        assets: { mode: 'images' as const, images: [], pdfs: [], links: [] }
+                      };
+                      const currentAchievements = Array.isArray(data.achievementEntries) ? data.achievementEntries : [];
+                      updateData({
+                        achievementEntries: [...currentAchievements, newAchievement]
+                      });
+                      toast({
+                        title: "Update posted!",
+                        description: "Your achievement has been added."
+                      });
+                      setNewUpdateText("");
+                      setShowPostUpdateModal(false);
+                    }
+                  }}
+                  disabled={!newUpdateText.trim()}
+                >
+                  Post Update
                 </Button>
               </div>
             </div>

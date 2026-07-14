@@ -418,12 +418,6 @@ router.post("/resume", requireAuth, upload.single("resume"), async (req: Authent
   const subscriptionState = await resolveSubscriptionState(userId);
   const plan = subscriptionState.plan; // "annual" | "lifetime" | "free" | null
 
-  // 1. Block free tier from parsing
-  if (!plan || plan === "free") {
-    res.status(403).json({ error: "Free tier does not support AI resume parsing. Please upgrade to Pro to unlock." });
-    return;
-  }
-
   // 2. Fetch user record for parsing limit count
   const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
   if (!user) {
@@ -435,9 +429,28 @@ router.post("/resume", requireAuth, upload.single("resume"), async (req: Authent
   let parsesCount = user.resumeParsesThisMonth || 0;
   let resetTime = user.lastResumeParseReset ? new Date(user.lastResumeParseReset) : new Date();
 
-  // Reset counter if more than 30 days passed since last reset
   const diffDays = Math.floor((now.getTime() - resetTime.getTime()) / (1000 * 60 * 60 * 24));
-  if (diffDays >= 30) {
+  
+  // Define limits based on plan
+  let limitDays = 30;
+  let limitParses = 0;
+  let planDisplay = "Free";
+
+  if (!plan || plan === "free") {
+    limitDays = 50;
+    limitParses = 1;
+  } else if (plan === "lifetime") {
+    limitDays = 30;
+    limitParses = 3;
+    planDisplay = "Lifetime";
+  } else if (plan === "annual") {
+    limitDays = 30;
+    limitParses = 10;
+    planDisplay = "Annual";
+  }
+
+  // Reset counter if time window passed since last reset
+  if (diffDays >= limitDays) {
     parsesCount = 0;
     resetTime = now;
     await db.update(users).set({
@@ -446,12 +459,11 @@ router.post("/resume", requireAuth, upload.single("resume"), async (req: Authent
     }).where(eq(users.id, userId));
   }
 
-  // Enforce monthly limits
-  const monthlyLimit = plan === "annual" ? 3 : 1; // Annual gets 3, Lifetime gets 1
-  if (parsesCount >= monthlyLimit) {
-    const daysToReset = Math.max(30 - diffDays, 1);
+  // Enforce limits
+  if (parsesCount >= limitParses) {
+    const daysToReset = Math.max(limitDays - diffDays, 1);
     res.status(429).json({ 
-      error: `You have reached your monthly AI resume parsing limit of ${monthlyLimit} parse(s) on the ${plan === "annual" ? "Annual" : "Lifetime"} plan. Quota resets in ${daysToReset} days.` 
+      error: `You have reached your AI resume parsing limit of ${limitParses} parse(s) on the ${planDisplay} plan. Quota resets in ${daysToReset} days.` 
     });
     return;
   }
@@ -762,51 +774,15 @@ router.post("/resume", requireAuth, upload.single("resume"), async (req: Authent
           };
         } else {
           // For list-based sections (education, experience, projects, certificates, achievements)
-          // Filter out incoming items that are duplicates of existing items
-          const incomingEntries = sec.entries;
-          const uniqueIncoming: any[] = [];
-
-          for (const incoming of incomingEntries) {
-            let isDuplicate = false;
-
-            for (const existing of existingEntries) {
-              if (sec.type === "education") {
-                if (
-                  incoming.institution?.trim().toLowerCase() === existing.institution?.trim().toLowerCase() &&
-                  incoming.degree?.trim().toLowerCase() === existing.degree?.trim().toLowerCase()
-                ) {
-                  isDuplicate = true;
-                  break;
-                }
-              } else if (sec.type === "experience") {
-                if (
-                  incoming.company?.trim().toLowerCase() === existing.company?.trim().toLowerCase() &&
-                  incoming.role?.trim().toLowerCase() === existing.role?.trim().toLowerCase()
-                ) {
-                  isDuplicate = true;
-                  break;
-                }
-              } else if (sec.type === "projects" || sec.type === "certificates" || sec.type === "achievements") {
-                if (incoming.title?.trim().toLowerCase() === existing.title?.trim().toLowerCase()) {
-                  isDuplicate = true;
-                  break;
-                }
-              }
-            }
-
-            if (!isDuplicate) {
-              uniqueIncoming.push(incoming);
-            }
-          }
-
-          // Append unique new entries with updated IDs
-          let nextIdIdx = existingEntries.length + 1;
-          const updatedIncoming = uniqueIncoming.map(item => ({
+          // Overwrite existing data with newly parsed data, removing old data completely
+          const incomingEntries = sec.entries || [];
+          let nextIdIdx = 1;
+          const updatedIncoming = incomingEntries.map((item: any) => ({
             ...item,
             id: String(nextIdIdx++)
           }));
 
-          mergedEntries = [...existingEntries, ...updatedIncoming];
+          mergedEntries = updatedIncoming;
         }
       }
 
