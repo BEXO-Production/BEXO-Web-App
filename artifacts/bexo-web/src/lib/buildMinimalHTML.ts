@@ -54,7 +54,7 @@ export function buildMinimalPortfolioHTML(data: OnboardingData, themeColor: stri
   // Photo section
   const photoSection = photoUrl
     ? `<img src="${esc(photoUrl)}" alt="${name}" style="width:100%;height:100%;object-fit:cover;" />`
-    : `<span style="font-size:42px;font-weight:800;color:#cbd5e1;text-transform:uppercase;font-family:'Outfit',sans-serif;">${name.charAt(0)}</span>`;
+    : `<span style="font-size:54px;font-weight:800;color:#cbd5e1;text-transform:uppercase;font-family:'Outfit',sans-serif;">${name.charAt(0)}</span>`;
 
   // About
   const aboutHTML = aboutEntries.length > 0
@@ -213,40 +213,61 @@ export function buildMinimalPortfolioHTML(data: OnboardingData, themeColor: stri
 
     /* ─── HERO CARD ─── */
     .hero-card {
-      text-align: center; padding: 40px 32px 32px; border-radius: 24px;
+      text-align: center; padding: 32px; border-radius: 24px;
       background: linear-gradient(135deg, ${accentLight} 0%, rgba(248,250,252,0.5) 50%, ${accentLight} 100%);
       border: 1px solid ${accentMid};
       margin-bottom: 24px;
+      display: flex; flex-direction: column; align-items: center; gap: 24px;
     }
-    .avatar-ring {
-      display: inline-block; padding: 3px; border-radius: 50%;
-      background: conic-gradient(${accent}, ${accent}88, ${accent}33, transparent, ${accent});
-      animation: ringSpin 6s linear infinite;
-      margin-bottom: 20px;
+    @media (min-width: 576px) {
+      .hero-card {
+        flex-direction: row; text-align: left; align-items: flex-start; gap: 32px; padding: 40px;
+      }
     }
-    @keyframes ringSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .avatar-square-glow {
+      position: relative; display: inline-block; flex-shrink: 0;
+    }
+    .avatar-square-glow::after {
+      content: ''; position: absolute; inset: -3px; border-radius: 19px;
+      background: linear-gradient(135deg, ${accent}, ${accent}40, ${accent});
+      z-index: -1; opacity: 0.8;
+    }
     .avatar {
-      width: 112px; height: 112px; border-radius: 50%;
+      width: 128px; height: 128px; border-radius: 16px;
       overflow: hidden; border: 3px solid #fff;
       display: flex; align-items: center; justify-content: center;
-      background: #f1f5f9;
+      background: #f1f5f9; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
     }
-    .name { font-family:'Outfit',sans-serif; font-size: 2.2rem; font-weight: 800; color: #0f172a; letter-spacing:-0.5px; line-height: 1.2; }
-    .headline { font-size: 1rem; font-weight: 500; color: #64748b; margin-top: 6px; }
+    @media (min-width: 576px) {
+      .avatar { width: 144px; height: 144px; }
+    }
+    .hero-content { flex: 1; display: flex; flex-direction: column; gap: 14px; }
+    .name-badge-row { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    @media (min-width: 576px) {
+      .name-badge-row { flex-direction: row; align-items: center; gap: 12px; }
+    }
+    .name { font-family:'Outfit',sans-serif; font-size: 2.2rem; font-weight: 800; color: #0f172a; letter-spacing:-0.5px; line-height: 1.2; text-align: center; }
+    @media (min-width: 576px) {
+      .name { text-align: left; }
+    }
+    .headline { font-size: 1rem; font-weight: 600; color: #475569; margin-top: 2px; }
     .open-badge {
       display: inline-flex; align-items: center; gap: 6px;
-      font-size: 11px; font-weight: 700; color: #15803d;
+      font-size: 10px; font-weight: 700; color: #15803d;
       background: #f0fdf4; border: 1px solid rgba(187,247,208,0.6); border-radius: 99px;
-      padding: 4px 12px; margin-top: 12px;
+      padding: 3px 10px; max-width: fit-content;
     }
     .open-dot { width: 8px; height: 8px; border-radius:50%; background:#22c55e; animation: pulse 2s infinite; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
-    .bio { font-size: 0.875rem; color: #64748b; line-height: 1.7; max-width: 480px; margin: 16px auto 0; }
-    .hero-actions { display:flex; gap:12px; justify-content:center; margin-top:24px; flex-wrap:wrap; }
+    .bio { font-size: 0.875rem; color: #64748b; line-height: 1.7; }
+    .hero-actions { display:flex; gap:12px; justify-content:center; flex-wrap:wrap; }
+    @media (min-width: 576px) {
+      .hero-actions { justify-content: flex-start; }
+    }
     .btn-resume {
       display: inline-flex; align-items: center; gap: 6px;
       font-size: 12px; font-weight: 700; color: ${accent};
-      text-decoration: none; padding: 10px 20px; border-radius: 99px;
+      text-decoration: none; padding: 10px 20px; border-radius: 12px;
       border: 1px solid ${accentMid}; background: ${accentLight};
       transition: all 0.2s ease;
     }
@@ -254,7 +275,7 @@ export function buildMinimalPortfolioHTML(data: OnboardingData, themeColor: stri
     .btn-hire {
       display: inline-flex; align-items: center; gap: 6px;
       font-size: 12px; font-weight: 700; color: #fff;
-      background: ${accent}; border-radius: 99px; padding: 10px 20px;
+      background: ${accent}; border-radius: 12px; padding: 10px 20px;
       text-decoration: none; box-shadow: 0 4px 14px ${accent}44;
       transition: all 0.2s ease;
     }
@@ -348,14 +369,20 @@ export function buildMinimalPortfolioHTML(data: OnboardingData, themeColor: stri
   <div class="wrapper">
     <!-- Hero Card -->
     <div class="hero-card anim">
-      <div class="avatar-ring"><div class="avatar">${photoSection}</div></div>
-      <h1 class="name">${name}</h1>
-      ${headline ? `<p class="headline">${headline}</p>` : ''}
-      ${openToHire ? `<span class="open-badge"><span class="open-dot"></span>Available for Hire</span>` : ''}
-      ${bio ? `<p class="bio">${bio}</p>` : ''}
-      <div class="hero-actions">
-        ${resumeUrl ? `<a href="${resumeUrl}" target="_blank" class="btn-resume">📄 View Resume</a>` : ''}
-        ${openToHire && email ? `<a href="mailto:${email}?subject=Hiring inquiry for ${name}" class="btn-hire">✉ Hire Me</a>` : ''}
+      <div class="avatar-square-glow"><div class="avatar">${photoSection}</div></div>
+      <div class="hero-content">
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <div class="name-badge-row">
+            <h1 class="name">${name}</h1>
+            ${openToHire ? `<span class="open-badge"><span class="open-dot"></span>Available for Hire</span>` : ''}
+          </div>
+          ${headline ? `<p class="headline">${headline}</p>` : ''}
+        </div>
+        ${bio ? `<p class="bio">${bio}</p>` : ''}
+        <div class="hero-actions">
+          ${resumeUrl ? `<a href="${resumeUrl}" target="_blank" class="btn-resume">📄 View Resume</a>` : ''}
+          ${openToHire && email ? `<a href="mailto:${email}?subject=Hiring inquiry for ${name}" class="btn-hire">✉ Hire Me</a>` : ''}
+        </div>
       </div>
     </div>
 

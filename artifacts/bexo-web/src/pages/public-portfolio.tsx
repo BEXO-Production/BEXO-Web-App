@@ -328,12 +328,20 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
             box-shadow: 0 0 0 4px ${accentLight};
             position: absolute; left: -6px; top: 6px; z-index: 2;
           }
-          .avatar-ring {
-            background: conic-gradient(${accentHex}, ${accentHex}88, ${accentHex}33, transparent, ${accentHex});
-            padding: 3px; border-radius: 50%;
-            animation: ringSpin 6s linear infinite;
+          .avatar-square-glow {
+            position: relative;
+            display: inline-block;
+            shrink-0: 0;
           }
-          @keyframes ringSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+          .avatar-square-glow::after {
+            content: '';
+            position: absolute;
+            inset: -3px;
+            border-radius: 19px;
+            background: linear-gradient(135deg, ${accentHex}, ${accentHex}40, ${accentHex});
+            z-index: -1;
+            opacity: 0.8;
+          }
           .hero-card-bg {
             background: linear-gradient(135deg, ${accentLight} 0%, rgba(248,250,252,0.5) 50%, ${accentLight} 100%);
             border: 1px solid ${accentMid};
@@ -342,46 +350,54 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
 
         <div className="max-w-3xl mx-auto px-5 pt-14 md:pt-20 pb-4 space-y-8 relative z-10" style={{ fontFamily: "'Inter', -apple-system, sans-serif" }}>
           {/* ─── HERO CARD ─── */}
-          <div className="portfolio-animate hero-card-bg rounded-3xl p-8 md:p-10 text-center">
-            <div className="flex justify-center mb-5">
-              <div className="avatar-ring">
-                <div className="w-28 h-28 rounded-full bg-slate-100 overflow-hidden flex items-center justify-center border-[3px] border-white">
-                  {user.photoUrl ? (
-                    <img src={user.photoUrl} alt={user.name} className="w-full h-full object-cover" />
-                  ) : (
-                    <span className="text-5xl font-bold text-slate-300 capitalize" style={{ fontFamily: "'Outfit', sans-serif" }}>{user.name?.charAt(0)}</span>
-                  )}
-                </div>
+          <div className="portfolio-animate hero-card-bg rounded-3xl p-8 md:p-10 flex flex-col md:flex-row items-center md:items-start text-center md:text-left gap-8 md:gap-10">
+            {/* Square avatar with gradient glow border */}
+            <div className="avatar-square-glow shrink-0">
+              <div className="w-32 h-32 md:w-36 md:h-36 rounded-2xl bg-slate-100 overflow-hidden flex items-center justify-center border-[3px] border-white shadow-sm relative group">
+                {user.photoUrl ? (
+                  <img src={user.photoUrl} alt={user.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                ) : (
+                  <span className="text-5xl font-bold text-slate-300 capitalize" style={{ fontFamily: "'Outfit', sans-serif" }}>{user.name?.charAt(0)}</span>
+                )}
               </div>
             </div>
-            <h1 className="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight" style={{ fontFamily: "'Outfit', sans-serif" }}>{user.name}</h1>
-            {profile.headline && <p className="text-base font-medium text-slate-500 mt-1.5">{profile.headline}</p>}
-            {user.openToHire && (
-              <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200/60 mt-3">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> Available for Hire
-              </span>
-            )}
-            {profile.bio && <p className="text-sm text-slate-500 leading-relaxed max-w-lg mx-auto mt-4">{profile.bio}</p>}
-            
-            <div className="flex justify-center gap-3 mt-6 flex-wrap">
-              {user.resumeUrl && (
-                <a 
-                  href={user.resumeUrl} target="_blank" rel="noreferrer" 
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-xs font-bold transition-all duration-200 border hover:shadow-md"
-                  style={{ color: accentHex, borderColor: accentMid, background: accentLight }}
-                >
-                  <FileText className="w-3.5 h-3.5" /> View Resume
-                </a>
-              )}
-              {user.openToHire && (
-                <a 
-                  href={`mailto:${contactData.email || user.email}?subject=Hiring inquiry for ${user.name}`}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-xs font-bold text-white transition-all duration-200 hover:shadow-lg hover:brightness-110"
-                  style={{ background: accentHex, boxShadow: `0 4px 14px ${accentHex}44` }}
-                >
-                  <Mail className="w-3.5 h-3.5" /> Hire Me
-                </a>
-              )}
+
+            {/* Name, Headline, Bio, and CTAs */}
+            <div className="flex-1 space-y-3.5">
+              <div>
+                <div className="flex flex-col md:flex-row md:items-center gap-3">
+                  <h1 className="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight" style={{ fontFamily: "'Outfit', sans-serif" }}>{user.name}</h1>
+                  {user.openToHire && (
+                    <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200/60 max-w-fit self-center md:self-auto">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Available for Hire
+                    </span>
+                  )}
+                </div>
+                {profile.headline && <p className="text-base font-semibold text-slate-650 mt-1">{profile.headline}</p>}
+              </div>
+
+              {profile.bio && <p className="text-sm text-slate-500 leading-relaxed">{profile.bio}</p>}
+              
+              <div className="flex flex-wrap justify-center md:justify-start gap-3 pt-2">
+                {user.resumeUrl && (
+                  <a 
+                    href={user.resumeUrl} target="_blank" rel="noreferrer" 
+                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 border hover:shadow-md"
+                    style={{ color: accentHex, borderColor: accentMid, background: accentLight }}
+                  >
+                    <FileText className="w-3.5 h-3.5" /> View Resume
+                  </a>
+                )}
+                {user.openToHire && (
+                  <a 
+                    href={`mailto:${contactData.email || user.email}?subject=Hiring inquiry for ${user.name}`}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold text-white transition-all duration-200 hover:shadow-lg hover:brightness-110"
+                    style={{ background: accentHex, boxShadow: `0 4px 14px ${accentHex}33` }}
+                  >
+                    <Mail className="w-3.5 h-3.5" /> Hire Me
+                  </a>
+                )}
+              </div>
             </div>
           </div>
 
