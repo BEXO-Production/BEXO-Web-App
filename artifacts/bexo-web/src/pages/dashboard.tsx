@@ -37,6 +37,10 @@ import {
 import { cn } from '../design-system/primitives';
 import logo from '../assets/bexo-logo.png';
 import { supabase } from '../lib/supabase';
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
+import { Calendar } from '../components/ui/calendar';
+import { format } from 'date-fns';
+import { Calendar as CalendarIcon } from 'lucide-react';
 
 const TABS = [
   { id: 'about', label: 'About' },
@@ -1009,7 +1013,41 @@ export default function Dashboard() {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Date</Label>
-                <Input type="date" value={editForm.date || ''} onChange={e => setEditForm({...editForm, date: e.target.value})} />
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal h-10 border border-slate-200 rounded-xl px-3 hover:bg-slate-50",
+                        !editForm.date && "text-slate-400"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4 text-slate-400 shrink-0" />
+                      {editForm.date ? (
+                        format(new Date(editForm.date + 'T00:00:00'), "PPP")
+                      ) : (
+                        <span>Pick a date</span>
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0 rounded-2xl border border-slate-200 bg-white shadow-xl z-[9999]" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={editForm.date ? new Date(editForm.date + 'T00:00:00') : undefined}
+                      onSelect={(date) => {
+                        if (date) {
+                          const yyyy = date.getFullYear();
+                          const mm = String(date.getMonth() + 1).padStart(2, '0');
+                          const dd = String(date.getDate()).padStart(2, '0');
+                          setEditForm({ ...editForm, date: `${yyyy}-${mm}-${dd}` });
+                        } else {
+                          setEditForm({ ...editForm, date: '' });
+                        }
+                      }}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
               </div>
             </div>
           </>
