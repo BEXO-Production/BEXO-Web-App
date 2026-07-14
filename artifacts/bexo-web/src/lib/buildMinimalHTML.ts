@@ -27,6 +27,48 @@ function formatYearRange(start?: string, end?: string): string {
   return '';
 }
 
+function buildEntryAssetsHTML(assets: any, accent: string, accentLight: string, accentMid: string): string {
+  if (!assets) return '';
+  const images = Array.isArray(assets.images) ? assets.images.filter(Boolean) : [];
+  const pdfs = Array.isArray(assets.pdfs) ? assets.pdfs.filter(Boolean) : [];
+
+  if (images.length === 0 && pdfs.length === 0) return '';
+
+  let html = `<div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #f1f5f9; display: flex; flex-direction: column; gap: 8px;">`;
+
+  if (images.length > 0) {
+    html += `<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 8px;">`;
+    images.forEach((img: any, idx: number) => {
+      const url = typeof img === 'string' ? img : (img.url || '');
+      if (url) {
+        html += `
+          <a href="${esc(url)}" target="_blank" style="display: block; aspect-ratio: 16/9; border-radius: 8px; overflow: hidden; border: 1px solid #e2e8f0;">
+            <img src="${esc(url)}" style="width: 100%; height: 100%; object-fit: cover;" />
+          </a>`;
+      }
+    });
+    html += `</div>`;
+  }
+
+  if (pdfs.length > 0) {
+    html += `<div style="display: flex; flex-wrap: wrap; gap: 8px;">`;
+    pdfs.forEach((pdf: any, idx: number) => {
+      const url = typeof pdf === 'string' ? pdf : (pdf.url || '');
+      if (url) {
+        html += `
+          <a href="${esc(url)}" target="_blank" download style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 12px; font-size: 11px; font-weight: 700; color: #475569; text-decoration: none;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="${accent}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+            Download PDF
+          </a>`;
+      }
+    });
+    html += `</div>`;
+  }
+
+  html += `</div>`;
+  return html;
+}
+
 export function buildMinimalPortfolioHTML(data: OnboardingData, themeColor: string, handle: string): string {
   const accent = THEME_HEX[themeColor] || THEME_HEX['blue'];
   const accentLight = accent + '12';
@@ -83,6 +125,7 @@ export function buildMinimalPortfolioHTML(data: OnboardingData, themeColor: stri
                   ${dur ? `<span class="entry-pill">${esc(dur)}</span>` : ''}
                 </div>
                 ${e.description ? `<p class="text-xs" style="color:#64748b;margin-top:6px;line-height:1.6;">${esc(e.description)}</p>` : ''}
+                ${buildEntryAssetsHTML(e.assets, accent, accentLight, accentMid)}
               </div>
             </div>`;
           }).join('')}
@@ -109,6 +152,7 @@ export function buildMinimalPortfolioHTML(data: OnboardingData, themeColor: stri
                   </div>
                   ${dur ? `<span class="entry-pill">${esc(dur)}</span>` : ''}
                 </div>
+                ${buildEntryAssetsHTML(e.assets, accent, accentLight, accentMid)}
               </div>
             </div>`;
           }).join('')}
@@ -122,13 +166,20 @@ export function buildMinimalPortfolioHTML(data: OnboardingData, themeColor: stri
         <h3 class="section-label"><span class="label-bar"></span> Projects</h3>
         <div class="projects-grid">
           ${projectEntries.map((p: any) => `
-            <div class="project-card">
-              <div class="entry-header">
+            <div class="project-card" style="display:flex;flex-direction:column;justify-content:between;">
+              <div>
                 <h4 class="entry-title">${esc(p.title)}</h4>
-                ${p.link ? `<a href="${esc(p.link)}" target="_blank" style="color:${accent};font-size:11px;text-decoration:none;flex-shrink:0;">↗ View</a>` : ''}
+                ${p.description ? `<p class="text-xs" style="color:#64748b;margin-top:6px;line-height:1.6;">${esc(p.description)}</p>` : ''}
+                ${p.tech ? `<p style="font-size:10px;color:#94a3b8;margin-top:8px;font-weight:600;">${esc(p.tech)}</p>` : ''}
+                ${buildEntryAssetsHTML(p.assets, accent, accentLight, accentMid)}
               </div>
-              ${p.description ? `<p class="text-xs" style="color:#64748b;margin-top:6px;line-height:1.6;">${esc(p.description)}</p>` : ''}
-              ${p.tech ? `<p style="font-size:10px;color:#94a3b8;margin-top:8px;font-weight:600;">${esc(p.tech)}</p>` : ''}
+              ${p.link ? `
+                <div style="margin-top:14px;padding-top:10px;border-top:1px solid #f1f5f9;">
+                  <a href="${esc(p.link)}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border:1px solid ${accentMid};border-radius:12px;font-size:11px;font-weight:700;color:${accent};background:${accentLight};text-decoration:none;width:100%;justify-content:center;">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="${accent}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+                    Visit Link
+                  </a>
+                </div>` : ''}
             </div>`).join('')}
         </div>
       </div>`
@@ -139,12 +190,15 @@ export function buildMinimalPortfolioHTML(data: OnboardingData, themeColor: stri
     ? `<div class="section-card anim">
         <h3 class="section-label">🏅 Certifications</h3>
         ${certEntries.map((c: any) => `
-          <div class="cert-item">
-            <div>
-              <h4 class="entry-title">${esc(c.title)}</h4>
-              <p class="entry-sub">${esc(c.issuer || c.organization || '')}</p>
+          <div class="cert-item" style="display:block;">
+            <div style="display:flex;justify-content:between;align-items:start;">
+              <div>
+                <h4 class="entry-title">${esc(c.title || c.name)}</h4>
+                <p class="entry-sub">${esc(c.issuer || c.organization || '')}</p>
+              </div>
+              ${c.date ? `<span style="font-size:10px;font-weight:600;color:${accent};">${esc(c.date)}</span>` : ''}
             </div>
-            ${c.date ? `<span style="font-size:10px;font-weight:600;color:${accent};">${esc(c.date)}</span>` : ''}
+            ${buildEntryAssetsHTML(c.assets, accent, accentLight, accentMid)}
           </div>`).join('')}
       </div>`
     : '';
@@ -154,12 +208,15 @@ export function buildMinimalPortfolioHTML(data: OnboardingData, themeColor: stri
     ? `<div class="section-card anim">
         <h3 class="section-label">✨ Achievements</h3>
         ${achieveEntries.map((a: any) => `
-          <div class="cert-item">
-            <div>
-              <h4 class="entry-title">${esc(a.title)}</h4>
-              <p class="entry-sub">${esc(a.organization || '')}</p>
+          <div class="cert-item" style="display:block;">
+            <div style="display:flex;justify-content:between;align-items:start;">
+              <div>
+                <h4 class="entry-title">${esc(a.title)}</h4>
+                <p class="entry-sub">${esc(a.organization || '')}</p>
+              </div>
+              ${a.date ? `<span style="font-size:10px;font-weight:600;color:${accent};">${esc(a.date)}</span>` : ''}
             </div>
-            ${a.date ? `<span style="font-size:10px;font-weight:600;color:${accent};">${esc(a.date)}</span>` : ''}
+            ${buildEntryAssetsHTML(a.assets, accent, accentLight, accentMid)}
           </div>`).join('')}
       </div>`
     : '';

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useRoute } from 'wouter';
-import { Loader2, Mail, Phone, Globe, Linkedin, Github, GraduationCap, Briefcase, Award, BookOpen, ExternalLink, Calendar, MapPin, Sparkles, FileText } from 'lucide-react';
+import { Loader2, Mail, Phone, Globe, Linkedin, Github, GraduationCap, Briefcase, Award, BookOpen, ExternalLink, Calendar, MapPin, Sparkles, FileText, Download } from 'lucide-react';
 import { Card } from '../design-system/primitives';
 import { cn } from '@/lib/utils';
 import logo from '../assets/bexo-logo.png';
@@ -262,10 +262,11 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
                   href={url} 
                   target="_blank" 
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-700 transition-colors shadow-sm cursor-pointer select-none"
+                  download
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 transition-colors shadow-sm cursor-pointer select-none"
                 >
-                  <FileText className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-                  <span className="truncate max-w-[130px]">{name}</span>
+                  <Download className="w-4 h-4 shrink-0" style={{ color: accentHex }} />
+                  <span className="truncate max-w-[130px]">Download PDF</span>
                 </a>
               );
             })}
@@ -507,17 +508,25 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {projectEntries.map((proj: any) => (
-                    <div key={proj.id} className="project-card-m">
-                      <div className="flex justify-between items-start gap-2">
+                    <div key={proj.id} className="project-card-m flex flex-col justify-between">
+                      <div className="space-y-1.5">
                         <h4 className="text-sm font-bold text-slate-900">{proj.title}</h4>
-                        {proj.link && (
-                          <a href={proj.link} target="_blank" rel="noreferrer" className="shrink-0 hover:scale-110 transition-transform" style={{ color: accentHex }}>
-                            <ExternalLink className="w-3.5 h-3.5" />
-                          </a>
-                        )}
+                        {proj.description && <p className="text-xs text-slate-505 leading-relaxed">{proj.description}</p>}
+                        {renderEntryAssets(proj.assets)}
                       </div>
-                      {proj.description && <p className="text-xs text-slate-500 leading-relaxed mt-1.5">{proj.description}</p>}
-                      {renderEntryAssets(proj.assets)}
+                      {proj.link && (
+                        <div className="mt-3.5 pt-2.5 border-t border-slate-100">
+                          <a 
+                            href={proj.link} 
+                            target="_blank" 
+                            rel="noreferrer" 
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 border rounded-xl text-[11px] font-bold transition-all shadow-sm w-full justify-center sm:w-auto"
+                            style={{ color: accentHex, borderColor: accentMid, background: accentLight }}
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" /> Visit Link
+                          </a>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
