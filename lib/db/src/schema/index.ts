@@ -33,6 +33,9 @@ export const profiles = pgTable("profiles", {
   careerGoal: text("career_goal"),
   bio: text("bio"),
   completionPct: integer("completion_pct").default(0),
+  subdomain: text("subdomain").unique(),
+  templateId: text("template_id").default("minimal"),
+  isPremium: boolean("is_premium").default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });
 
