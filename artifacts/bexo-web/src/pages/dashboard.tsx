@@ -71,16 +71,28 @@ const TEMPLATES = [
     description: 'Clean, typography-driven layout perfect for developers.',
   },
   {
-    id: 'academic',
-    name: 'Academic',
-    description: 'Traditional structure, emphasizes research and papers.',
+    id: 'cura-futuri',
+    name: 'Cura Futuri',
+    description: 'Modern, high-contrast design for interactive experiences.',
   },
   {
-    id: 'creative',
-    name: 'Creative',
-    description: 'Bold colors and unique grid layouts for designers.',
+    id: 'sierra-montana',
+    name: 'Sierra Montana',
+    description: 'Elegant storytelling with smooth locomotive scrolling.',
+  },
+  {
+    id: 'nico-palmer',
+    name: 'Nico Palmer',
+    description: 'Bold, cinematic typography for motion designers.',
   }
 ];
+
+const TEMPLATE_PREVIEW_URLS: Record<string, string> = {
+  minimal: 'https://resilient-hummingbird-87fc89.netlify.app/',
+  'cura-futuri': 'http://localhost:5174', // TODO: Replace with deployed URL
+  'sierra-montana': 'http://localhost:5500', // TODO: Replace with deployed URL
+  'nico-palmer': 'http://localhost:5175' // TODO: Replace with deployed URL
+};
 
 type BillingStatus = {
   plan: 'annual' | 'lifetime' | null;
@@ -3158,8 +3170,9 @@ export default function Dashboard() {
                                   </div>
                                   <div className={cn("flex-1 p-1", isLocked ? "blur-[1.5px] grayscale-[40%] opacity-60" : "")}>
                                     {tpl.id === 'minimal' && renderMinimalMockup(accentBg)}
-                                    {tpl.id === 'academic' && renderAcademicMockup(accentBg)}
-                                    {tpl.id === 'creative' && renderCreativeMockup(accentBg)}
+                                    {tpl.id === 'cura-futuri' && renderCreativeMockup(accentBg)}
+                                    {tpl.id === 'sierra-montana' && renderAcademicMockup(accentBg)}
+                                    {tpl.id === 'nico-palmer' && renderCreativeMockup(accentBg)}
                                   </div>
                                   {isLocked && (
                                     <div className="absolute inset-0 bg-slate-900/30 backdrop-blur-[1px] flex items-center justify-center">
@@ -3228,9 +3241,13 @@ export default function Dashboard() {
 
                             {/* iframe */}
                             <div className="relative w-full overflow-hidden" style={{ height: '520px' }}>
-                              <iframe
-                                key={`${data.templateId || 'minimal'}-${data.themeColor || 'indigo'}-${data.themeBg || 'grid'}`}
-                                src={`/${handleString}`}
+                                <iframe
+                                  key={`${data.templateId || 'minimal'}-${data.themeColor || 'indigo'}-${data.themeBg || 'grid'}`}
+                                  src={
+                                    ['cura-futuri', 'sierra-montana', 'nico-palmer'].includes(data.templateId || '') 
+                                      ? TEMPLATE_PREVIEW_URLS[data.templateId || 'minimal'] 
+                                      : `/${handleString}`
+                                  }
                                 title="Live Portfolio Preview"
                                 className="absolute top-0 left-0 border-0 bg-white"
                                 style={{
@@ -3241,6 +3258,12 @@ export default function Dashboard() {
                                   pointerEvents: 'none'
                                 }}
                                 sandbox="allow-scripts allow-same-origin"
+                                onLoad={(e) => {
+                                  if (data) {
+                                    const iframeWindow = (e.target as HTMLIFrameElement).contentWindow;
+                                    iframeWindow?.postMessage({ type: 'BEXO_PROFILE_UPDATE', profile: data }, '*');
+                                  }
+                                }}
                               />
                             </div>
                           </div>

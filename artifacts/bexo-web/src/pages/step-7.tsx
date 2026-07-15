@@ -13,23 +13,30 @@ const TEMPLATES = [
     layoutClass: 'flex-col'
   },
   {
-    id: 'academic',
-    name: 'Academic',
-    description: 'Traditional structure, emphasizes research and papers.',
-    layoutClass: 'flex-row'
+    id: 'cura-futuri',
+    name: 'Cura Futuri',
+    description: 'Modern, high-contrast design for interactive experiences.',
+    layoutClass: 'flex-col'
   },
   {
-    id: 'creative',
-    name: 'Creative',
-    description: 'Bold colors and unique grid layouts for designers.',
-    layoutClass: 'grid grid-cols-2'
+    id: 'sierra-montana',
+    name: 'Sierra Montana',
+    description: 'Elegant storytelling with smooth locomotive scrolling.',
+    layoutClass: 'flex-col'
+  },
+  {
+    id: 'nico-palmer',
+    name: 'Nico Palmer',
+    description: 'Bold, cinematic typography for motion designers.',
+    layoutClass: 'flex-col'
   }
 ];
 
 const TEMPLATE_PREVIEW_URLS: Record<string, string> = {
   minimal: 'https://resilient-hummingbird-87fc89.netlify.app/',
-  creative: 'https://resilient-fenglisu-32c287.netlify.app/',
-  academic: 'https://mybexo.com/preview'
+  'cura-futuri': 'http://localhost:5174', // TODO: Replace with deployed URL
+  'sierra-montana': 'http://localhost:5500', // TODO: Replace with deployed URL
+  'nico-palmer': 'http://localhost:5175' // TODO: Replace with deployed URL
 };
 
 const THEMES = [
@@ -204,7 +211,13 @@ export default function Step7Theme() {
               <iframe 
                 src={TEMPLATE_PREVIEW_URLS[previewTemplate]} 
                 title={`${previewTemplate} Preview`}
-                className="w-full h-full border-0 absolute inset-0"
+                className="w-full h-full rounded-b-xl border-none bg-white"
+                onLoad={(e) => {
+                  if (data) {
+                    const iframeWindow = (e.target as HTMLIFrameElement).contentWindow;
+                    iframeWindow?.postMessage({ type: 'BEXO_PROFILE_UPDATE', profile: data }, '*');
+                  }
+                }}
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
                 allowFullScreen
               />
