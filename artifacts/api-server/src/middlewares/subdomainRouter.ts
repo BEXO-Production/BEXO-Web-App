@@ -3,6 +3,7 @@ import { db, profiles, users, profileSections, subscriptions } from "@workspace/
 import { eq, or } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { resolveSubscriptionState } from "../lib/subscriptions";
+import { Readable } from "stream";
 
 // Map template IDs to their deployed URLs (or localhost for dev)
 const TEMPLATE_URLS: Record<string, string> = {
@@ -94,13 +95,64 @@ export async function subdomainRouter(req: Request, res: Response, next: NextFun
     };
 
     // 5. Determine which template to render
-    const templateId = profileData.user.templateId;
+    // Allow overriding via query string or Referer (for assets) for easy testing
+    let previewOverride = req.query.preview_template as string;
+    
+    if (!previewOverride && req.headers.referer) {
+      try {
+        const refererUrl = new URL(req.headers.referer);
+        previewOverride = refererUrl.searchParams.get("preview_template") || "";
+      } catch (e) {
+        // ignore invalid URL
+      }
+    }
+    
+    const templateId = previewOverride || profileData.user.templateId;
     const targetUrl = TEMPLATE_URLS[templateId] || TEMPLATE_URLS["minimal"];
 
-    // 6. Fetch the raw HTML from the template server
-    logger.info(`Proxying subdomain ${subdomain} to template ${templateId} (${targetUrl})`);
+    // 6. Proxy the request
+    // If it's a request for an asset or static file, just stream it directly
+    const path = req.path;
+    const fullTargetUrl = `${targetUrl}${req.originalUrl}`;
     
-    const templateRes = await fetch(targetUrl);
+    logger.info(`Proxying subdomain ${subdomain} to template ${templateId} (${fullTargetUrl})`);
+    
+    // For non-HTML routes, we stream the response directly
+    if (path !== "/") {
+      try {
+        const proxyRes = await fetch(fullTargetUrl, {
+          method: req.method,
+          headers: {
+            ...req.headers,
+            host: new URL(targetUrl).host,
+          } as any
+        });
+        
+        // Copy headers
+        proxyRes.headers.forEach((value, key) => {
+          res.setHeader(key, value);
+        });
+        res.status(proxyRes.status);
+        
+        // Stream body
+        if (proxyRes.body) {
+          // @ts-ignore
+          const readable = Readable.fromWeb(proxyRes.body as any);
+          readable.pipe(res);
+        } else {
+          res.end();
+        }
+        return;
+      } catch (err) {
+        res.status(502).send("Error proxying asset.");
+        return;
+      }
+    }
+    
+    // For the root path (/), we fetch HTML and inject the script
+    const templateRes = await fetch(fullTargetUrl);
+    
+
     if (!templateRes.ok) {
       res.status(502).send("Error fetching template from upstream.");
       return;
