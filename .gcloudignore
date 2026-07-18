@@ -16,6 +16,8 @@ scripts/node_modules/
 .replit
 .replitignore
 dump.rdb
+*.log
+attached_assets/
 
 # DO NOT ignore dotfiles like .npmrc
 !.npmrc
