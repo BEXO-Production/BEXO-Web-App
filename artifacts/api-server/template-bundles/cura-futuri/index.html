@@ -2,7 +2,8 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="./site-icon.png" />
+    <link rel="icon" type="image/png" href="./bexo-logo.png" />
+    <link rel="apple-touch-icon" href="./bexo-logo.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Portfolio</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -11,8 +12,8 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap"
       rel="stylesheet"
     />
-    <script type="module" crossorigin src="./assets/index-Buay4dUb.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-DB-D440C.css">
+    <script type="module" crossorigin src="./assets/index-DAWsGNoR.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-BCjOxHax.css">
   </head>
   <body>
     <div id="root">
@@ -27,6 +28,12 @@
           justify-content: center;
           gap: 1.25rem;
           background: #0b0b0b;
+        }
+        .boot-loader-brand {
+          width: 52px;
+          height: 52px;
+          object-fit: contain;
+          animation: boot-pulse 1.6s ease-in-out infinite;
         }
         .boot-loader-mark {
           width: 44px;
@@ -52,10 +59,11 @@
           50% { opacity: 0.9; }
         }
         @media (prefers-reduced-motion: reduce) {
-          .boot-loader-mark, .boot-loader-text { animation: none; }
+          .boot-loader-mark, .boot-loader-text, .boot-loader-brand { animation: none; }
         }
       </style>
       <div class="boot-loader" role="status" aria-label="Loading portfolio">
+        <img class="boot-loader-brand" src="./bexo-logo.png" alt="BEXO" />
         <div class="boot-loader-mark"></div>
         <div class="boot-loader-text">Portfolio</div>
       </div>
