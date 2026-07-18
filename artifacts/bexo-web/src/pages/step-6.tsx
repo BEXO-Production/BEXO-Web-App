@@ -16,6 +16,16 @@ const TABS = [
 ];
 
 const MAX_STORAGE_BYTES = 50 * 1024 * 1024; // 50MB
+const SUMMARY_MAX_LENGTH = 150;
+
+const limitSummary = (value = '') => {
+  const normalized = value.trim().replace(/\s+/g, ' ');
+  if (normalized.length <= SUMMARY_MAX_LENGTH) return normalized;
+
+  const shortened = normalized.slice(0, SUMMARY_MAX_LENGTH + 1);
+  const lastSpace = shortened.lastIndexOf(' ');
+  return `${shortened.slice(0, lastSpace > 100 ? lastSpace : SUMMARY_MAX_LENGTH - 1).trimEnd()}…`;
+};
 
 export default function Step6Review() {
   const { data, updateData, nextStep } = useOnboarding();
@@ -43,7 +53,11 @@ export default function Step6Review() {
   // Sync state when context data finishes fetching asynchronously
   useEffect(() => {
     const aboutList = data.aboutEntries && data.aboutEntries.length > 0
-      ? data.aboutEntries
+      ? data.aboutEntries.map((entry, index) => (
+          index === 0
+            ? { ...entry, description: limitSummary(entry.description) }
+            : entry
+        ))
       : [{ id: '1', title: '', description: '', currentStatus: '' }];
     setSections({
       about: aboutList,
@@ -793,9 +807,13 @@ export default function Step6Review() {
                     <textarea 
                       value={editForm.description || ''} 
                       onChange={e => setEditForm({...editForm, description: e.target.value})} 
+                      maxLength={SUMMARY_MAX_LENGTH}
                       className="flex min-h-[100px] w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 resize-none animate-in fade-in" 
                       placeholder="Write a professional summary..."
                     />
+                    <p className="text-right text-[11px] text-slate-400">
+                      {(editForm.description || '').length}/{SUMMARY_MAX_LENGTH} characters
+                    </p>
                   </div>
 
                   <div className="space-y-2">
@@ -843,17 +861,18 @@ export default function Step6Review() {
                   <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
                     <Button variant="ghost" onClick={() => setEditingId(null)}>Cancel</Button>
                     <Button onClick={() => {
+                      const summary = limitSummary(editForm.description);
                       updateData({
                         name: editForm.name,
                         firstName: editForm.name ? editForm.name.split(' ')[0] : '',
                         lastName: editForm.name ? editForm.name.split(' ').slice(1).join(' ') : '',
                         nationality: editForm.nationality,
                         pronouns: editForm.pronouns,
-                        aboutEntries: [{ id: '1', title: editForm.title, description: editForm.description, currentStatus: editForm.currentStatus }]
+                        aboutEntries: [{ id: '1', title: editForm.title, description: summary, currentStatus: editForm.currentStatus }]
                       });
                       setSections(prev => ({
                         ...prev,
-                        about: [{ id: '1', title: editForm.title, description: editForm.description, currentStatus: editForm.currentStatus }]
+                        about: [{ id: '1', title: editForm.title, description: summary, currentStatus: editForm.currentStatus }]
                       }));
                       setEditingId(null);
                     }}>Save Changes</Button>
