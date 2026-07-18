@@ -157,6 +157,20 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
     );
   }
 
+  // Premium templates are rendered by the API's bundled template engine.
+  // The public URL remains the user's handle URL; no separate template host
+  // is exposed or required.
+  if (isPremium && user.templateId === 'cura-futuri') {
+    return (
+      <iframe
+        title={`${user.name || handle} portfolio`}
+        src={`/api/render/${encodeURIComponent(handle || profile.handle)}/`}
+        className="fixed inset-0 h-[100dvh] w-full border-0 bg-[#0d0d11]"
+        allow="clipboard-write"
+      />
+    );
+  }
+
   // Theme accent color — resolved to HEX for inline styles (CSS variable approach)
   const THEME_HEX_MAP: Record<string, string> = {
     blue: '#2563eb', emerald: '#059669', rose: '#e11d48', violet: '#7c3aed', indigo: '#4f46e5',

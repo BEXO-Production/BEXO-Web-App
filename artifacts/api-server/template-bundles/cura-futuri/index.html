@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="./site-icon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Portfolio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap"
+      rel="stylesheet"
+    />
+    <script type="module" crossorigin src="./assets/index-Buay4dUb.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-DB-D440C.css">
+  </head>
+  <body>
+    <div id="root">
+      <!-- First-paint loader: replaced as soon as the app mounts -->
+      <style>
+        .boot-loader {
+          position: fixed;
+          inset: 0;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 1.25rem;
+          background: #0b0b0b;
+        }
+        .boot-loader-mark {
+          width: 44px;
+          height: 44px;
+          border-radius: 50%;
+          border: 1.5px solid rgba(255, 255, 255, 0.15);
+          border-top-color: rgba(255, 255, 255, 0.85);
+          animation: boot-spin 0.9s linear infinite;
+        }
+        .boot-loader-text {
+          font-family: Georgia, "Times New Roman", serif;
+          font-size: 0.95rem;
+          letter-spacing: 0.35em;
+          text-transform: uppercase;
+          color: rgba(255, 255, 255, 0.55);
+          animation: boot-pulse 1.6s ease-in-out infinite;
+        }
+        @keyframes boot-spin {
+          to { transform: rotate(360deg); }
+        }
+        @keyframes boot-pulse {
+          0%, 100% { opacity: 0.45; }
+          50% { opacity: 0.9; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .boot-loader-mark, .boot-loader-text { animation: none; }
+        }
+      </style>
+      <div class="boot-loader" role="status" aria-label="Loading portfolio">
+        <div class="boot-loader-mark"></div>
+        <div class="boot-loader-text">Portfolio</div>
+      </div>
+    </div>
+  </body>
+</html>

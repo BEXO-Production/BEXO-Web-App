@@ -5,6 +5,7 @@ import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { subdomainRouter } from "./middlewares/subdomainRouter";
+import { renderPortfolioForHandle } from "./middlewares/subdomainRouter";
 
 const app: Express = express();
 
@@ -34,6 +35,28 @@ app.use(express.urlencoded({ extended: true }));
 
 // Subdomain Gateway Router MUST come before other routes
 app.use(subdomainRouter);
+
+// Same rendering engine exposed under the main app for dashboard previews and
+// path-based portfolio links. The trailing slash is required for relative
+// template assets to resolve beneath /api/render/:handle/.
+app.use("/api/render/:handle", async (req, res) => {
+  const handle = String(req.params.handle || "").toLowerCase();
+  const basePath = `/api/render/${encodeURIComponent(handle)}`;
+  const pathname = req.originalUrl.split("?")[0];
+
+  if (pathname === basePath) {
+    const query = req.originalUrl.includes("?")
+      ? req.originalUrl.slice(req.originalUrl.indexOf("?"))
+      : "";
+    res.redirect(308, `${basePath}/${query}`);
+    return;
+  }
+
+  await renderPortfolioForHandle(req, res, handle, {
+    basePath,
+    requestPath: req.path,
+  });
+});
 
 app.get("/", (req, res) => {
   res.json({

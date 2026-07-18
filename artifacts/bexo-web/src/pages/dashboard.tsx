@@ -89,10 +89,15 @@ const TEMPLATES = [
 
 const TEMPLATE_PREVIEW_URLS: Record<string, string> = {
   minimal: 'https://resilient-hummingbird-87fc89.netlify.app/',
-  'cura-futuri': 'https://bexo-cura-futuri.web.app',
+  'cura-futuri': '',
   'sierra-montana': 'http://localhost:5500', // TODO: Replace with deployed URL
   'nico-palmer': 'http://localhost:5175' // TODO: Replace with deployed URL
 };
+
+const getTemplatePreviewUrl = (templateId: string, handle: string) =>
+  templateId === 'cura-futuri'
+    ? `/api/render/${encodeURIComponent(handle)}/?preview_template=cura-futuri`
+    : TEMPLATE_PREVIEW_URLS[templateId] || `/${encodeURIComponent(handle)}`;
 
 type BillingStatus = {
   plan: 'annual' | 'lifetime' | null;
@@ -3272,11 +3277,7 @@ export default function Dashboard() {
                             <div className="relative w-full overflow-hidden" style={{ height: '520px' }}>
                                 <iframe
                                   key={`${data.templateId || 'minimal'}-${data.themeColor || 'indigo'}-${data.themeBg || 'grid'}`}
-                                  src={
-                                    ['cura-futuri', 'sierra-montana', 'nico-palmer'].includes(data.templateId || '') 
-                                      ? TEMPLATE_PREVIEW_URLS[data.templateId || 'minimal'] 
-                                      : `/${handleString}`
-                                  }
+                                  src={getTemplatePreviewUrl(data.templateId || 'minimal', handleString)}
                                 title="Live Portfolio Preview"
                                 className="absolute top-0 left-0 border-0 bg-white"
                                 style={{

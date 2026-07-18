@@ -34,10 +34,15 @@ const TEMPLATES = [
 
 const TEMPLATE_PREVIEW_URLS: Record<string, string> = {
   minimal: 'https://resilient-hummingbird-87fc89.netlify.app/',
-  'cura-futuri': 'https://bexo-cura-futuri.web.app',
+  'cura-futuri': '',
   'sierra-montana': 'http://localhost:5500', // TODO: Replace with deployed URL
   'nico-palmer': 'http://localhost:5175' // TODO: Replace with deployed URL
 };
+
+const getTemplatePreviewUrl = (templateId: string, handle: string) =>
+  templateId === 'cura-futuri'
+    ? `/api/render/${encodeURIComponent(handle || 'portfolio')}/?preview_template=cura-futuri`
+    : TEMPLATE_PREVIEW_URLS[templateId];
 
 const THEMES = [
   { id: 'blue', label: 'Navy', hex: 'bg-blue-600', textHex: 'text-blue-600' },
@@ -64,6 +69,7 @@ export default function Step7Theme() {
   const [previewTemplate, setPreviewTemplate] = useState<string | null>(null);
   const [isSwooshing, setIsSwooshing] = useState(false);
   const showThemeOptions = THEMEABLE_TEMPLATES.has(selectedTemplate);
+  const previewHandle = data.handle || 'portfolio';
 
   const handleContinue = () => {
     updateData({
@@ -167,14 +173,14 @@ export default function Step7Theme() {
                 <div className="w-2 h-2 rounded-full bg-amber-400" />
                 <div className="w-2 h-2 rounded-full bg-green-400" />
                 <span className="text-[9px] text-slate-400 font-mono ml-2 truncate">
-                  {TEMPLATE_PREVIEW_URLS[tpl.id].replace('https://', '')}
+                  {getTemplatePreviewUrl(tpl.id, previewHandle).replace('https://', '')}
                 </span>
               </div>
               
               {/* Miniature Website Iframe */}
               <div className="w-[300%] h-[300%] origin-top-left scale-[0.333] pointer-events-none select-none shrink-0">
                 <iframe 
-                  src={TEMPLATE_PREVIEW_URLS[tpl.id]} 
+                  src={getTemplatePreviewUrl(tpl.id, previewHandle)}
                   title={`${tpl.id} Thumbnail`}
                   className="w-full h-full border-0"
                   tabIndex={-1}
@@ -239,7 +245,7 @@ export default function Step7Theme() {
                 <div className="w-3 h-3 rounded-full bg-amber-400" />
                 <div className="w-3 h-3 rounded-full bg-green-400" />
                 <span className="ml-4 text-xs font-mono text-slate-500">
-                  {TEMPLATE_PREVIEW_URLS[previewTemplate].replace('https://', '')}
+                  {getTemplatePreviewUrl(previewTemplate, previewHandle).replace('https://', '')}
                 </span>
               </div>
               <Button variant="ghost" size="sm" onClick={() => setPreviewTemplate(null)}>
@@ -249,7 +255,7 @@ export default function Step7Theme() {
             
             <div className="flex-1 w-full h-full relative bg-slate-50">
               <iframe 
-                src={TEMPLATE_PREVIEW_URLS[previewTemplate]} 
+                src={getTemplatePreviewUrl(previewTemplate, previewHandle)}
                 title={`${previewTemplate} Preview`}
                 className="w-full h-full rounded-b-xl border-none bg-white"
                 onLoad={(e) => {

@@ -1,10 +1,16 @@
 import { Request, Response, NextFunction } from "express";
-import { db, profiles, users, profileSections, subscriptions } from "@workspace/db";
+import { db, profiles, users, profileSections } from "@workspace/db";
 import { eq, or } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { resolveSubscriptionState } from "../lib/subscriptions";
 import { buildPublicProfile } from "../lib/publicProfile";
 import { Readable } from "stream";
+import { readFile } from "node:fs/promises";
+import {
+  getTemplateBundleRoot,
+  injectPortfolioBootstrap,
+  resolveTemplateFile,
+} from "../lib/templateRuntime";
 
 // Map template IDs to their deployed URLs (or localhost for dev)
 const TEMPLATE_URLS: Record<string, string> = {
@@ -16,6 +22,12 @@ const TEMPLATE_URLS: Record<string, string> = {
 
 export async function subdomainRouter(req: Request, res: Response, next: NextFunction): Promise<void> {
   const host = req.hostname; // e.g., 'kavin.mybexo.com' or 'kavin.localhost'
+
+  // API calls from a rendered template must reach the API routes, not be
+  // interpreted as template assets.
+  if (req.path.startsWith("/api/")) {
+    return next();
+  }
   
   // Skip if accessing the main domains directly
   if (
@@ -33,6 +45,18 @@ export async function subdomainRouter(req: Request, res: Response, next: NextFun
   if (!subdomain) {
     return next();
   }
+
+  await renderPortfolioForHandle(req, res, subdomain);
+}
+
+export async function renderPortfolioForHandle(
+  req: Request,
+  res: Response,
+  handle: string,
+  options: { basePath?: string; requestPath?: string } = {},
+): Promise<void> {
+  const subdomain = handle.toLowerCase().trim();
+  const basePath = options.basePath || "/";
 
   try {
     // 1. Look up profile by handle or subdomain
@@ -127,78 +151,86 @@ export async function subdomainRouter(req: Request, res: Response, next: NextFun
     }
     
     const templateId = previewOverride || profileData.user.templateId;
+    const localBundleRoot = getTemplateBundleRoot(templateId);
     const targetUrl = TEMPLATE_URLS[templateId] || TEMPLATE_URLS["minimal"];
 
     // 7. Proxy the request
     // If it's a request for an asset or static file, just stream it directly
-    const path = req.path;
+    const path = options.requestPath || req.path;
     const fullTargetUrl = `${targetUrl}${req.originalUrl}`;
     
-    logger.info(`Proxying subdomain ${subdomain} to template ${templateId} (${fullTargetUrl})`);
-    
-    // For non-HTML routes, we stream the response directly
-    if (path !== "/") {
-      try {
-        const proxyRes = await fetch(fullTargetUrl, {
-          method: req.method,
-          headers: {
-            ...req.headers,
-            host: new URL(targetUrl).host,
-          } as any
-        });
-        
-        // Copy headers, but strip encoding/length since node fetch auto-decompresses
-        proxyRes.headers.forEach((value, key) => {
-          if (key.toLowerCase() === 'content-encoding' || key.toLowerCase() === 'content-length') {
-            return;
-          }
-          res.setHeader(key, value);
-        });
-        res.status(proxyRes.status);
-        
-        // Stream body
-        if (proxyRes.body) {
-          // @ts-ignore
-          const readable = Readable.fromWeb(proxyRes.body as any);
-          readable.pipe(res);
-        } else {
-          res.end();
-        }
-        return;
-      } catch (err) {
-        res.status(502).send("Error proxying asset.");
+    logger.info(
+      localBundleRoot
+        ? `Serving bundled template ${templateId} for ${subdomain}`
+        : `Proxying subdomain ${subdomain} to template ${templateId} (${fullTargetUrl})`,
+    );
+
+    // Premium templates ship inside the API image. No standalone template
+    // host is required; the gateway serves assets and injects this handle's
+    // canonical profile into the SPA shell.
+    if (localBundleRoot) {
+      const templateFile = resolveTemplateFile(localBundleRoot, path);
+      if (!templateFile) {
+        res.status(404).send("Template asset not found.");
         return;
       }
-    }
-    
-    // For the root path (/), we fetch HTML and inject the script
-    const templateRes = await fetch(fullTargetUrl);
-    
 
-    if (!templateRes.ok) {
-      res.status(502).send("Error fetching template from upstream.");
+      if (templateFile.endsWith("index.html")) {
+        const html = await readFile(templateFile, "utf8");
+        res
+          .status(200)
+          .set("Cache-Control", "private, no-cache, no-store, must-revalidate")
+          .type("html")
+          .send(injectPortfolioBootstrap(html, profileData, basePath));
+        return;
+      }
+
+      if (path.startsWith("/assets/")) {
+        res.set("Cache-Control", "public, max-age=31536000, immutable");
+      }
+      res.sendFile(templateFile);
       return;
     }
-
-    let html = await templateRes.text();
-
-    // 8. Inject the profile data into the <head>
-    const injection = `
-      <script>
-        window.__BEXO_PROFILE__ = ${JSON.stringify(profileData)};
-      </script>
-    `;
     
-    if (html.includes("</head>")) {
-      html = html.replace("</head>", `${injection}</head>`);
-    } else {
-      // Fallback
-      html = injection + html;
-    }
+    try {
+      const proxyRes = await fetch(fullTargetUrl, {
+        method: req.method,
+        headers: {
+          ...req.headers,
+          host: new URL(targetUrl).host,
+        } as any,
+      });
 
-    // 9. Serve the injected HTML!
-    res.setHeader("Content-Type", "text/html");
-    res.send(html);
+      // Node fetch auto-decompresses upstream responses.
+      proxyRes.headers.forEach((value, key) => {
+        if (key.toLowerCase() === "content-encoding" || key.toLowerCase() === "content-length") {
+          return;
+        }
+        res.setHeader(key, value);
+      });
+      res.status(proxyRes.status);
+
+      // Deep links can also return an SPA shell. Inject based on response
+      // content type rather than only for "/", preventing demo fallback data.
+      const contentType = proxyRes.headers.get("content-type") || "";
+      if (contentType.includes("text/html")) {
+        const html = await proxyRes.text();
+        res
+          .type("html")
+          .send(injectPortfolioBootstrap(html, profileData, basePath));
+        return;
+      }
+
+      if (proxyRes.body) {
+        // @ts-ignore Node's Readable.fromWeb expects the compatible web stream.
+        Readable.fromWeb(proxyRes.body as any).pipe(res);
+      } else {
+        res.end();
+      }
+    } catch (err) {
+      logger.error({ err, subdomain, templateId }, "Error proxying template");
+      res.status(502).send("Error fetching template.");
+    }
 
   } catch (err) {
     logger.error({ err, subdomain }, "Error processing subdomain routing");
