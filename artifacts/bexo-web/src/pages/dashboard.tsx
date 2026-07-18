@@ -89,7 +89,7 @@ const TEMPLATES = [
 
 const TEMPLATE_PREVIEW_URLS: Record<string, string> = {
   minimal: 'https://resilient-hummingbird-87fc89.netlify.app/',
-  'cura-futuri': 'http://localhost:5174', // TODO: Replace with deployed URL
+  'cura-futuri': 'https://bexo-cura-futuri.web.app',
   'sierra-montana': 'http://localhost:5500', // TODO: Replace with deployed URL
   'nico-palmer': 'http://localhost:5175' // TODO: Replace with deployed URL
 };
@@ -3074,20 +3074,23 @@ export default function Dashboard() {
 
                 {settingsSubTab === 'design' && (
                   <div className="space-y-6 animate-in fade-in duration-200">
-                    {/* Theme selector - ONLY for Free template */}
-                    {data.templateId === 'minimal' && (
+                    {/* Theme + background — Minimal (free) and Cura Futuri honor these */}
+                    {['minimal', 'cura-futuri'].includes(data.templateId || '') && (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-4">
                           <div>
                             <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                               <Palette className="w-4 h-4 text-indigo-500" /> Accent Color
                             </h3>
-                            <p className="text-slate-500 text-xs mt-0.5">Select a brand color accent for your portfolio template layouts.</p>
+                            <p className="text-slate-500 text-xs mt-0.5">
+                              Brand accent applied to buttons, labels, and glows on your live portfolio.
+                            </p>
                           </div>
                           <div className="flex gap-2.5 pt-1">
                             {THEMES.map(theme => (
                               <button
                                 key={theme.id}
+                                type="button"
                                 onClick={() => handleThemeSelect(theme.id)}
                                 className={cn(
                                   "w-9 h-9 rounded-full flex items-center justify-center transition-all hover:scale-105 shadow-sm ring-offset-2",
@@ -3107,7 +3110,9 @@ export default function Dashboard() {
                             <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                               <Palette className="w-4 h-4 text-indigo-500" /> Background Style
                             </h3>
-                            <p className="text-slate-500 text-xs mt-0.5">Choose a design texture or gradient for your portfolio page.</p>
+                            <p className="text-slate-500 text-xs mt-0.5">
+                              Texture or gradient wash behind your portfolio hero and surfaces.
+                            </p>
                           </div>
                           <div className="grid grid-cols-2 gap-2.5 pt-1">
                             {[
@@ -3120,6 +3125,7 @@ export default function Dashboard() {
                               return (
                                 <button
                                   key={bg.id}
+                                  type="button"
                                   onClick={() => handleBgSelect(bg.id)}
                                   className={cn(
                                     "relative p-3 rounded-xl border text-left transition-all hover:scale-[1.01] flex flex-col justify-center min-h-[58px]",

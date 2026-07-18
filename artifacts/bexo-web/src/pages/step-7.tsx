@@ -34,7 +34,7 @@ const TEMPLATES = [
 
 const TEMPLATE_PREVIEW_URLS: Record<string, string> = {
   minimal: 'https://resilient-hummingbird-87fc89.netlify.app/',
-  'cura-futuri': 'http://localhost:5174', // TODO: Replace with deployed URL
+  'cura-futuri': 'https://bexo-cura-futuri.web.app',
   'sierra-montana': 'http://localhost:5500', // TODO: Replace with deployed URL
   'nico-palmer': 'http://localhost:5175' // TODO: Replace with deployed URL
 };
@@ -46,15 +46,31 @@ const THEMES = [
   { id: 'violet', label: 'Violet', hex: 'bg-violet-600', textHex: 'text-violet-600' },
 ];
 
+const THEME_BGS = [
+  { id: 'grid', label: 'Clean Grid', desc: 'Subtle blueprint canvas' },
+  { id: 'dots', label: 'Minimalist Dots', desc: 'Clean dot matrix overlay' },
+  { id: 'waves', label: 'Abstract Waves', desc: 'Soft vector wave curves' },
+  { id: 'solid', label: 'Accent Gradient', desc: 'Vibrant color blend' },
+];
+
+/** Templates that honor themeColor + themeBg from the portal */
+const THEMEABLE_TEMPLATES = new Set(['minimal', 'cura-futuri']);
+
 export default function Step7Theme() {
   const { data, updateData, nextStep } = useOnboarding();
   const [selectedTemplate, setSelectedTemplate] = useState(data.templateId || 'minimal');
   const [selectedTheme, setSelectedTheme] = useState(data.themeColor || 'blue');
+  const [selectedThemeBg, setSelectedThemeBg] = useState(data.themeBg || 'grid');
   const [previewTemplate, setPreviewTemplate] = useState<string | null>(null);
   const [isSwooshing, setIsSwooshing] = useState(false);
+  const showThemeOptions = THEMEABLE_TEMPLATES.has(selectedTemplate);
 
   const handleContinue = () => {
-    updateData({ templateId: selectedTemplate, themeColor: selectedTheme });
+    updateData({
+      templateId: selectedTemplate,
+      themeColor: selectedTheme,
+      themeBg: selectedThemeBg,
+    });
     setIsSwooshing(true);
     setTimeout(() => {
       nextStep(7);
@@ -78,31 +94,55 @@ export default function Step7Theme() {
           </p>
         </div>
         
-        {/* Theme Picker */}
-        {/* Theme Picker */}
-        {selectedTemplate === 'minimal' ? (
-          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-2 shrink-0 animate-in slide-in-from-right-3 duration-300">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider px-1">Accent Color</span>
-            <div className="flex gap-2">
-              {THEMES.map(theme => (
-                <button
-                  key={theme.id}
-                  onClick={() => setSelectedTheme(theme.id)}
-                  className={cn(
-                    "w-8 h-8 rounded-full flex items-center justify-center transition-all shadow-sm ring-offset-2 hover:scale-110",
-                    theme.hex,
-                    selectedTheme === theme.id ? "ring-2 ring-slate-900" : ""
-                  )}
-                  title={theme.label}
-                >
-                  {selectedTheme === theme.id && <CheckCircle2 className="w-4 h-4 text-white" />}
-                </button>
-              ))}
+        {showThemeOptions ? (
+          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-3 shrink-0 animate-in slide-in-from-right-3 duration-300 max-w-sm">
+            <div>
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider px-1">Accent Color</span>
+              <div className="flex gap-2 mt-2">
+                {THEMES.map(theme => (
+                  <button
+                    key={theme.id}
+                    type="button"
+                    onClick={() => setSelectedTheme(theme.id)}
+                    className={cn(
+                      "w-8 h-8 rounded-full flex items-center justify-center transition-all shadow-sm ring-offset-2 hover:scale-110",
+                      theme.hex,
+                      selectedTheme === theme.id ? "ring-2 ring-slate-900" : ""
+                    )}
+                    title={theme.label}
+                  >
+                    {selectedTheme === theme.id && <CheckCircle2 className="w-4 h-4 text-white" />}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider px-1">Background Style</span>
+              <div className="grid grid-cols-2 gap-1.5 mt-2">
+                {THEME_BGS.map(bg => (
+                  <button
+                    key={bg.id}
+                    type="button"
+                    onClick={() => setSelectedThemeBg(bg.id)}
+                    className={cn(
+                      "px-2 py-1.5 rounded-lg border text-left transition-all",
+                      selectedThemeBg === bg.id
+                        ? "border-slate-900 bg-slate-900/5 ring-1 ring-slate-900"
+                        : "border-slate-200 hover:border-slate-300"
+                    )}
+                    title={bg.desc}
+                  >
+                    <span className="block text-[11px] font-bold text-slate-900 leading-tight">{bg.label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         ) : (
-          <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/60 flex items-center justify-center h-[74px] shrink-0 px-4">
-            <span className="text-xs font-medium text-slate-400">Accent color auto-set by preset layout</span>
+          <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/60 flex items-center justify-center min-h-[74px] shrink-0 px-4">
+            <span className="text-xs font-medium text-slate-400 text-center">
+              Theme customization unlocks for Minimal &amp; Cura Futuri
+            </span>
           </div>
         )}
       </div>
