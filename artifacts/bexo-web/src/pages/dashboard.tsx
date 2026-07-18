@@ -96,7 +96,7 @@ const TEMPLATE_PREVIEW_URLS: Record<string, string> = {
 
 const getTemplatePreviewUrl = (templateId: string, handle: string) =>
   templateId === 'cura-futuri'
-    ? `/api/render/${encodeURIComponent(handle)}/?preview_template=cura-futuri`
+    ? `/api/render/${encodeURIComponent(handle)}/cura-futuri/`
     : TEMPLATE_PREVIEW_URLS[templateId] || `/${encodeURIComponent(handle)}`;
 
 type BillingStatus = {

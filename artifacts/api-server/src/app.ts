@@ -36,6 +36,28 @@ app.use(express.urlencoded({ extended: true }));
 // Subdomain Gateway Router MUST come before other routes
 app.use(subdomainRouter);
 
+// Stable preview URL: carrying the template id in the path means every
+// relative asset request keeps the same preview selection without relying on
+// cookies (which hosting/CDN layers may omit).
+app.use("/api/render/:handle/:templateId", async (req, res) => {
+  const handle = String(req.params.handle || "").toLowerCase();
+  const templateId = String(req.params.templateId || "").toLowerCase();
+  const basePath =
+    `/api/render/${encodeURIComponent(handle)}/${encodeURIComponent(templateId)}`;
+  const pathname = req.originalUrl.split("?")[0];
+
+  if (pathname === basePath) {
+    res.redirect(308, `${basePath}/`);
+    return;
+  }
+
+  await renderPortfolioForHandle(req, res, handle, {
+    basePath,
+    requestPath: req.path,
+    templateOverride: templateId,
+  });
+});
+
 // Same rendering engine exposed under the main app for dashboard previews and
 // path-based portfolio links. The trailing slash is required for relative
 // template assets to resolve beneath /api/render/:handle/.

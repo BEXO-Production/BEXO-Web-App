@@ -41,7 +41,7 @@ const TEMPLATE_PREVIEW_URLS: Record<string, string> = {
 
 const getTemplatePreviewUrl = (templateId: string, handle: string) =>
   templateId === 'cura-futuri'
-    ? `/api/render/${encodeURIComponent(handle || 'portfolio')}/?preview_template=cura-futuri`
+    ? `/api/render/${encodeURIComponent(handle || 'portfolio')}/cura-futuri/`
     : TEMPLATE_PREVIEW_URLS[templateId];
 
 const THEMES = [

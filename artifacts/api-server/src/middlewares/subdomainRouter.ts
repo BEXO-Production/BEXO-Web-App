@@ -53,7 +53,11 @@ export async function renderPortfolioForHandle(
   req: Request,
   res: Response,
   handle: string,
-  options: { basePath?: string; requestPath?: string } = {},
+  options: {
+    basePath?: string;
+    requestPath?: string;
+    templateOverride?: string;
+  } = {},
 ): Promise<void> {
   const subdomain = handle.toLowerCase().trim();
   const basePath = options.basePath || "/";
@@ -128,7 +132,8 @@ export async function renderPortfolioForHandle(
 
     // 6. Determine which template to render
     // Allow overriding via query string, cookie, or Referer (for assets) for easy testing
-    let previewOverride = req.query.preview_template as string;
+    let previewOverride =
+      options.templateOverride || (req.query.preview_template as string);
     
     if (previewOverride) {
       // Set a cookie so asset requests maintain the preview template
