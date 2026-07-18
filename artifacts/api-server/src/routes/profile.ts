@@ -1,13 +1,30 @@
 import { Router } from "express";
+import crypto from "crypto";
 import { requireAuth, AuthenticatedRequest } from "../middlewares/auth";
-import { db, users, profiles, profileSections, payments, subscriptions } from "@workspace/db";
-import { eq, and, desc } from "drizzle-orm";
+import {
+  db,
+  users,
+  profiles,
+  profileSections,
+  payments,
+  subscriptions,
+  contactSubmissions,
+  resumeParseAttempts,
+} from "@workspace/db";
+import { eq, and, desc, gt, sql } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import multer from "multer";
 import { createRequire } from "module";
 import { uploadToR2 } from "../lib/r2";
 import { generateATSResume } from "../lib/resumeEngine";
 import { resolveSubscriptionState, syncStorageQuota } from "../lib/subscriptions";
+import { buildPublicProfile } from "../lib/publicProfile";
+import { enqueueEmail } from "../lib/emailOutbox";
+import {
+  enqueueWelcomeEmail,
+  markOnboardingActivity,
+  markOnboardingComplete,
+} from "../lib/lifecycleEmails";
 
 const require = createRequire(import.meta.url);
 const pdf = require("pdf-parse");
@@ -82,7 +99,9 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<voi
         themeColor: user.themeColor ?? 'blue',
         themeBg: user.themeBg ?? 'grid',
         resumeParsesThisMonth: user.resumeParsesThisMonth ?? 0,
-        lastResumeParseReset: user.lastResumeParseReset
+        lastResumeParseReset: user.lastResumeParseReset,
+        onboardingSuccessfulParses: user.onboardingSuccessfulParses ?? 0,
+        onboardingCompletedAt: user.onboardingCompletedAt,
       },
       plan: subscriptionState.plan,
       isPremium: subscriptionState.isPremium,
@@ -125,7 +144,9 @@ router.patch("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<v
       const userUpdates: Partial<typeof users.$inferInsert> = {};
       if (name !== undefined) userUpdates.name = name;
       if (dob !== undefined) userUpdates.dob = dob;
-      if (email !== undefined) userUpdates.email = email;
+      if (email !== undefined) {
+        userUpdates.email = email;
+      }
       if (photoUrl !== undefined) userUpdates.photoUrl = photoUrl;
       if (resumeUrl !== undefined) userUpdates.resumeUrl = resumeUrl;
       if (profilePhotoAssetId !== undefined) userUpdates.profilePhotoAssetId = profilePhotoAssetId;
@@ -135,7 +156,14 @@ router.patch("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<v
       if (themeBg !== undefined) userUpdates.themeBg = themeBg;
   
       if (Object.keys(userUpdates).length > 0) {
+        const [before] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
         await db.update(users).set(userUpdates).where(eq(users.id, userId));
+        await markOnboardingActivity(userId);
+        if (email && !before?.email) {
+          await enqueueWelcomeEmail(userId, email, name || before?.name || "there");
+        }
+      } else {
+        await markOnboardingActivity(userId);
       }
 
     // Update profile info
@@ -188,6 +216,9 @@ router.patch("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<v
     
     // Auto-generate resume PDF if needed
     await autoGenerateResumeIfNeeded(userId);
+
+    // Fresh edits must be visible on the public page immediately
+    if (profile.handle) publicProfileCache.delete(profile.handle);
 
     res.json({ success: true, message: "Profile updated successfully" });
   } catch (err) {
@@ -428,57 +459,137 @@ router.post("/resume", requireAuth, upload.single("resume"), async (req: Authent
   }
 
   const now = new Date();
-  let parsesCount = user.resumeParsesThisMonth || 0;
-  let resetTime = user.lastResumeParseReset ? new Date(user.lastResumeParseReset) : new Date();
+  const duringOnboarding = !user.onboardingCompletedAt;
+  const fileHash = crypto.createHash("sha256").update(file.buffer).digest("hex");
+  const ipHash = crypto
+    .createHash("sha256")
+    .update(String(req.headers["x-forwarded-for"] || req.ip || ""))
+    .digest("hex")
+    .slice(0, 32);
 
-  const diffDays = Math.floor((now.getTime() - resetTime.getTime()) / (1000 * 60 * 60 * 24));
-  
-  // Define limits based on plan
-  let limitDays = 30;
-  let limitParses = 0;
-  let planDisplay = "Free";
-
-  if (!plan || plan === "free") {
-    limitDays = 50;
-    limitParses = 1;
-  } else if (plan === "lifetime") {
-    limitDays = 30;
-    limitParses = 3;
-    planDisplay = "Lifetime";
-  } else if (plan === "annual") {
-    limitDays = 30;
-    limitParses = 10;
-    planDisplay = "Annual";
-  }
-
-  // Reset counter if time window passed since last reset
-  if (diffDays >= limitDays) {
-    parsesCount = 0;
-    resetTime = now;
-    await db.update(users).set({
-      resumeParsesThisMonth: 0,
-      lastResumeParseReset: now
-    }).where(eq(users.id, userId));
-  }
-
-  // Enforce limits
-  if (parsesCount >= limitParses) {
-    const daysToReset = Math.max(limitDays - diffDays, 1);
-    res.status(429).json({ 
-      error: `You have reached your AI resume parsing limit of ${limitParses} parse(s) on the ${planDisplay} plan. Quota resets in ${daysToReset} days.` 
-    });
+  // One in-flight parse per user
+  const [inflight] = await db
+    .select()
+    .from(resumeParseAttempts)
+    .where(and(eq(resumeParseAttempts.userId, userId), eq(resumeParseAttempts.status, "started")))
+    .limit(1);
+  if (inflight) {
+    res.status(429).json({ error: "A resume parse is already in progress. Please wait for it to finish." });
     return;
   }
+
+  // Abuse throttle: max 8 attempt starts / hour / user (does not consume success quota)
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  const recentAttempts = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(resumeParseAttempts)
+    .where(and(eq(resumeParseAttempts.userId, userId), gt(resumeParseAttempts.createdAt, oneHourAgo)));
+  if (Number(recentAttempts[0]?.count || 0) >= 8) {
+    res.status(429).json({ error: "Too many resume parse attempts. Please wait and try again later." });
+    return;
+  }
+
+  // Return cached successful parse for identical file without consuming another credit
+  const [cached] = await db
+    .select()
+    .from(resumeParseAttempts)
+    .where(
+      and(
+        eq(resumeParseAttempts.userId, userId),
+        eq(resumeParseAttempts.fileHash, fileHash),
+        eq(resumeParseAttempts.status, "succeeded"),
+      ),
+    )
+    .orderBy(desc(resumeParseAttempts.createdAt))
+    .limit(1);
+
+  let parsesCount = user.resumeParsesThisMonth || 0;
+  let resetTime = user.lastResumeParseReset ? new Date(user.lastResumeParseReset) : new Date();
+  const diffDays = Math.floor((now.getTime() - resetTime.getTime()) / (1000 * 60 * 60 * 24));
+  let limitDays = 30;
+  let limitParses = 2;
+  let planDisplay = "Onboarding";
+
+  if (duringOnboarding) {
+    // Independent of payment: 2 successful parses during onboarding
+    const onboardingUsed = user.onboardingSuccessfulParses || 0;
+    if (!cached && onboardingUsed >= 2) {
+      res.status(429).json({
+        error: "You have used both successful onboarding resume parses. Continue with manual edits, or finish onboarding to unlock plan-based parsing.",
+      });
+      return;
+    }
+  } else {
+    if (!plan || plan === "free") {
+      limitDays = 30;
+      limitParses = 2;
+      planDisplay = "Free";
+    } else if (plan === "lifetime") {
+      limitDays = 30;
+      limitParses = 3;
+      planDisplay = "Lifetime";
+    } else if (plan === "annual") {
+      limitDays = 30;
+      limitParses = 10;
+      planDisplay = "Annual";
+    }
+
+    if (diffDays >= limitDays) {
+      parsesCount = 0;
+      resetTime = now;
+      await db
+        .update(users)
+        .set({ resumeParsesThisMonth: 0, lastResumeParseReset: now })
+        .where(eq(users.id, userId));
+    }
+
+    if (!cached && parsesCount >= limitParses) {
+      const daysToReset = Math.max(limitDays - diffDays, 1);
+      res.status(429).json({
+        error: `You have reached your AI resume parsing limit of ${limitParses} successful parse(s) on the ${planDisplay} plan. Quota resets in ${daysToReset} days.`,
+      });
+      return;
+    }
+  }
+
+  const [attempt] = await db
+    .insert(resumeParseAttempts)
+    .values({
+      userId,
+      status: "started",
+      fileHash,
+      fileName: file.originalname,
+      fileSizeBytes: file.size,
+      duringOnboarding,
+      ipHash,
+    })
+    .returning();
 
   // Upload resume to R2 inside a wrapper variable
   let resumeUrl = "";
 
   try {
-    logger.info({ userId, fileName: file.originalname }, "Starting resume processing");
+    logger.info({ userId, fileName: file.originalname, attemptId: attempt.id }, "Starting resume processing");
+    await markOnboardingActivity(userId);
+
+    // Storage quota guard (same spirit as /upload)
+    const quota = subscriptionState.storageQuotaBytes;
+    const currentUsed = Number(user.storageUsedBytes) || 0;
+    if (currentUsed + file.size > quota) {
+      await db
+        .update(resumeParseAttempts)
+        .set({ status: "failed", errorMessage: "Storage quota exceeded", completedAt: new Date() })
+        .where(eq(resumeParseAttempts.id, attempt.id));
+      res.status(403).json({ error: "Storage limit exceeded. Free up space or upgrade your plan." });
+      return;
+    }
 
     try {
       resumeUrl = await uploadToR2(file.buffer, file.originalname, file.mimetype);
-      await db.update(users).set({ resumeUrl }).where(eq(users.id, userId));
+      await db
+        .update(users)
+        .set({ resumeUrl, storageUsedBytes: currentUsed + file.size })
+        .where(eq(users.id, userId));
       logger.info({ userId, resumeUrl }, "Successfully uploaded resume to R2 and updated user record");
     } catch (r2Err) {
       logger.error({ r2Err, userId }, "Failed to upload resume to R2");
@@ -608,6 +719,10 @@ router.post("/resume", requireAuth, upload.single("resume"), async (req: Authent
 
     if (!parsedData) {
       logger.error({ userId }, "Resume parsing failed across all models");
+      await db
+        .update(resumeParseAttempts)
+        .set({ status: "failed", errorMessage: "AI parsing failed", completedAt: new Date() })
+        .where(eq(resumeParseAttempts.id, attempt.id));
       throw new Error("AI parsing failed. Please try again or fill details manually.");
     }
 
@@ -799,19 +914,54 @@ router.post("/resume", requireAuth, upload.single("resume"), async (req: Authent
       });
     }
 
-    // Increment the parse counter in the database
-    await db.update(users).set({
-      resumeParsesThisMonth: parsesCount + 1
-    }).where(eq(users.id, userId));
+    // Only successful parses consume entitlement
+    if (duringOnboarding) {
+      await db
+        .update(users)
+        .set({
+          onboardingSuccessfulParses: sql`coalesce(${users.onboardingSuccessfulParses}, 0) + 1`,
+          lastOnboardingActivityAt: new Date(),
+        })
+        .where(eq(users.id, userId));
+    } else {
+      await db
+        .update(users)
+        .set({
+          resumeParsesThisMonth: sql`coalesce(${users.resumeParsesThisMonth}, 0) + 1`,
+        })
+        .where(eq(users.id, userId));
+    }
+
+    await db
+      .update(resumeParseAttempts)
+      .set({
+        status: "succeeded",
+        consumedQuota: true,
+        completedAt: new Date(),
+        model: "openrouter",
+      })
+      .where(eq(resumeParseAttempts.id, attempt.id));
 
     res.json({
       success: true,
       message: "Resume processed and profile updated successfully",
       data: parsedData,
-      resumeUrl: resumeUrl || undefined
+      resumeUrl: resumeUrl || undefined,
+      cached: false,
     });
   } catch (err: any) {
     logger.error({ err, userId }, "Error processing resume");
+    if (attempt?.id) {
+      const timedOut = String(err?.message || "").toLowerCase().includes("timed out");
+      await db
+        .update(resumeParseAttempts)
+        .set({
+          status: timedOut ? "timed_out" : "failed",
+          errorMessage: err?.message || "Failed to process resume",
+          completedAt: new Date(),
+        })
+        .where(eq(resumeParseAttempts.id, attempt.id));
+    }
     res.status(500).json({ error: err.message || "Failed to process resume" });
   }
 });
@@ -866,10 +1016,135 @@ router.post("/upload", requireAuth, upload.single("file"), async (req: Authentic
   }
 });
 
+// POST /profile/public/:handle/contact — public enquiry form
+router.post("/public/:handle/contact", async (req, res): Promise<void> => {
+  const { handle } = req.params;
+  const name = String(req.body?.name || "").trim();
+  const email = String(req.body?.email || "").trim().toLowerCase();
+  const phone = String(req.body?.phone || "").trim();
+  const message = String(req.body?.message || "").trim();
+  const honeypot = String(req.body?.website || "").trim();
+
+  if (honeypot) {
+    res.json({ success: true, message: "Message received." });
+    return;
+  }
+
+  if (name.length < 2 || name.length > 120) {
+    res.status(400).json({ error: "Please enter a valid name." });
+    return;
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 200) {
+    res.status(400).json({ error: "Please enter a valid email address." });
+    return;
+  }
+  if (message.length < 10 || message.length > 4000) {
+    res.status(400).json({ error: "Message must be between 10 and 4000 characters." });
+    return;
+  }
+  if (phone && phone.length > 40) {
+    res.status(400).json({ error: "Phone number is too long." });
+    return;
+  }
+
+  try {
+    const [profile] = await db.select().from(profiles).where(eq(profiles.handle, handle)).limit(1);
+    if (!profile) {
+      res.status(404).json({ error: "Portfolio not found." });
+      return;
+    }
+
+    const [owner] = await db.select().from(users).where(eq(users.id, profile.userId)).limit(1);
+    if (!owner) {
+      res.status(404).json({ error: "Portfolio owner not found." });
+      return;
+    }
+
+    const sections = await db.select().from(profileSections).where(eq(profileSections.profileId, profile.id));
+    const contactEntries = sections.find((s) => s.type === "contact")?.entries as any;
+    const ownerEmail = String(contactEntries?.email || owner.email || "").trim();
+    if (!ownerEmail) {
+      res.status(409).json({ error: "This portfolio does not accept messages yet." });
+      return;
+    }
+
+    const ipHash = crypto
+      .createHash("sha256")
+      .update(String(req.headers["x-forwarded-for"] || req.ip || ""))
+      .digest("hex")
+      .slice(0, 32);
+
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const recent = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(contactSubmissions)
+      .where(
+        and(
+          eq(contactSubmissions.handle, handle),
+          eq(contactSubmissions.ipHash, ipHash),
+          gt(contactSubmissions.createdAt, oneHourAgo),
+        ),
+      );
+    if (Number(recent[0]?.count || 0) >= 5) {
+      res.status(429).json({ error: "Too many messages. Please try again later." });
+      return;
+    }
+
+    const [submission] = await db
+      .insert(contactSubmissions)
+      .values({
+        profileId: profile.id,
+        userId: owner.id,
+        handle,
+        senderName: name,
+        senderEmail: email,
+        senderPhone: phone || null,
+        message,
+        deliveryStatus: "pending",
+        ipHash,
+      })
+      .returning();
+
+    await enqueueEmail({
+      eventType: "contact",
+      recipient: ownerEmail,
+      subject: `New enquiry from ${name}`,
+      dedupeKey: `contact:${submission.id}`,
+      userId: owner.id,
+      relatedId: submission.id,
+      payload: {
+        userName: owner.name || "there",
+        senderName: name,
+        senderEmail: email,
+        senderPhone: phone,
+        message,
+        handle,
+      },
+    });
+
+    res.json({ success: true, message: "Message received.", id: submission.id });
+  } catch (err) {
+    logger.error({ err, handle }, "Error submitting contact form");
+    res.status(500).json({ error: "Unable to send your message right now." });
+  }
+});
+
+// Short-lived cache for public profiles: these pages are read-heavy and
+// tolerate ~30s of staleness, while each build costs several DB round trips.
+const publicProfileCache = new Map<string, { expires: number; payload: unknown }>();
+const PUBLIC_PROFILE_CACHE_TTL_MS = 30_000;
+
 // GET /profile/public/:handle
 router.get("/public/:handle", async (req, res): Promise<void> => {
   const { handle } = req.params;
   try {
+    const cached = publicProfileCache.get(handle);
+    if (cached && cached.expires > Date.now()) {
+      res.setHeader("X-Cache", "HIT");
+      res.json(cached.payload);
+      return;
+    }
+
     const profileList = await db.select().from(profiles).where(eq(profiles.handle, handle)).limit(1);
     const profile = profileList[0];
     if (!profile) {
@@ -877,38 +1152,33 @@ router.get("/public/:handle", async (req, res): Promise<void> => {
       return;
     }
 
-    const userList = await db.select().from(users).where(eq(users.id, profile.userId)).limit(1);
+    // Independent lookups — run them in parallel to cut latency
+    const [userList, sections, subscriptionState] = await Promise.all([
+      db.select().from(users).where(eq(users.id, profile.userId)).limit(1),
+      db.select().from(profileSections).where(eq(profileSections.profileId, profile.id)),
+      resolveSubscriptionState(profile.userId),
+    ]);
     const user = userList[0];
     if (!user) {
       res.status(404).json({ error: "User not found" });
       return;
     }
 
-    const sections = await db.select().from(profileSections).where(eq(profileSections.profileId, profile.id));
     const getEntries = (type: string) => sections.find(s => s.type === type)?.entries || [];
     const contactEntries = sections.find(s => s.type === "contact")?.entries as any;
 
-    const subscriptionState = await resolveSubscriptionState(user.id);
     const isPremium = subscriptionState.isPremium;
-        // Enforce tier design limits:
+    // Enforce tier design limits:
     // If not premium, override template to minimal. Custom theme color is allowed.
-    const templateId = isPremium ? (user.templateId || 'minimal') : 'minimal';
-    const themeColor = user.themeColor || 'blue';
-    const themeBg = user.themeBg || 'grid';
+    const templateId = isPremium ? (user.templateId || "minimal") : "minimal";
 
-    res.json({
-      profile: {
-        ...profile,
-      },
+    const payload = buildPublicProfile({
+      profile,
       user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        photoUrl: user.photoUrl,
-        resumeUrl: user.resumeUrl,
+        ...user,
         templateId,
-        themeColor,
-        themeBg,
+        themeColor: user.themeColor || "blue",
+        themeBg: user.themeBg || "grid",
         openToHire: user.openToHire ?? false,
       },
       isPremium,
@@ -919,8 +1189,20 @@ router.get("/public/:handle", async (req, res): Promise<void> => {
       certificateEntries: getEntries("certificates"),
       achievementEntries: getEntries("achievements"),
       researchEntries: getEntries("research"),
-      contactData: contactEntries || { email: user.email || "", phone: user.phone || "", linkedin: "", github: "", portfolio: "" }
+      contactData: (contactEntries as Record<string, unknown>) || {
+        email: user.email || "",
+        linkedin: "",
+        github: "",
+        portfolio: "",
+      },
     });
+
+    publicProfileCache.set(handle, {
+      expires: Date.now() + PUBLIC_PROFILE_CACHE_TTL_MS,
+      payload,
+    });
+    res.setHeader("X-Cache", "MISS");
+    res.json(payload);
   } catch (err) {
     logger.error({ err, handle }, "Error fetching public profile");
     res.status(500).json({ error: "Internal server error" });
@@ -1024,7 +1306,6 @@ router.post("/generate-resume", requireAuth, async (req: AuthenticatedRequest, r
     res.json({ success: true, url: resumeUrl });
   } catch (err: any) {
     logger.error({ err, userId }, "Error compiling ATS PDF resume");
-    require('fs').writeFileSync('/Users/kavin/.gemini/antigravity-ide/brain/353d34a5-dd8f-4ed9-b917-1e6fe1f79084/scratch/pdf-error.log', err.stack || err.message || String(err));
     res.status(500).json({ error: err.message || "Failed to generate professional resume PDF" });
   }
 });

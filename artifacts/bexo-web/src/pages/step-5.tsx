@@ -285,7 +285,7 @@ export default function Step5Resume() {
               <UploadCloud className="w-8 h-8" />
             </div>
             <h3 className="text-lg font-semibold text-slate-900 mb-1">Click to upload PDF</h3>
-            <p className="text-slate-500 text-sm mb-3">PDF formats only, up to 5MB.</p>
+            <p className="text-slate-500 text-sm mb-3">PDF formats only, up to 15MB.</p>
             {errorMsg && <p className="text-red-500 text-sm font-medium">{errorMsg}</p>}
           </div>
         )}

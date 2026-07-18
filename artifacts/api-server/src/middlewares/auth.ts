@@ -16,7 +16,11 @@ export function requireAuth(req: AuthenticatedRequest, res: Response, next: Next
 
   const token = authHeader.split(" ")[1];
   try {
-    const secret = process.env.JWT_SECRET || "super_secret_jwt_key";
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      res.status(500).json({ error: "Server auth is misconfigured" });
+      return;
+    }
     const decoded = jwt.verify(token, secret) as { id: string };
     req.user = { id: decoded.id };
     next();

@@ -5,6 +5,8 @@ import { logger } from "../lib/logger";
 import Razorpay from "razorpay";
 import crypto from "crypto";
 import { sendBillingEmail, sendBillingWhatsApp } from "../lib/billing";
+import { markOnboardingComplete } from "../lib/lifecycleEmails";
+import { requireAuth } from "../middlewares/auth";
 import {
   FREE_STORAGE_BYTES,
   ANNUAL_STORAGE_BYTES,
@@ -111,9 +113,13 @@ const sendBillingReceipts = async (userId: string, plan: PaidPlan | "activation_
   if (!user) return;
 
   if (user.email) {
-    sendBillingEmail(user.email, user.name || "User", plan, amountPaid, reference).catch((err) =>
-      logger.error({ err, userId }, "Background billing email failed"),
-    );
+    try {
+      await sendBillingEmail(user.email, user.name || "User", plan, amountPaid, reference, userId);
+    } catch (err) {
+      logger.error({ err, userId }, "Billing email enqueue failed");
+    }
+  } else {
+    logger.warn({ userId, reference }, "Billing receipt skipped: user has no email on file");
   }
 
   if (user.phone) {
@@ -123,7 +129,7 @@ const sendBillingReceipts = async (userId: string, plan: PaidPlan | "activation_
   }
 };
 
-router.get("/status", async (req: any, res: any) => {
+router.get("/status", requireAuth, async (req: any, res: any) => {
   const userId = req.user?.id;
   if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
@@ -169,7 +175,7 @@ router.get("/status", async (req: any, res: any) => {
   }
 });
 
-router.post("/create-order", async (req: any, res: any) => {
+router.post("/create-order", requireAuth, async (req: any, res: any) => {
   const userId = req.user?.id;
   if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
@@ -239,7 +245,7 @@ router.post("/create-order", async (req: any, res: any) => {
   }
 });
 
-router.post("/verify", async (req: any, res: any) => {
+router.post("/verify", requireAuth, async (req: any, res: any) => {
   const userId = req.user?.id;
   if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
@@ -292,6 +298,9 @@ router.post("/verify", async (req: any, res: any) => {
     const expiresAt = await getRenewalExpiry(userId, plan);
     await activateSubscription(userId, plan, expiresAt);
     await sendBillingReceipts(userId, plan, payment.amount / 100, razorpay_payment_id);
+    await markOnboardingComplete(userId).catch((err) =>
+      logger.warn({ err, userId }, "markOnboardingComplete failed after payment"),
+    );
 
     res.json({ success: true, message: "Payment verified successfully", plan, isPremium: true, expiresAt });
   } catch (error) {
@@ -300,7 +309,7 @@ router.post("/verify", async (req: any, res: any) => {
   }
 });
 
-router.post("/activation", async (req: any, res: any) => {
+router.post("/activation", requireAuth, async (req: any, res: any) => {
   const userId = req.user?.id;
   if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
@@ -338,6 +347,9 @@ router.post("/activation", async (req: any, res: any) => {
     });
 
     await sendBillingReceipts(userId, "activation_code", 0, code);
+    await markOnboardingComplete(userId).catch((err) =>
+      logger.warn({ err, userId }, "markOnboardingComplete failed after activation"),
+    );
 
     res.json({ success: true, message: "Account activated successfully", plan: "annual", isPremium: true, expiresAt });
   } catch (error) {
@@ -346,7 +358,7 @@ router.post("/activation", async (req: any, res: any) => {
   }
 });
 
-router.post("/free-activate", async (req: any, res: any) => {
+router.post("/free-activate", requireAuth, async (req: any, res: any) => {
   const userId = req.user?.id;
   if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
@@ -369,11 +381,73 @@ router.post("/free-activate", async (req: any, res: any) => {
 
     // Free plan gets 10MB storage limit
     await db.update(users).set({ storageQuotaBytes: FREE_STORAGE_BYTES }).where(eq(users.id, userId));
+    await markOnboardingComplete(userId).catch((err) =>
+      logger.warn({ err, userId }, "markOnboardingComplete failed after free activate"),
+    );
 
     res.json({ success: true, message: "Free plan activated successfully", plan: "free", isPremium: false });
   } catch (error) {
     logger.error({ error, userId }, "Failed to activate free plan");
     res.status(500).json({ error: "Unable to activate free plan right now." });
+  }
+});
+
+// Razorpay webhook fallback when browser never calls /verify
+router.post("/webhook", async (req: any, res: any) => {
+  try {
+    if (!isRazorpayConfigured || !razorpayKeySecret) {
+      return res.status(503).json({ error: "Payments are not configured." });
+    }
+
+    const signature = req.headers["x-razorpay-signature"];
+    if (!signature || typeof signature !== "string") {
+      return res.status(400).json({ error: "Missing webhook signature." });
+    }
+
+    const body = JSON.stringify(req.body);
+    const expected = crypto.createHmac("sha256", razorpayKeySecret).update(body).digest("hex");
+    const left = Buffer.from(expected, "hex");
+    const right = Buffer.from(signature, "hex");
+    if (left.length !== right.length || !crypto.timingSafeEqual(left, right)) {
+      return res.status(400).json({ error: "Invalid webhook signature." });
+    }
+
+    const event = req.body?.event;
+    const paymentEntity = req.body?.payload?.payment?.entity;
+    if (event !== "payment.captured" || !paymentEntity?.order_id) {
+      return res.json({ received: true });
+    }
+
+    const orderId = paymentEntity.order_id as string;
+    const paymentId = paymentEntity.id as string;
+    const [payment] = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.razorpayOrderId, orderId))
+      .limit(1);
+
+    if (!payment) {
+      return res.json({ received: true, ignored: true });
+    }
+
+    if (payment.status !== "success") {
+      await db
+        .update(payments)
+        .set({ razorpayPaymentId: paymentId, status: "success" })
+        .where(eq(payments.id, payment.id));
+
+      const planNote = (paymentEntity.notes?.plan || "annual") as PaidPlan;
+      const plan = planNote === "lifetime" ? "lifetime" : "annual";
+      const expiresAt = await getRenewalExpiry(payment.userId, plan);
+      await activateSubscription(payment.userId, plan, expiresAt);
+      await sendBillingReceipts(payment.userId, plan, payment.amount / 100, paymentId);
+      await markOnboardingComplete(payment.userId).catch(() => undefined);
+    }
+
+    res.json({ received: true });
+  } catch (error) {
+    logger.error({ error }, "Razorpay webhook failed");
+    res.status(500).json({ error: "Webhook processing failed." });
   }
 });
 

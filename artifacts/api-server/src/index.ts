@@ -30,6 +30,9 @@ try {
 import app from "./app";
 import { logger } from "./lib/logger";
 import { checkDatabaseConnection } from "@workspace/db";
+import { verifyMailer } from "./lib/mailer";
+import { startEmailOutboxWorker, processEmailOutbox } from "./lib/emailOutbox";
+import { scheduleRecoveryEmails } from "./lib/lifecycleEmails";
 
 const rawPort = process.env["PORT"];
 
@@ -54,6 +57,22 @@ try {
   logger.fatal({ err }, "Cannot start server – database connection failed");
   process.exit(1);
 }
+
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET === "super_secret_jwt_key") {
+  if (process.env.NODE_ENV === "production") {
+    logger.fatal("JWT_SECRET must be set to a strong value in production");
+    process.exit(1);
+  }
+  logger.warn("JWT_SECRET is missing or using the insecure default. Set JWT_SECRET before production.");
+}
+
+await verifyMailer().catch(() => false);
+startEmailOutboxWorker();
+setInterval(() => {
+  scheduleRecoveryEmails().catch((err) => logger.error({ err }, "Recovery email scheduler failed"));
+}, 60 * 60 * 1000);
+scheduleRecoveryEmails().catch(() => undefined);
+processEmailOutbox().catch(() => undefined);
 
 app.listen(port, (err) => {
   if (err) {

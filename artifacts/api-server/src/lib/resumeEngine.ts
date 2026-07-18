@@ -184,7 +184,7 @@ export async function generateATSResume(data: ResumeData): Promise<Buffer> {
              .fontSize(11)
              .fillColor(primaryColor);
           
-          const degreeSchool = `${edu.degree || ''}  -  ${edu.school || ''}`;
+          const degreeSchool = `${edu.degree || ''}  -  ${edu.institution || edu.school || ''}`;
           const duration = edu.duration || '';
           
           doc.text(degreeSchool, 40, startY, { width: 400 });
@@ -220,7 +220,7 @@ export async function generateATSResume(data: ResumeData): Promise<Buffer> {
             doc.font('Helvetica-Bold')
                .fontSize(9.5)
                .fillColor(primaryColor)
-               .text(`[Certification] ${cert.name || ''}`, { continued: true })
+               .text(`[Certification] ${cert.name || cert.title || ''}`, { continued: true })
                .font('Helvetica')
                .fillColor(secondaryColor)
                .text(`  |  Issued by: ${cert.issuer || ''} ${cert.date ? `(${cert.date})` : ''}`);

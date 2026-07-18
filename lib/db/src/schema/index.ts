@@ -21,6 +21,9 @@ export const users = pgTable("users", {
   themeBg: text("theme_bg").default("grid"),
   resumeParsesThisMonth: integer("resume_parses_this_month").default(0),
   lastResumeParseReset: timestamp("last_resume_parse_reset", { withTimezone: true }).defaultNow(),
+  onboardingSuccessfulParses: integer("onboarding_successful_parses").default(0),
+  onboardingCompletedAt: timestamp("onboarding_completed_at", { withTimezone: true }),
+  lastOnboardingActivityAt: timestamp("last_onboarding_activity_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });
 
@@ -122,4 +125,59 @@ export const payments = pgTable("payments", {
   status: text("status").notNull(), // 'pending' | 'success' | 'failed'
   invoiceUrl: text("invoice_url"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});
+
+// 11. Contact Submissions (portfolio enquiry form)
+export const contactSubmissions = pgTable("contact_submissions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  profileId: uuid("profile_id").references(() => profiles.id).notNull(),
+  userId: uuid("user_id").references(() => users.id).notNull(),
+  handle: text("handle").notNull(),
+  senderName: text("sender_name").notNull(),
+  senderEmail: text("sender_email").notNull(),
+  senderPhone: text("sender_phone"),
+  message: text("message").notNull(),
+  deliveryStatus: text("delivery_status").default("pending").notNull(), // pending | sent | failed
+  attemptCount: integer("attempt_count").default(0).notNull(),
+  lastError: text("last_error"),
+  ipHash: text("ip_hash"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
+// 12. Email Deliveries Outbox
+export const emailDeliveries = pgTable("email_deliveries", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  eventType: text("event_type").notNull(), // billing_receipt | activation | welcome | site_live | recovery | contact
+  recipient: text("recipient").notNull(),
+  subject: text("subject").notNull(),
+  dedupeKey: text("dedupe_key").unique().notNull(),
+  payload: jsonb("payload").default({}).notNull(),
+  status: text("status").default("pending").notNull(), // pending | processing | sent | failed | skipped
+  attempts: integer("attempts").default(0).notNull(),
+  nextRetryAt: timestamp("next_retry_at", { withTimezone: true }),
+  providerMessageId: text("provider_message_id"),
+  lastError: text("last_error"),
+  userId: uuid("user_id").references(() => users.id),
+  relatedId: text("related_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  sentAt: timestamp("sent_at", { withTimezone: true }),
+});
+
+// 13. Resume Parse Attempts (entitlement + abuse audit)
+export const resumeParseAttempts = pgTable("resume_parse_attempts", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").references(() => users.id).notNull(),
+  status: text("status").default("started").notNull(), // started | succeeded | failed | timed_out
+  fileHash: text("file_hash"),
+  fileName: text("file_name"),
+  fileSizeBytes: integer("file_size_bytes"),
+  model: text("model"),
+  errorMessage: text("error_message"),
+  consumedQuota: boolean("consumed_quota").default(false).notNull(),
+  duringOnboarding: boolean("during_onboarding").default(true).notNull(),
+  ipHash: text("ip_hash"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
 });

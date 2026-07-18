@@ -544,12 +544,12 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
                         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-1">
                           <div>
                             <h4 className="text-sm font-bold text-slate-900">{edu.degree}</h4>
-                            <p className="text-xs font-semibold text-slate-500 mt-0.5">{edu.school}</p>
+                            <p className="text-xs font-semibold text-slate-500 mt-0.5">{edu.institution || edu.school}</p>
                             {edu.grade && <span className="text-[10px] font-bold mt-1 block" style={{ color: accentHex }}>Grade: {edu.grade}</span>}
                           </div>
-                          {edu.duration && (
+                          {(edu.duration || edu.year || edu.startYear || edu.endYear) && (
                             <span className="text-[10px] font-bold shrink-0 px-2.5 py-0.5 rounded-full" style={{ color: accentHex, background: accentLight }}>
-                              {edu.duration}
+                              {edu.duration || edu.year || [edu.startYear, edu.endYear].filter(Boolean).join(' - ')}
                             </span>
                           )}
                         </div>
@@ -636,7 +636,7 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
 
                         return (
                           <div key={cert.id} className="space-y-0.5 pb-3 border-b border-slate-100 last:border-0 last:pb-0">
-                            <h4 className="text-xs font-bold text-slate-900 leading-snug">{cert.name}</h4>
+                            <h4 className="text-xs font-bold text-slate-900 leading-snug">{cert.name || cert.title}</h4>
                             <p className="text-[11px] text-slate-500 leading-normal">{cert.issuer}</p>
                             {cert.date && <p className="text-[10px] font-semibold" style={{ color: accentHex }}>{cert.date}</p>}
                             {renderEntryAssets(cert.assets)}
@@ -775,7 +775,7 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
                 <div className="space-y-4">
                   {certificateEntries.map((cert: any) => (
                     <div key={cert.id} className="space-y-0.5">
-                      <h4 className="text-xs font-bold text-slate-900 leading-snug">{cert.name}</h4>
+                      <h4 className="text-xs font-bold text-slate-900 leading-snug">{cert.name || cert.title}</h4>
                       <p className="text-[11px] text-slate-550 leading-normal">{cert.issuer}</p>
                       {cert.date && <p className="text-[10px] text-slate-400">{cert.date}</p>}
                       {renderEntryAssets(cert.assets)}
@@ -832,10 +832,10 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
                       <div className="flex justify-between items-start gap-4 font-serif">
                         <div>
                           <h4 className="text-sm font-bold text-slate-905 leading-tight">{edu.degree}</h4>
-                          <p className="text-xs font-semibold text-slate-600 font-sans mt-0.5">{edu.school}</p>
+                          <p className="text-xs font-semibold text-slate-600 font-sans mt-0.5">{edu.institution || edu.school}</p>
                         </div>
-                        {edu.duration && (
-                          <span className="text-[10px] font-bold text-slate-400 whitespace-nowrap bg-slate-50 px-2 py-0.5 rounded border border-slate-100 font-sans">{edu.duration}</span>
+                        {(edu.duration || edu.year || edu.startYear || edu.endYear) && (
+                          <span className="text-[10px] font-bold text-slate-400 whitespace-nowrap bg-slate-50 px-2 py-0.5 rounded border border-slate-100 font-sans">{edu.duration || edu.year || [edu.startYear, edu.endYear].filter(Boolean).join(' - ')}</span>
                         )}
                       </div>
                       {edu.grade && <p className="text-xs font-bold text-slate-750 font-sans mt-1">Grade: {edu.grade}</p>}
@@ -882,7 +882,7 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
                   {researchEntries?.map((res: any) => (
                     <div key={res.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50/10 space-y-1">
                       <h4 className="text-sm font-bold text-slate-950">{res.title || 'Research Paper'}</h4>
-                      <p className="text-[11px] font-semibold text-slate-500 font-sans">{res.journal || 'Publication Journal'}</p>
+                      <p className="text-[11px] font-semibold text-slate-500 font-sans">{res.journal || res.publication || res.organization || 'Publication'}</p>
                       {res.date && <p className="text-[10px] text-slate-400 font-sans">{res.date}</p>}
                       {res.description && <p className="text-xs text-slate-600 pt-1 font-sans leading-relaxed">{res.description}</p>}
                       {renderEntryAssets(res.assets)}
@@ -1060,7 +1060,7 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
                   {educationEntries.map((edu: any) => (
                     <div key={edu.id} className="space-y-0.5">
                       <h4 className="text-xs font-bold text-slate-900 leading-snug">{edu.degree}</h4>
-                      <p className="text-[11px] text-slate-500 leading-normal">{edu.school}</p>
+                      <p className="text-[11px] text-slate-500 leading-normal">{edu.institution || edu.school}</p>
                       {edu.grade && <p className="text-[10px] text-slate-400 mt-0.5">Grade: {edu.grade}</p>}
                     </div>
                   ))}
@@ -1075,7 +1075,7 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
                 <div className="space-y-4">
                   {certificateEntries.map((cert: any) => (
                     <div key={cert.id} className="space-y-0.5">
-                      <h4 className="text-xs font-bold text-slate-900 leading-snug">{cert.name}</h4>
+                      <h4 className="text-xs font-bold text-slate-900 leading-snug">{cert.name || cert.title}</h4>
                       <p className="text-[11px] text-slate-550">{cert.issuer}</p>
                     </div>
                   ))}
@@ -1173,7 +1173,7 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
       <div className="max-w-4xl mx-auto px-4 pt-16 border-t border-slate-200/80 text-center space-y-2 relative z-10">
         <p className="text-xs font-bold uppercase tracking-wider" style={{ color: accentHex }}>Student Portfolio Network</p>
         <p className="text-xs text-slate-450">
-          &copy; {new Date().getFullYear()} Bexo. All rights reserved. Bexo is owned and operated by Ace Digital Private Limited.
+          &copy; 2026 Ace Digital. ALL RIGHTS RESERVED.
         </p>
         <div className="flex justify-center gap-4 pt-2 text-[11px] font-bold text-slate-400">
           <a href="https://mybexo.com" className="hover:opacity-80 transition-colors" style={{ color: 'inherit' }}>About Bexo</a>

@@ -102,8 +102,14 @@ function isDatabaseUnavailable(error: unknown): boolean {
 
 // POST /auth/phone/otp
 router.post("/phone/otp", async (req, res): Promise<void> => {
-  const { phone } = req.body;
-  if (!phone || typeof phone !== "string") {
+  const rawPhone = req.body?.phone;
+  if (!rawPhone || typeof rawPhone !== "string") {
+    res.status(400).json({ error: "Missing or invalid phone number" });
+    return;
+  }
+  // Normalize so send/verify share the same throttle + OTP keys
+  const phone = rawPhone.replace(/\D/g, "");
+  if (phone.length < 8) {
     res.status(400).json({ error: "Missing or invalid phone number" });
     return;
   }
@@ -144,7 +150,7 @@ router.post("/phone/otp", async (req, res): Promise<void> => {
                        integratedNumber && integratedNumber !== "your_whatsapp_number_with_country_code" &&
                        templateName && templateName !== "your_approved_template_name";
 
-  logger.info({ phone, otp, isConfigured }, "Generated OTP for phone");
+  logger.info({ phone, isConfigured }, "Generated OTP for phone");
 
   if (isConfigured) {
     try {
@@ -271,7 +277,11 @@ router.post("/phone/otp/verify", async (req, res): Promise<void> => {
     await store.del(`otp:${phone}`);
 
     // Generate JWT token
-    const secret = process.env.JWT_SECRET || "super_secret_jwt_key";
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      res.status(500).json({ error: "Server auth is misconfigured." });
+      return;
+    }
     const accessToken = jwt.sign({ id: user.id }, secret, { expiresIn: "7d" });
 
     res.json({

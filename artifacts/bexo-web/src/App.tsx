@@ -21,6 +21,7 @@ import Step9Plan from './pages/step-9';
 import Login from './pages/login';
 import Dashboard from './pages/dashboard';
 import PublicPortfolio from './pages/public-portfolio';
+import HireMePage from './pages/hire-me';
 import { useToast } from './hooks/use-toast';
 
 const queryClient = new QueryClient();
@@ -75,6 +76,18 @@ function Router() {
       subscription.unsubscribe();
     };
   }, []);
+
+  // Shared ATS Hire Me page is public, template-neutral, and available to free
+  // and paid users. It must not wait on onboarding session hydration, and it
+  // takes priority over subdomain portfolio rendering so
+  // {handle}.mybexo.com/hire-me also resolves here.
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/hire-me')) {
+    const parts = window.location.pathname.split('/').filter(Boolean);
+    const hireHandle = parts[1] || subdomain;
+    if (hireHandle) {
+      return <HireMePage handleOverride={hireHandle} />;
+    }
+  }
 
   if (subdomain) {
     return <PublicPortfolio handleOverride={subdomain} />;
@@ -201,6 +214,9 @@ function Router() {
             </OnboardingLayout>
           );
         }}
+      </Route>
+      <Route path="/hire-me/:handle">
+        {(params) => <HireMePage handleOverride={params.handle} />}
       </Route>
       <Route path="/:handle">
         <PublicPortfolio />

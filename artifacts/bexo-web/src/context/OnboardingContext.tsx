@@ -285,7 +285,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
             templateId: result.user?.templateId || prev.templateId,
             themeColor: result.user?.themeColor || prev.themeColor,
             themeBg: result.user?.themeBg || prev.themeBg,
-            hasCompletedOnboarding: !!result.profile?.handle && !!result.plan,
+            hasCompletedOnboarding: !!(result.user?.onboardingCompletedAt || (result.profile?.handle && result.plan)),
             payments: result.payments || prev.payments,
             resumeParsesThisMonth: result.user?.resumeParsesThisMonth !== undefined ? result.user.resumeParsesThisMonth : prev.resumeParsesThisMonth,
             lastResumeParseReset: result.user?.lastResumeParseReset || prev.lastResumeParseReset

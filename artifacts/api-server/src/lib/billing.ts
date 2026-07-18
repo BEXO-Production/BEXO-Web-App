@@ -1,59 +1,45 @@
-import { sendEmail } from './mailer';
-import { getBillingReceiptEmail, getActivationEmail } from './templates';
-import { generateInvoicePDF } from './invoice';
-import { logger } from './logger';
-import { uploadToR2 } from './r2';
-import { db, payments } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { logger } from "./logger";
+import { enqueueEmail } from "./emailOutbox";
 
-export const sendBillingEmail = async (email: string, userName: string, plan: string, amount: number, transactionId: string) => {
-  let subject = "Your Bexo Payment Receipt";
-  let html = "";
-  
-  if (plan === 'activation_code') {
-    subject = "Bexo Account Activated";
-    html = getActivationEmail(userName, transactionId);
-  } else {
-    html = getBillingReceiptEmail(userName, plan, amount, transactionId);
+export const sendBillingEmail = async (
+  email: string,
+  userName: string,
+  plan: string,
+  amount: number,
+  transactionId: string,
+  userId?: string,
+) => {
+  const eventType = plan === "activation_code" ? "activation" : "billing_receipt";
+  const subject = plan === "activation_code" ? "Bexo Account Activated" : "Your Bexo Payment Receipt";
+  const dedupeKey = `${eventType}:${transactionId}:${email}`;
+
+  const queued = await enqueueEmail({
+    eventType,
+    recipient: email,
+    subject,
+    dedupeKey,
+    userId,
+    relatedId: transactionId,
+    payload: {
+      userName,
+      plan,
+      amount,
+      transactionId,
+      code: transactionId,
+    },
+  });
+
+  if (!queued) {
+    logger.warn({ email, transactionId, eventType }, "Billing email was not enqueued (possible duplicate)");
   }
 
-  try {
-    const pdfBuffer = await generateInvoicePDF(userName, plan, amount, transactionId);
-    
-    // Upload invoice PDF to Cloudflare R2
-    let invoiceUrl = "";
-    try {
-      const filename = `Bexo_Invoice_${transactionId}.pdf`;
-      invoiceUrl = await uploadToR2(pdfBuffer, filename, 'application/pdf');
-      logger.info({ invoiceUrl }, "Invoice PDF successfully uploaded to R2");
-      
-      // Update payment record in database with invoice URL
-      await db.update(payments).set({ 
-        invoiceUrl 
-      }).where(eq(payments.razorpayPaymentId, transactionId));
-      logger.info("Successfully updated payment record with invoice URL reference");
-    } catch (r2Err) {
-      logger.error({ err: r2Err }, "Failed to upload invoice to R2 or save database reference");
-    }
-
-    await sendEmail(email, subject, html, [
-      {
-        filename: `Bexo_Invoice_${transactionId}.pdf`,
-        content: pdfBuffer,
-        contentType: 'application/pdf',
-      }
-    ]);
-  } catch (err) {
-    logger.error({ err }, "Failed to generate or send invoice email");
-    // Fallback to sending without PDF if generation fails
-    await sendEmail(email, subject, html);
-  }
+  return Boolean(queued);
 };
 
 export const sendBillingWhatsApp = async (phone: string, userName: string, plan: string, amount: number) => {
   const authKey = process.env.MSG91_AUTH_KEY;
   const integratedNumber = process.env.MSG91_INTEGRATED_NUMBER;
-  
+
   if (!authKey || authKey === "your_msg91_auth_key") {
     logger.warn("MSG91 credentials not configured. Skipping WhatsApp billing notification.");
     return;
@@ -67,11 +53,10 @@ export const sendBillingWhatsApp = async (phone: string, userName: string, plan:
         messaging_product: "whatsapp",
         type: "template",
         template: {
-          // Replace this with your actual approved MSG91 billing template name
           name: "bexo_billing_receipt",
           language: {
             code: "en",
-            policy: "deterministic"
+            policy: "deterministic",
           },
           namespace: process.env.MSG91_TEMPLATE_NAMESPACE || "",
           to_and_components: [
@@ -81,20 +66,20 @@ export const sendBillingWhatsApp = async (phone: string, userName: string, plan:
                 body_1: { type: "text", value: userName },
                 body_2: { type: "text", value: plan },
                 body_3: { type: "text", value: `₹${amount}` },
-              }
-            }
-          ]
-        }
-      }
+              },
+            },
+          ],
+        },
+      },
     };
 
     const response = await fetch("https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/", {
       method: "POST",
       headers: {
-        "authkey": authKey,
-        "Content-Type": "application/json"
+        authkey: authKey,
+        "Content-Type": "application/json",
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
     });
 
     if (!response.ok) {

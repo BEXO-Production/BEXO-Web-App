@@ -204,8 +204,8 @@ const wrapHtml = (title: string, content: string) => `
       </tr>
       <tr>
         <td class="footer">
-          <p class="footer-text">&copy; ${new Date().getFullYear()} Ace Digital Private Limited. All rights reserved.</p>
-          <p class="footer-text" style="margin-top: 8px;">Bexo is a registered service owned and operated by Ace Digital Private Limited, Coimbatore, Tamil Nadu, India.</p>
+          <p class="footer-text">&copy; 2026 Ace Digital. ALL RIGHTS RESERVED.</p>
+          <p class="footer-text" style="margin-top: 8px;">Bexo is a registered service owned and operated by Ace Digital, Coimbatore, Tamil Nadu, India.</p>
         </td>
       </tr>
     </table>
@@ -294,7 +294,7 @@ export const getBillingReceiptEmail = (userName: string, plan: string, amount: n
 
     <div class="highlight-box" style="border-left: 4px solid #4f46e5; text-align: left;">
       <p style="margin: 0 0 8px 0; font-weight: 600; color: #1e293b; font-size: 14px;">📎 Tax Invoice Attached</p>
-      <p style="margin: 0; font-size: 13px; color: #64748b; line-height: 1.5;">A detailed tax invoice (PDF) from Ace Digital Private Limited has been attached to this email for your records. You can also download it anytime from your Bexo dashboard.</p>
+      <p style="margin: 0; font-size: 13px; color: #64748b; line-height: 1.5;">A detailed tax invoice (PDF) from Ace Digital has been attached to this email for your records. You can also download it anytime from your Bexo dashboard.</p>
     </div>
     
     <div class="btn-container">
@@ -324,4 +324,54 @@ export const getActivationEmail = (userName: string, code: string) => {
     </div>
   `;
   return wrapHtml("Bexo Account Activated", content);
+};
+
+export const getRecoveryEmail = (userName: string, resumeUrl: string) => {
+  const content = `
+    <h2 class="content-title">Your Bexo portfolio is waiting</h2>
+    <p class="content-text">Hi ${userName},</p>
+    <p class="content-text">You started building your professional portfolio but did not finish onboarding. Your progress is saved — pick up where you left off in one click.</p>
+    <div class="btn-container">
+      <a href="${resumeUrl}" class="btn">Continue Onboarding</a>
+    </div>
+    <p class="content-text">If you already finished, you can ignore this email.</p>
+  `;
+  return wrapHtml("Continue your Bexo portfolio", content);
+};
+
+export const getContactNotificationEmail = (
+  ownerName: string,
+  senderName: string,
+  senderEmail: string,
+  senderPhone: string,
+  message: string,
+  handle: string,
+) => {
+  const safeMessage = String(message || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\n/g, "<br/>");
+  const content = `
+    <h2 class="content-title">New portfolio enquiry</h2>
+    <p class="content-text">Hi ${ownerName},</p>
+    <p class="content-text">Someone sent a message through your Bexo portfolio${handle ? ` (${handle}.mybexo.com)` : ""}.</p>
+    <table class="receipt-table">
+      <tr>
+        <td class="receipt-label">From</td>
+        <td class="receipt-val">${senderName}</td>
+      </tr>
+      <tr>
+        <td class="receipt-label">Email</td>
+        <td class="receipt-val">${senderEmail}</td>
+      </tr>
+      ${senderPhone ? `<tr><td class="receipt-label">Phone</td><td class="receipt-val">${senderPhone}</td></tr>` : ""}
+    </table>
+    <div class="highlight-box" style="text-align:left;">
+      <p class="highlight-label">Message</p>
+      <p class="content-text" style="margin:0;">${safeMessage}</p>
+    </div>
+    <p class="content-text">Reply directly to this email to continue the conversation with ${senderName}.</p>
+  `;
+  return wrapHtml("New portfolio enquiry", content);
 };

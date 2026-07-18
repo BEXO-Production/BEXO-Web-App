@@ -209,29 +209,28 @@ export function OnboardingLayout({ children }: { children: React.ReactNode }) {
         </div>
       </div>
 
-      {/* Main Content Area */}
-      <main className="flex-1 flex flex-col relative overflow-hidden bg-slate-50">
-        {/* Dynamic Background Image */}
-        <div className="absolute inset-0 z-0">
+      {/* Main Content Area — document scroll on mobile to avoid nested rubber-banding */}
+      <main className="flex-1 flex flex-col relative bg-slate-50 md:overflow-hidden">
+        {/* Dynamic Background Image (desktop only to reduce mobile scroll weight) */}
+        <div className="absolute inset-0 z-0 hidden md:block">
           <img 
             key={`bg-${currentStep}`}
             src={STEP_CONTENT[currentStep]?.image || STEP_CONTENT[1].image}
             alt="Onboarding Background"
             className="w-full h-full object-cover animate-in fade-in duration-1000"
           />
-          {/* Glassmorphic Overlay to ensure readability */}
           <div className="absolute inset-0 bg-white/85 backdrop-blur-xl" />
         </div>
         
-        <div className="w-full flex-1 overflow-y-auto px-4 py-4 md:px-8 md:py-6 lg:px-12 lg:py-8 z-10 flex flex-col">
-          <div className="w-full max-w-5xl mx-auto flex flex-col flex-1 relative">
+        <div className="w-full flex-1 md:overflow-y-auto px-4 py-3 md:px-8 md:py-6 lg:px-12 lg:py-8 z-10 flex flex-col">
+          <div className="w-full max-w-5xl mx-auto flex flex-col flex-1 relative pb-[env(safe-area-inset-bottom)]">
             
             {/* Top Bar: Back Button + Step Label */}
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-3 md:mb-4">
               {currentStep > 1 && currentStep < 9 ? (
                 <button 
                   onClick={() => prevStep(currentStep)}
-                  className="flex items-center text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors cursor-pointer"
+                  className="flex items-center text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors cursor-pointer min-h-11"
                 >
                   <ChevronLeft className="w-4 h-4 mr-1" />
                   Back
@@ -245,7 +244,7 @@ export function OnboardingLayout({ children }: { children: React.ReactNode }) {
                 {logoutButton}
               </div>
               <span className="md:hidden text-xs font-semibold text-slate-500 uppercase tracking-widest">
-                Onboarding Step {currentStep} of 9
+                Step {currentStep}/9
               </span>
             </div>
 
@@ -278,7 +277,6 @@ export function OnboardingLayout({ children }: { children: React.ReactNode }) {
                   })}
                 </div>
                 
-                {/* Circular Progress Badge */}
                 <div className="progress-badge ml-6">
                   <span className="progress-badge__value">{progressPercentage}%</span>
                   <span className="progress-badge__label">Completed</span>
@@ -286,24 +284,10 @@ export function OnboardingLayout({ children }: { children: React.ReactNode }) {
               </div>
             )}
 
-            {/* Mobile Illustration (Hidden on Desktop) */}
-            <div className="md:hidden w-full h-48 sm:h-56 rounded-2xl overflow-hidden mb-6 relative shrink-0 shadow-sm bg-slate-900">
-              {CAROUSEL_IMAGES.map((img, idx) => (
-                <img 
-                  key={`mob-car-${idx}`}
-                  src={img} 
-                  alt="Illustration" 
-                  className={cn(
-                    "absolute inset-0 w-full h-full object-cover object-center transition-opacity duration-1000 ease-in-out",
-                    idx === carouselIndex ? "opacity-100 z-10" : "opacity-0 z-0"
-                  )}
-                />
-              ))}
-              <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-slate-900/20 to-transparent z-20" />
-              <div className="absolute bottom-4 left-4 right-4 z-20">
-                <h4 className="font-serif font-bold text-white text-lg">{STEP_CONTENT[currentStep]?.title}</h4>
-                <p className="text-xs text-slate-200">{STEP_CONTENT[currentStep]?.subtitle}</p>
-              </div>
+            {/* Compact mobile step cue — no large carousel image */}
+            <div className="md:hidden mb-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+              <h4 className="font-serif font-bold text-slate-900 text-base">{STEP_CONTENT[currentStep]?.title}</h4>
+              <p className="text-xs text-slate-500 mt-0.5">{STEP_CONTENT[currentStep]?.subtitle}</p>
             </div>
 
             {/* Page Content */}

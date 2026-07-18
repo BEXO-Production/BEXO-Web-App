@@ -95,7 +95,7 @@ export const generateInvoicePDF = async (
       // SECTION 2: COMPANY INFO + METADATA CARD
       // ═══════════════════════════════════════════
       doc.fontSize(14).font('Helvetica-Bold').fillColor(darkTxt)
-        .text('ACE DIGITAL PRIVATE LIMITED', ml, 72);
+        .text('ACE DIGITAL', ml, 72);
       doc.fontSize(6.5).font('Helvetica-Bold').fillColor(grayTxt)
         .text('SOFTWARE  \u00B7  DIGITAL STRATEGY  \u00B7  TECHNOLOGY CONSULTING', ml, 90, { characterSpacing: 1.2 });
 

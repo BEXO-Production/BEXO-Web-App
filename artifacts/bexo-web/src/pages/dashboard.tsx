@@ -804,26 +804,49 @@ export default function Dashboard() {
   );
   const resumeInputRef = useRef<HTMLInputElement>(null);
 
-  const handleResumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleResumeChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file && file.type === 'application/pdf') {
-      setResumeFile(file);
-      setResumeStatus('uploading');
-      setTimeout(() => {
-        setResumeStatus('parsing');
-        setTimeout(() => {
-          setResumeStatus('success');
-          const randomSize = Math.floor((Math.random() * 3 + 1) * 1024 * 1024);
-          updateData({
-            resumeFileName: file.name,
-            resumeFileSize: randomSize
-          });
-          toast({
-            title: 'Resume Parsed',
-            description: 'Your profile has been updated with information from your resume.',
-          });
-        }, 2000);
-      }, 1500);
+    if (!file || file.type !== 'application/pdf') return;
+
+    const token = localStorage.getItem('token');
+    if (!token) {
+      toast({ title: 'Session expired', description: 'Please log in again to parse a resume.', variant: 'destructive' });
+      return;
+    }
+
+    setResumeFile(file);
+    setResumeStatus('uploading');
+    try {
+      const formData = new FormData();
+      formData.append('resume', file);
+      setResumeStatus('parsing');
+      const res = await fetch('/api/profile/resume', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(payload.error || 'Resume parsing failed');
+      }
+      setResumeStatus('success');
+      updateData({
+        resumeFileName: file.name,
+        resumeFileSize: file.size,
+        resumeUrl: payload.resumeUrl || data.resumeUrl,
+        name: payload.data?.name || data.name,
+      });
+      toast({
+        title: 'Resume Parsed',
+        description: 'Your profile has been updated with information from your resume.',
+      });
+    } catch (err: any) {
+      setResumeStatus(data.resumeFileName ? 'success' : 'idle');
+      toast({
+        title: 'Resume parse failed',
+        description: err?.message || 'Unable to parse resume right now.',
+        variant: 'destructive',
+      });
     }
   };
 
