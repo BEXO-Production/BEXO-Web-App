@@ -88,8 +88,8 @@ export function OnboardingLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-[100dvh] bg-slate-50 flex-col md:flex-row">
-      {/* Mobile Top Progress */}
-      <div className="md:hidden flex flex-col bg-slate-900 text-white px-4 py-3 sticky top-0 z-10">
+      {/* Mobile Top Progress — z-40 so scrolled content never paints above it */}
+      <div className="md:hidden flex flex-col bg-slate-900 text-white px-4 py-3 sticky top-0 z-40 shadow-lg shadow-slate-900/20">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <img src={logo} alt="BEXO" className="w-6 h-6 object-contain" />

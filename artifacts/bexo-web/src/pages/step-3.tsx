@@ -600,7 +600,7 @@ export default function Step3Info() {
           </div>
 
           {/* Dark Submit Button */}
-          <div className="pt-4">
+          <div className="pt-4 onboarding-cta">
             <button
               type="submit"
               disabled={!firstName.trim() || !lastName.trim() || !pronouns.trim() || isSwooshing || handleAvailability === 'checking' || handleAvailability === 'taken'}

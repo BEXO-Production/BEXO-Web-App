@@ -414,7 +414,7 @@ export default function Step4Photo() {
           </div>
         </div>
       ) : (
-        <div className="space-y-4 pt-4 max-w-md w-full mx-auto text-center">
+        <div className="space-y-4 pt-4 max-w-md w-full mx-auto text-center onboarding-cta">
           <button
             type="button"
             className={`w-full h-14 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-semibold text-base transition-all duration-200 flex items-center justify-center gap-3 group cursor-pointer shadow-lg shadow-slate-900/20 btn-continue-wrap px-6 disabled:opacity-50 disabled:pointer-events-none${isSwooshing ? ' is-swooshing' : ''}`}

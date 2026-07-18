@@ -365,3 +365,28 @@
   animation: scan-laser 2.5s infinite ease-in-out;
 }
 
+/*
+ * Onboarding mobile CTA dock.
+ * On phones the primary Continue button pins to the bottom of the viewport
+ * (thumb zone) with an opaque scrim so content scrolls underneath it instead
+ * of pushing the button to the end of a long page.
+ */
+@media (max-width: 767px) {
+  .onboarding-cta {
+    position: sticky;
+    bottom: 0;
+    z-index: 30;
+    margin-left: -1rem;
+    margin-right: -1rem;
+    padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
+    background: linear-gradient(
+      to top,
+      rgba(248, 250, 252, 0.99) 0%,
+      rgba(248, 250, 252, 0.96) 72%,
+      rgba(248, 250, 252, 0) 100%
+    );
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+}
+

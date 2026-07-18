@@ -106,7 +106,7 @@ export default function Step8Publish() {
         </div>
       </Card>
 
-      <div className="animate-in fade-in duration-700 delay-300 fill-mode-both w-full">
+      <div className="animate-in fade-in duration-700 delay-300 fill-mode-both w-full onboarding-cta">
         <button
           type="button"
           className={`w-full h-14 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-semibold text-base transition-all duration-200 flex items-center justify-center gap-3 group cursor-pointer shadow-lg shadow-slate-900/20 btn-continue-wrap px-6${isSwooshing ? ' is-swooshing' : ''}`}

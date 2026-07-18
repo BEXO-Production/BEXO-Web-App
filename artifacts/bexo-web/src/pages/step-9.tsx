@@ -7,6 +7,7 @@ import { Check, ShieldCheck, Loader2, ArrowRight, Tag, ArrowLeft, X, Eye, Globe 
 import { cn } from '../design-system/primitives';
 import { useToast } from '../hooks/use-toast';
 import { buildMinimalPortfolioHTML } from '../lib/buildMinimalHTML';
+import { PENDING_TEMPLATE_KEY } from './step-7';
 
 declare global {
   interface Window {
@@ -82,6 +83,18 @@ export default function Step9Plan() {
   const handleStr = data.handle || (data.name ? data.name.toLowerCase().replace(/[^a-z0-9]/g, '') : '');
   const portfolioUrl = handleStr ? `${handleStr}.mybexo.com` : null;
 
+  /**
+   * If the user picked a premium template at the theme step (before paying),
+   * apply it now that their account is Pro. The earlier PATCH was rejected by
+   * the server's premium gate, so the choice was parked in localStorage.
+   */
+  const applyPendingTemplate = () => {
+    const pending = localStorage.getItem(PENDING_TEMPLATE_KEY);
+    if (!pending) return;
+    localStorage.removeItem(PENDING_TEMPLATE_KEY);
+    updateData({ templateId: pending });
+  };
+
   const verifyPayment = async (token: string | null, payload: any) => {
     const verifyRes = await fetch("/api/payments/verify", {
       method: "POST",
@@ -105,6 +118,7 @@ export default function Step9Plan() {
       isPremium: true,
       storageQuotaBytes: plan === 'annual' ? 100 * 1024 * 1024 : 500 * 1024 * 1024,
     });
+    applyPendingTemplate();
     toast({ title: 'Payment Successful', description: 'Your BEXO Pro access is active.' });
     setLocation('/dashboard');
   };
@@ -229,6 +243,7 @@ export default function Step9Plan() {
           isPremium: true,
           storageQuotaBytes: (result.plan || 'annual') === 'annual' ? 100 * 1024 * 1024 : 500 * 1024 * 1024,
         });
+        applyPendingTemplate();
         toast({ title: 'Account Activated', description: 'Your activation code was successfully redeemed.' });
         setLocation('/dashboard');
       } else {
@@ -340,6 +355,7 @@ export default function Step9Plan() {
         throw new Error(errData.error || "Failed to activate Free plan");
       }
 
+      localStorage.removeItem(PENDING_TEMPLATE_KEY);
       updateData({
         handle: freeHandle.trim().toLowerCase(),
         templateId: 'minimal',
@@ -991,7 +1007,7 @@ export default function Step9Plan() {
         </div>
       )}
 
-      <div className="mt-8">
+      <div className="mt-8 onboarding-cta">
         <button
           type="button"
           className={`w-full h-14 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-semibold text-base transition-all duration-200 flex items-center justify-center gap-3 group disabled:opacity-50 disabled:pointer-events-none cursor-pointer shadow-lg shadow-slate-900/20 btn-continue-wrap px-6${isSwooshing ? ' is-swooshing' : ''}`}

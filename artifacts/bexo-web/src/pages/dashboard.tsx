@@ -36,8 +36,10 @@ import {
   CalendarClock,
   Crown,
   Share2,
-  Lock
+  Lock,
+  Eye
 } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import { cn } from '../design-system/primitives';
 import logo from '../assets/bexo-logo.png';
 import { supabase } from '../lib/supabase';
@@ -69,35 +71,38 @@ const TEMPLATES = [
     id: 'minimal',
     name: 'Minimal',
     description: 'Clean, typography-driven layout perfect for developers.',
+    isPro: false,
+    previewable: true,
   },
   {
     id: 'cura-futuri',
     name: 'Cura Futuri',
     description: 'Modern, high-contrast design for interactive experiences.',
+    isPro: true,
+    previewable: true,
   },
   {
     id: 'sierra-montana',
     name: 'Sierra Montana',
     description: 'Elegant storytelling with smooth locomotive scrolling.',
+    isPro: true,
+    previewable: false, // renderer not deployed yet
   },
   {
     id: 'nico-palmer',
     name: 'Nico Palmer',
     description: 'Bold, cinematic typography for motion designers.',
+    isPro: true,
+    previewable: false, // renderer not deployed yet
   }
 ];
 
-const TEMPLATE_PREVIEW_URLS: Record<string, string> = {
-  minimal: 'https://resilient-hummingbird-87fc89.netlify.app/',
-  'cura-futuri': '',
-  'sierra-montana': 'http://localhost:5500', // TODO: Replace with deployed URL
-  'nico-palmer': 'http://localhost:5175' // TODO: Replace with deployed URL
-};
-
+// Premium templates render through the API's bundled template engine with the
+// user's live data; Minimal renders through the in-app public portfolio page.
 const getTemplatePreviewUrl = (templateId: string, handle: string) =>
-  templateId === 'cura-futuri'
-    ? `/api/render/${encodeURIComponent(handle)}/cura-futuri/`
-    : TEMPLATE_PREVIEW_URLS[templateId] || `/${encodeURIComponent(handle)}`;
+  templateId === 'minimal'
+    ? `/${encodeURIComponent(handle)}`
+    : `/api/render/${encodeURIComponent(handle)}/${encodeURIComponent(templateId)}/`;
 
 type BillingStatus = {
   plan: 'annual' | 'lifetime' | null;
@@ -118,6 +123,8 @@ export default function Dashboard() {
   const [currentView, setCurrentView] = useState<'overview' | 'edit-profile' | 'updates' | 'settings'>('overview');
   const [updatesTab, setUpdatesTab] = useState<'parse' | 'post'>('parse');
   const [settingsSubTab, setSettingsSubTab] = useState<'profile' | 'design' | 'storage' | 'billing'>('profile');
+  // Fullscreen "try this template with your data" preview (free users included)
+  const [previewTemplateId, setPreviewTemplateId] = useState<string | null>(null);
   const [showLoginToast, setShowLoginToast] = useState(false);
   
   // FAB & Update State
@@ -895,12 +902,17 @@ export default function Dashboard() {
   };
 
   const handleTemplateSelect = (id: string) => {
-    if (id !== 'minimal' && !data.isPremium) {
-      toast({
-        title: 'Feature Locked',
-        description: 'Academic and Creative layouts are premium templates. Upgrade to Pro to unlock them.',
-        variant: 'destructive',
-      });
+    const tpl = TEMPLATES.find(t => t.id === id);
+    if (tpl?.isPro && !data.isPremium) {
+      // Free users get a real preview with their own data instead of a dead end.
+      if (tpl.previewable) {
+        setPreviewTemplateId(id);
+      } else {
+        toast({
+          title: 'Premium Template',
+          description: `${tpl.name} is a Pro template. Its live preview is coming soon — upgrade to unlock premium layouts.`,
+        });
+      }
       return;
     }
     updateData({ templateId: id });
@@ -2930,18 +2942,18 @@ export default function Dashboard() {
             </button>
 
             <div>
-              <h1 className="text-3xl font-serif font-bold text-slate-900 tracking-tight">Appearance & Settings</h1>
+              <h1 className="text-2xl md:text-3xl font-serif font-bold text-slate-900 tracking-tight">Appearance & Settings</h1>
               <p className="text-slate-500 text-sm mt-0.5">Customize template designs, color theme accents, and personal settings.</p>
             </div>
 
             {/* Premium Tabbed Layout */}
-            <div className="grid md:grid-cols-4 gap-6 items-start">
-              {/* Tab Navigation Card */}
-              <Card className="p-2.5 bg-white border border-slate-200 shadow-sm flex flex-col gap-1 md:col-span-1">
+            <div className="grid md:grid-cols-4 gap-4 md:gap-6 items-start">
+              {/* Tab Navigation — horizontal scroll pills on mobile, stacked card on desktop */}
+              <Card className="p-1.5 md:p-2.5 bg-white border border-slate-200 shadow-sm flex flex-row md:flex-col gap-1 md:col-span-1 overflow-x-auto md:overflow-visible [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sticky top-[72px] md:static z-10">
                 <button
                   onClick={() => setSettingsSubTab('profile')}
                   className={cn(
-                    "flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all text-left w-full",
+                    "flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-sm font-semibold transition-all text-left md:w-full whitespace-nowrap shrink-0",
                     settingsSubTab === 'profile' 
                       ? "bg-indigo-50 text-indigo-900 shadow-sm ring-1 ring-indigo-100" 
                       : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
@@ -2953,7 +2965,7 @@ export default function Dashboard() {
                 <button
                   onClick={() => setSettingsSubTab('design')}
                   className={cn(
-                    "flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all text-left w-full",
+                    "flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-sm font-semibold transition-all text-left md:w-full whitespace-nowrap shrink-0",
                     settingsSubTab === 'design' 
                       ? "bg-indigo-50 text-indigo-900 shadow-sm ring-1 ring-indigo-100" 
                       : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
@@ -2965,7 +2977,7 @@ export default function Dashboard() {
                 <button
                   onClick={() => setSettingsSubTab('storage')}
                   className={cn(
-                    "flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all text-left w-full",
+                    "flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-sm font-semibold transition-all text-left md:w-full whitespace-nowrap shrink-0",
                     settingsSubTab === 'storage' 
                       ? "bg-indigo-50 text-indigo-900 shadow-sm ring-1 ring-indigo-100" 
                       : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
@@ -2977,7 +2989,7 @@ export default function Dashboard() {
                 <button
                   onClick={() => setSettingsSubTab('billing')}
                   className={cn(
-                    "flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all text-left w-full",
+                    "flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-sm font-semibold transition-all text-left md:w-full whitespace-nowrap shrink-0",
                     settingsSubTab === 'billing' 
                       ? "bg-indigo-50 text-indigo-900 shadow-sm ring-1 ring-indigo-100" 
                       : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
@@ -3155,10 +3167,10 @@ export default function Dashboard() {
                     )}
 
                     {/* Visual Page Template + Live Preview — split layout */}
-                    <div className={cn("grid grid-cols-1 gap-5 items-start", data.isPremium ? "lg:grid-cols-5" : "lg:grid-cols-1")}>
+                    <div className="grid grid-cols-1 gap-5 items-start lg:grid-cols-5">
                       
                       {/* Template Selector */}
-                      <Card className={cn("p-5 bg-white border border-slate-200 shadow-sm space-y-4", data.isPremium ? "lg:col-span-2" : "w-full")}>
+                      <Card className="p-5 bg-white border border-slate-200 shadow-sm space-y-4 lg:col-span-2">
                         <div>
                           <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                             <Layout className="w-4 h-4 text-indigo-500" /> Page Template
@@ -3170,29 +3182,21 @@ export default function Dashboard() {
                           </p>
                         </div>
 
-                        <div className={cn("flex flex-col gap-3", !data.isPremium && "md:grid md:grid-cols-3")}>
+                        <div className="flex flex-col gap-3">
                           {TEMPLATES.map(tpl => {
                             const isSelected = data.templateId === tpl.id;
                             const accentBg = getThemeClass(true);
-                            const isLocked = !data.isPremium && tpl.id !== 'minimal';
+                            const isLocked = !data.isPremium && tpl.isPro;
                             return (
-                              <button
+                              <div
                                 key={tpl.id}
-                                onClick={() => {
-                                  if (isLocked) {
-                                    toast({
-                                      title: "Premium Template Locked",
-                                      description: "Academic and Creative layouts are premium Pro templates. Upgrade to unlock.",
-                                      variant: "destructive"
-                                    });
-                                    return;
-                                  }
-                                  handleTemplateSelect(tpl.id);
-                                }}
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => handleTemplateSelect(tpl.id)}
+                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleTemplateSelect(tpl.id); }}
                                 className={cn(
-                                  "group text-left rounded-xl border-2 transition-all hover:shadow-md flex items-center gap-3 p-2.5 relative overflow-hidden",
-                                  isSelected ? "border-indigo-600 bg-indigo-50/30 shadow-sm" : "border-slate-200 bg-white hover:border-slate-300",
-                                  isLocked ? "opacity-80" : ""
+                                  "group cursor-pointer text-left rounded-xl border-2 transition-all hover:shadow-md flex items-center gap-3 p-2.5 relative overflow-hidden",
+                                  isSelected ? "border-indigo-600 bg-indigo-50/30 shadow-sm" : "border-slate-200 bg-white hover:border-slate-300"
                                 )}
                               >
                                 {/* Mini thumbnail mockup */}
@@ -3202,17 +3206,15 @@ export default function Dashboard() {
                                     <span className="w-1 h-1 rounded-full bg-yellow-400" />
                                     <span className="w-1 h-1 rounded-full bg-green-400" />
                                   </div>
-                                  <div className={cn("flex-1 p-1", isLocked ? "blur-[1.5px] grayscale-[40%] opacity-60" : "")}>
+                                  <div className="flex-1 p-1">
                                     {tpl.id === 'minimal' && renderMinimalMockup(accentBg)}
                                     {tpl.id === 'cura-futuri' && renderCreativeMockup(accentBg)}
                                     {tpl.id === 'sierra-montana' && renderAcademicMockup(accentBg)}
                                     {tpl.id === 'nico-palmer' && renderCreativeMockup(accentBg)}
                                   </div>
                                   {isLocked && (
-                                    <div className="absolute inset-0 bg-slate-900/30 backdrop-blur-[1px] flex items-center justify-center">
-                                      <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                                      </svg>
+                                    <div className="absolute inset-0 bg-slate-900/25 flex items-center justify-center">
+                                      <Lock className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
                                     </div>
                                   )}
                                 </div>
@@ -3221,19 +3223,42 @@ export default function Dashboard() {
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2">
                                     <h4 className="text-sm font-bold text-slate-900 capitalize">{tpl.name}</h4>
-                                    {isLocked && <span className="text-[9px] font-bold text-indigo-650 bg-indigo-50 px-1.5 py-0.5 rounded uppercase tracking-wider">Pro</span>}
+                                    {tpl.isPro && <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded uppercase tracking-wider">Pro</span>}
                                   </div>
                                   <p className="text-[11px] text-slate-400 leading-normal mt-0.5 line-clamp-2">{tpl.description}</p>
+                                  {tpl.previewable ? (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); setPreviewTemplateId(tpl.id); }}
+                                      className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-wider transition-colors"
+                                    >
+                                      <Eye className="w-3 h-3" /> Preview with your data
+                                    </button>
+                                  ) : (
+                                    <span className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-bold text-slate-300 uppercase tracking-wider">
+                                      <Eye className="w-3 h-3" /> Preview coming soon
+                                    </span>
+                                  )}
                                 </div>
 
                                 {/* Selected indicator */}
                                 {isSelected && !isLocked && (
                                   <CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0" />
                                 )}
-                              </button>
+                              </div>
                             );
                           })}
                         </div>
+
+                        {!data.isPremium && (
+                          <div className="flex items-start gap-2.5 rounded-xl border border-indigo-100 bg-indigo-50/60 px-3.5 py-2.5">
+                            <Crown className="w-4 h-4 text-indigo-500 mt-0.5 shrink-0" />
+                            <p className="text-[11px] text-indigo-900 leading-relaxed">
+                              Preview any Pro template with your live content for free.
+                              Publishing on a Pro template needs an active Pro plan.
+                            </p>
+                          </div>
+                        )}
 
                         {/* Open portfolio link */}
                         <a
@@ -3246,63 +3271,62 @@ export default function Dashboard() {
                         </a>
                       </Card>
 
-                      {/* Right: Live iframe Preview - ONLY for Pro/Premium users */}
-                      {data.isPremium && (
-                        <div className="lg:col-span-3 flex flex-col gap-2">
-                          <div className="flex items-center justify-between px-1">
-                            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Live Preview</span>
-                            <span className="text-[11px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full font-medium">
-                              mybexo.com/{handleString}
-                            </span>
-                          </div>
-
-                          {/* Browser chrome frame */}
-                          <div className="rounded-2xl overflow-hidden border border-slate-200 shadow-lg bg-white">
-                            {/* Browser top bar */}
-                            <div className="h-9 bg-slate-100 border-b border-slate-200 flex items-center px-3 gap-2 shrink-0">
-                              <div className="flex items-center gap-1.5">
-                                <span className="w-2.5 h-2.5 rounded-full bg-red-400" />
-                                <span className="w-2.5 h-2.5 rounded-full bg-yellow-400" />
-                                <span className="w-2.5 h-2.5 rounded-full bg-green-400" />
-                              </div>
-                              <div className="flex-1 mx-2">
-                                <div className="h-5 bg-white rounded-md border border-slate-200 flex items-center px-2.5 gap-1.5">
-                                  <Globe className="w-3 h-3 text-slate-400 shrink-0" />
-                                  <span className="text-[11px] text-slate-500 font-medium truncate">mybexo.com/{handleString}</span>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* iframe */}
-                            <div className="relative w-full overflow-hidden" style={{ height: '520px' }}>
-                                <iframe
-                                  key={`${data.templateId || 'minimal'}-${data.themeColor || 'indigo'}-${data.themeBg || 'grid'}`}
-                                  src={getTemplatePreviewUrl(data.templateId || 'minimal', handleString)}
-                                title="Live Portfolio Preview"
-                                className="absolute top-0 left-0 border-0 bg-white"
-                                style={{
-                                  width: '1280px',
-                                  height: '900px',
-                                  transform: 'scale(0.65)',
-                                  transformOrigin: 'top left',
-                                  pointerEvents: 'none'
-                                }}
-                                sandbox="allow-scripts allow-same-origin"
-                                onLoad={(e) => {
-                                  if (data) {
-                                    const iframeWindow = (e.target as HTMLIFrameElement).contentWindow;
-                                    iframeWindow?.postMessage({ type: 'BEXO_PROFILE_UPDATE', profile: data }, '*');
-                                  }
-                                }}
-                              />
-                            </div>
-                          </div>
-
-                          <p className="text-[11px] text-slate-400 text-center">
-                            This preview reflects your live portfolio. Changes to template or color take effect after saving.
-                          </p>
+                      {/* Right: Live iframe Preview — everyone sees their current live site */}
+                      <div className="lg:col-span-3 flex flex-col gap-2">
+                        <div className="flex items-center justify-between px-1">
+                          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Live Preview</span>
+                          <span className="text-[11px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full font-medium truncate max-w-[55%]">
+                            mybexo.com/{handleString}
+                          </span>
                         </div>
-                      )}
+
+                        {/* Browser chrome frame */}
+                        <div className="rounded-2xl overflow-hidden border border-slate-200 shadow-lg bg-white">
+                          {/* Browser top bar */}
+                          <div className="h-9 bg-slate-100 border-b border-slate-200 flex items-center px-3 gap-2 shrink-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="w-2.5 h-2.5 rounded-full bg-red-400" />
+                              <span className="w-2.5 h-2.5 rounded-full bg-yellow-400" />
+                              <span className="w-2.5 h-2.5 rounded-full bg-green-400" />
+                            </div>
+                            <div className="flex-1 mx-2">
+                              <div className="h-5 bg-white rounded-md border border-slate-200 flex items-center px-2.5 gap-1.5">
+                                <Globe className="w-3 h-3 text-slate-400 shrink-0" />
+                                <span className="text-[11px] text-slate-500 font-medium truncate">mybexo.com/{handleString}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Responsive scaled iframe: renders at 2x container width so
+                              phones get a tablet-ish viewport instead of overflowing */}
+                          <div className="relative w-full overflow-hidden h-[380px] md:h-[520px]">
+                            <iframe
+                              key={`${data.templateId || 'minimal'}-${data.themeColor || 'indigo'}-${data.themeBg || 'grid'}`}
+                              src={getTemplatePreviewUrl(data.templateId || 'minimal', handleString)}
+                              title="Live Portfolio Preview"
+                              className="absolute top-0 left-0 border-0 bg-white"
+                              style={{
+                                width: '200%',
+                                height: '200%',
+                                transform: 'scale(0.5)',
+                                transformOrigin: 'top left',
+                                pointerEvents: 'none'
+                              }}
+                              sandbox="allow-scripts allow-same-origin"
+                              onLoad={(e) => {
+                                if (data) {
+                                  const iframeWindow = (e.target as HTMLIFrameElement).contentWindow;
+                                  iframeWindow?.postMessage({ type: 'BEXO_PROFILE_UPDATE', profile: data }, '*');
+                                }
+                              }}
+                            />
+                          </div>
+                        </div>
+
+                        <p className="text-[11px] text-slate-400 text-center">
+                          This preview reflects your live portfolio. Changes to template or color take effect after saving.
+                        </p>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -3707,6 +3731,88 @@ export default function Dashboard() {
 
 
       </main>
+
+      {/* Fullscreen template preview — free users see Pro templates with their own live data */}
+      {previewTemplateId && (() => {
+        const tpl = TEMPLATES.find(t => t.id === previewTemplateId);
+        if (!tpl) return null;
+        const isLockedPreview = tpl.isPro && !data.isPremium;
+        return createPortal(
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-0 md:p-6 animate-in fade-in duration-200">
+            <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setPreviewTemplateId(null)} />
+            <div className="bg-slate-100 w-full h-[100dvh] md:h-[90vh] max-w-6xl md:rounded-2xl shadow-2xl relative flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+              {/* Chrome bar */}
+              <div className="bg-white border-b border-slate-200 px-4 py-3 flex justify-between items-center shrink-0 gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="hidden md:flex items-center gap-1.5 shrink-0">
+                    <span className="w-3 h-3 rounded-full bg-red-400" />
+                    <span className="w-3 h-3 rounded-full bg-amber-400" />
+                    <span className="w-3 h-3 rounded-full bg-green-400" />
+                  </div>
+                  <span className="md:ml-3 text-sm font-bold text-slate-900 truncate">{tpl.name}</span>
+                  {tpl.isPro && (
+                    <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0">Pro</span>
+                  )}
+                  <span className="hidden sm:inline text-[11px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full font-medium truncate">
+                    Your live data
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPreviewTemplateId(null)}
+                  className="w-9 h-9 rounded-full flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors shrink-0"
+                  aria-label="Close preview"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Iframe */}
+              <div className="flex-1 w-full relative bg-white">
+                <iframe
+                  src={getTemplatePreviewUrl(tpl.id, handleString)}
+                  title={`${tpl.name} preview with your data`}
+                  className="w-full h-full border-0 bg-white"
+                  allow="clipboard-write"
+                />
+              </div>
+
+              {/* Bottom action bar */}
+              <div className="bg-white border-t border-slate-200 px-4 py-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+                {isLockedPreview ? (
+                  <>
+                    <p className="text-xs text-slate-500 leading-snug flex items-center gap-2">
+                      <Crown className="w-4 h-4 text-indigo-500 shrink-0" />
+                      This is a live preview with your own content. Upgrade to Pro to publish it.
+                    </p>
+                    <Button
+                      onClick={() => { setPreviewTemplateId(null); openBilling(); }}
+                      className="h-10 px-5 text-sm font-bold bg-indigo-600 hover:bg-indigo-700 shrink-0"
+                    >
+                      <Crown className="w-4 h-4 mr-2" /> Upgrade to use this template
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs text-slate-500 leading-snug">
+                      Previewing with your live portfolio content.
+                    </p>
+                    {data.templateId !== tpl.id && (
+                      <Button
+                        onClick={() => { handleTemplateSelect(tpl.id); setPreviewTemplateId(null); }}
+                        className="h-10 px-5 text-sm font-bold shrink-0"
+                      >
+                        <CheckCircle2 className="w-4 h-4 mr-2" /> Use this template
+                      </Button>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          </div>,
+          document.body
+        );
+      })()}
     </div>
   );
 }

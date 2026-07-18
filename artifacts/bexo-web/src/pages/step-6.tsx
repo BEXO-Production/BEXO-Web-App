@@ -992,7 +992,7 @@ export default function Step6Review() {
         </div>
       </div>
 
-      <div className="mt-8 pt-6 border-t border-slate-200 flex flex-col md:flex-row items-center justify-between gap-4">
+      <div className="mt-8 pt-6 border-t border-slate-200 flex flex-col md:flex-row items-center justify-between gap-4 onboarding-cta">
         <p className="text-sm text-slate-500 text-center md:text-left">
           {!allTabsVisited ? `Please visit all ${TABS.length} sections to continue.` : 'All sections reviewed!'}
         </p>

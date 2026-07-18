@@ -10,39 +10,46 @@ const TEMPLATES = [
     id: 'minimal',
     name: 'Minimal',
     description: 'Clean, typography-driven layout perfect for developers.',
-    layoutClass: 'flex-col'
+    layoutClass: 'flex-col',
+    isPro: false,
+    previewable: true
   },
   {
     id: 'cura-futuri',
     name: 'Cura Futuri',
     description: 'Modern, high-contrast design for interactive experiences.',
-    layoutClass: 'flex-col'
+    layoutClass: 'flex-col',
+    isPro: true,
+    previewable: true
   },
   {
     id: 'sierra-montana',
     name: 'Sierra Montana',
     description: 'Elegant storytelling with smooth locomotive scrolling.',
-    layoutClass: 'flex-col'
+    layoutClass: 'flex-col',
+    isPro: true,
+    previewable: false // renderer not deployed yet
   },
   {
     id: 'nico-palmer',
     name: 'Nico Palmer',
     description: 'Bold, cinematic typography for motion designers.',
-    layoutClass: 'flex-col'
+    layoutClass: 'flex-col',
+    isPro: true,
+    previewable: false // renderer not deployed yet
   }
 ];
 
-const TEMPLATE_PREVIEW_URLS: Record<string, string> = {
-  minimal: 'https://resilient-hummingbird-87fc89.netlify.app/',
-  'cura-futuri': '',
-  'sierra-montana': 'http://localhost:5500', // TODO: Replace with deployed URL
-  'nico-palmer': 'http://localhost:5175' // TODO: Replace with deployed URL
-};
+/** Premium template chosen before payment — applied automatically after the plan step. */
+export const PENDING_TEMPLATE_KEY = 'bexo_pending_template';
 
 const getTemplatePreviewUrl = (templateId: string, handle: string) =>
-  templateId === 'cura-futuri'
-    ? `/api/render/${encodeURIComponent(handle || 'portfolio')}/cura-futuri/`
-    : TEMPLATE_PREVIEW_URLS[templateId];
+  templateId === 'minimal'
+    ? 'https://resilient-hummingbird-87fc89.netlify.app/'
+    : `/api/render/${encodeURIComponent(handle || 'portfolio')}/${encodeURIComponent(templateId)}/`;
+
+const isTemplatePreviewable = (templateId: string) =>
+  TEMPLATES.find(t => t.id === templateId)?.previewable ?? false;
 
 const THEMES = [
   { id: 'blue', label: 'Navy', hex: 'bg-blue-600', textHex: 'text-blue-600' },
@@ -72,11 +79,23 @@ export default function Step7Theme() {
   const previewHandle = data.handle || 'portfolio';
 
   const handleContinue = () => {
-    updateData({
-      templateId: selectedTemplate,
-      themeColor: selectedTheme,
-      themeBg: selectedThemeBg,
-    });
+    const chosen = TEMPLATES.find(t => t.id === selectedTemplate);
+    if (chosen?.isPro && !data.isPremium) {
+      // Server rejects premium templates before payment. Save the choice
+      // locally and apply it automatically once the plan step succeeds.
+      localStorage.setItem(PENDING_TEMPLATE_KEY, selectedTemplate);
+      updateData({
+        themeColor: selectedTheme,
+        themeBg: selectedThemeBg,
+      });
+    } else {
+      localStorage.removeItem(PENDING_TEMPLATE_KEY);
+      updateData({
+        templateId: selectedTemplate,
+        themeColor: selectedTheme,
+        themeBg: selectedThemeBg,
+      });
+    }
     setIsSwooshing(true);
     setTimeout(() => {
       nextStep(7);
@@ -173,19 +192,29 @@ export default function Step7Theme() {
                 <div className="w-2 h-2 rounded-full bg-amber-400" />
                 <div className="w-2 h-2 rounded-full bg-green-400" />
                 <span className="text-[9px] text-slate-400 font-mono ml-2 truncate">
-                  {getTemplatePreviewUrl(tpl.id, previewHandle).replace('https://', '')}
+                  {tpl.previewable
+                    ? getTemplatePreviewUrl(tpl.id, previewHandle).replace('https://', '')
+                    : `${tpl.id}.bexo — coming soon`}
                 </span>
               </div>
               
-              {/* Miniature Website Iframe */}
-              <div className="w-[300%] h-[300%] origin-top-left scale-[0.333] pointer-events-none select-none shrink-0">
-                <iframe 
-                  src={getTemplatePreviewUrl(tpl.id, previewHandle)}
-                  title={`${tpl.id} Thumbnail`}
-                  className="w-full h-full border-0"
-                  tabIndex={-1}
-                />
-              </div>
+              {/* Miniature Website Iframe (or placeholder while renderer ships) */}
+              {tpl.previewable ? (
+                <div className="w-[300%] h-[300%] origin-top-left scale-[0.333] pointer-events-none select-none shrink-0">
+                  <iframe 
+                    src={getTemplatePreviewUrl(tpl.id, previewHandle)}
+                    title={`${tpl.id} Thumbnail`}
+                    className="w-full h-full border-0"
+                    tabIndex={-1}
+                    loading="lazy"
+                  />
+                </div>
+              ) : (
+                <div className="flex-1 flex flex-col items-center justify-center gap-1.5 bg-gradient-to-br from-slate-100 via-white to-indigo-50">
+                  <span className="font-serif text-lg font-bold text-slate-300">{tpl.name}</span>
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Preview coming soon</span>
+                </div>
+              )}
 
               {/* Actions Overlay */}
               <div className={cn(
@@ -197,20 +226,27 @@ export default function Step7Theme() {
                     <CheckCircle2 className="w-5 h-5" />
                   </div>
                 )}
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  className="bg-white/90 backdrop-blur border-white/50 text-slate-900 shadow-sm hover:bg-white"
-                  onClick={(e) => { e.stopPropagation(); setPreviewTemplate(tpl.id); }}
-                >
-                  <Eye className="w-4 h-4 mr-2" /> Live Preview
-                </Button>
+                {tpl.previewable && (
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    className="bg-white/90 backdrop-blur border-white/50 text-slate-900 shadow-sm hover:bg-white"
+                    onClick={(e) => { e.stopPropagation(); setPreviewTemplate(tpl.id); }}
+                  >
+                    <Eye className="w-4 h-4 mr-2" /> {tpl.isPro ? 'Preview with your data' : 'Live Preview'}
+                  </Button>
+                )}
               </div>
             </div>
 
             <div className="p-5 bg-white flex-1">
-              <h3 className="font-bold text-slate-900 mb-1 flex items-center justify-between">
-                {tpl.name}
+              <h3 className="font-bold text-slate-900 mb-1 flex items-center justify-between gap-2">
+                <span>{tpl.name}</span>
+                {tpl.isPro && (
+                  <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0">
+                    Pro
+                  </span>
+                )}
               </h3>
               <p className="text-sm text-slate-500 leading-relaxed">
                 {tpl.description}
@@ -220,7 +256,17 @@ export default function Step7Theme() {
         ))}
       </div>
 
-      <div className="mt-10 flex justify-end pt-6 border-t border-slate-200">
+      {TEMPLATES.find(t => t.id === selectedTemplate)?.isPro && !data.isPremium && (
+        <div className="mt-6 flex items-start gap-2.5 rounded-xl border border-indigo-100 bg-indigo-50/70 px-4 py-3">
+          <CheckCircle2 className="w-4 h-4 text-indigo-500 mt-0.5 shrink-0" />
+          <p className="text-xs text-indigo-900 leading-relaxed">
+            <span className="font-bold">Pro template selected.</span> You can preview it with your own
+            data now — it activates automatically once you pick a Pro plan at the final step.
+          </p>
+        </div>
+      )}
+
+      <div className="mt-10 flex justify-end pt-6 border-t border-slate-200 onboarding-cta">
         <button
           type="button"
           className={`w-full md:w-auto md:min-w-[240px] h-14 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-semibold text-base transition-all duration-200 flex items-center justify-center gap-3 group cursor-pointer shadow-lg shadow-slate-900/20 btn-continue-wrap px-6${isSwooshing ? ' is-swooshing' : ''}`}
@@ -236,9 +282,9 @@ export default function Step7Theme() {
 
       {/* Custom Fullscreen Preview Modal */}
       {previewTemplate && createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 md:p-6 animate-in fade-in">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-0 md:p-6 animate-in fade-in">
           <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setPreviewTemplate(null)} />
-          <div className="bg-slate-100 w-full h-[90vh] max-w-5xl rounded-2xl shadow-2xl relative flex flex-col overflow-hidden animate-in zoom-in-95">
+          <div className="bg-slate-100 w-full h-[100dvh] md:h-[90vh] max-w-5xl md:rounded-2xl shadow-2xl relative flex flex-col overflow-hidden animate-in zoom-in-95">
             <div className="bg-white border-b border-slate-200 p-4 flex justify-between items-center shrink-0">
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-red-400" />
