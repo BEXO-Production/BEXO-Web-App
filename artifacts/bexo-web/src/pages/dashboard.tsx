@@ -86,7 +86,7 @@ const TEMPLATES = [
     name: 'Sierra Montana',
     description: 'Elegant storytelling with smooth locomotive scrolling.',
     isPro: true,
-    previewable: false, // renderer not deployed yet
+    previewable: true,
   },
   {
     id: 'nico-palmer',
@@ -3092,7 +3092,7 @@ export default function Dashboard() {
                 {settingsSubTab === 'design' && (
                   <div className="space-y-6 animate-in fade-in duration-200">
                     {/* Theme + background — Minimal (free) and Cura Futuri honor these */}
-                    {['minimal', 'cura-futuri'].includes(data.templateId || '') && (
+                    {['minimal', 'cura-futuri', 'sierra-montana'].includes(data.templateId || '') && (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-4">
                           <div>

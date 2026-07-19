@@ -180,7 +180,9 @@ export async function renderPortfolioForHandle(
         return;
       }
 
-      if (templateFile.endsWith("index.html")) {
+      // Multi-page templates (Sierra) and SPAs (Cura) both need profile
+      // injection on every HTML document, not only index.html.
+      if (templateFile.endsWith(".html")) {
         const html = await readFile(templateFile, "utf8");
         res
           .status(200)
@@ -190,8 +192,21 @@ export async function renderPortfolioForHandle(
         return;
       }
 
-      if (path.startsWith("/assets/")) {
-        res.set("Cache-Control", "public, max-age=31536000, immutable");
+      if (
+        path.startsWith("/assets/") ||
+        path.startsWith("/css/") ||
+        path.startsWith("/js/") ||
+        path.startsWith("/Fonts/") ||
+        path.startsWith("/fonts/")
+      ) {
+        // Long-lived caching only in production; local development needs
+        // fresh assets on every reload for template iteration.
+        res.set(
+          "Cache-Control",
+          process.env.NODE_ENV === "production"
+            ? "public, max-age=31536000, immutable"
+            : "no-cache",
+        );
       }
       res.sendFile(templateFile);
       return;

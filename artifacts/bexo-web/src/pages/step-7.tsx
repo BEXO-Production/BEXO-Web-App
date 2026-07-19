@@ -28,7 +28,7 @@ const TEMPLATES = [
     description: 'Elegant storytelling with smooth locomotive scrolling.',
     layoutClass: 'flex-col',
     isPro: true,
-    previewable: false // renderer not deployed yet
+    previewable: true
   },
   {
     id: 'nico-palmer',
@@ -66,7 +66,7 @@ const THEME_BGS = [
 ];
 
 /** Templates that honor themeColor + themeBg from the portal */
-const THEMEABLE_TEMPLATES = new Set(['minimal', 'cura-futuri']);
+const THEMEABLE_TEMPLATES = new Set(['minimal', 'cura-futuri', 'sierra-montana']);
 
 export default function Step7Theme() {
   const { data, updateData, nextStep } = useOnboarding();

@@ -1,0 +1,71 @@
+.credits {
+  width: 75%;
+  margin: 0 auto;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.credits .credits-header h1 {
+  text-transform: uppercase;
+  padding: 0 0 0.1em 0;
+  font-size: 8vw;
+  letter-spacing: -0.02em;
+  font-weight: 500;
+}
+
+.credits .credit .arrow-icon {
+  position: relative;
+  top: 0.5em;
+  width: 2.5vw;
+  height: 2.5vw;
+}
+
+.credits .credit {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  margin: 1em 0;
+  gap: 2em;
+}
+
+.credits .credit h3 {
+  position: relative;
+  width: max-content;
+  font-family: "Neue Montreal";
+}
+
+.credits .credit h3#underline::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: var(--text-color);
+}
+
+@media (max-width: 900px) {
+  .credits {
+    width: 85%;
+  }
+  .credits .credits-header h1 {
+    font-size: 15vw;
+  }
+
+  .credits .credit {
+    gap: 1em;
+  }
+
+  .credits .credit h3 {
+    font-size: 4vw;
+  }
+
+  .credits .credit .arrow-icon {
+    top: 0.25em;
+    width: 4vw;
+    height: 4vw;
+  }
+}

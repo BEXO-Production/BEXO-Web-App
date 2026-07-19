@@ -37,3 +37,31 @@ test("rejects traversal outside the template bundle", () => {
 
   assert.equal(resolveTemplateFile(root, "/../../secret.txt"), null);
 });
+
+test("resolves nested multi-page HTML documents", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "bexo-template-"));
+  mkdirSync(path.join(root, "pages", "projects"), { recursive: true });
+  writeFileSync(path.join(root, "index.html"), "INDEX");
+  writeFileSync(path.join(root, "pages", "portfolio.html"), "PORTFOLIO");
+  writeFileSync(path.join(root, "pages", "projects", "project.html"), "PROJECT");
+
+  assert.equal(
+    resolveTemplateFile(root, "/pages/portfolio.html"),
+    path.join(root, "pages", "portfolio.html"),
+  );
+  assert.equal(
+    resolveTemplateFile(root, "/pages/projects/project.html"),
+    path.join(root, "pages", "projects", "project.html"),
+  );
+});
+
+test("injects bootstrap into nested HTML shells", () => {
+  const html = "<html><head></head><body>Nested</body></html>";
+  const result = injectPortfolioBootstrap(
+    html,
+    { profile: { handle: "kavin" } },
+    "/api/render/kavin/sierra-montana",
+  );
+  assert.match(result, /window\.__BEXO_PROFILE__/);
+  assert.match(result, /window\.__BEXO_BASE_PATH__ = "\/api\/render\/kavin\/sierra-montana"/);
+});

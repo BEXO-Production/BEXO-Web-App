@@ -160,11 +160,12 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
   // Premium templates are rendered by the API's bundled template engine.
   // The public URL remains the user's handle URL; no separate template host
   // is exposed or required.
-  if (isPremium && user.templateId === 'cura-futuri') {
+  const BUNDLED_PREMIUM_TEMPLATES = new Set(['cura-futuri', 'sierra-montana']);
+  if (isPremium && BUNDLED_PREMIUM_TEMPLATES.has(user.templateId || '')) {
     return (
       <iframe
         title={`${user.name || handle} portfolio`}
-        src={`/api/render/${encodeURIComponent(handle || profile.handle)}/`}
+        src={`/api/render/${encodeURIComponent(handle || profile.handle)}/${encodeURIComponent(user.templateId)}/`}
         className="fixed inset-0 h-[100dvh] w-full border-0 bg-[#0d0d11]"
         allow="clipboard-write"
       />

@@ -1,0 +1,392 @@
+.portfolio-page {
+  background: var(--bg);
+  color: var(--text-color);
+}
+
+.portfolio-rail {
+  padding: 3rem 0 2rem;
+  margin: 1rem 0 2rem;
+  border-top: 1px solid rgba(10, 10, 10, 0.1);
+}
+
+.portfolio-rail-label {
+  max-width: 1100px;
+  width: min(1100px, 88%);
+  margin: 0 auto;
+  padding: 0 0 1.25rem;
+  font-family: "Acid Grotesk", sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+/* Count-aware grid: 6 tracks so cards can span 2 (three-up), 3 (two-up)
+   or 6 (full width). render.js assigns slide--third/half/full per card
+   so every row is always completely filled, whatever the project count. */
+.portfolio-page .content-container {
+  opacity: 1 !important;
+  position: relative;
+  top: 0;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 1.25rem;
+  width: min(1100px, 88%);
+  height: auto;
+  min-height: 0;
+  margin: 0 auto;
+  padding: 0 0 1rem;
+  transform: none !important;
+  pointer-events: auto !important;
+}
+
+.portfolio-page .portfolio-rail,
+.portfolio-page .portfolio-body {
+  opacity: 1 !important;
+  transform: none !important;
+  pointer-events: auto !important;
+}
+
+.portfolio-page .slide {
+  grid-column: span 2;
+  display: block;
+  width: auto !important;
+  height: auto;
+  max-height: none;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  text-align: left;
+  border: none;
+  color: var(--text-color);
+}
+
+.portfolio-page .slide--half {
+  grid-column: span 3;
+}
+
+.portfolio-page .slide--full,
+.portfolio-page .slide--empty {
+  grid-column: 1 / -1;
+}
+
+.portfolio-page .slide > a {
+  display: flex;
+  height: 100%;
+  text-decoration: none;
+  color: inherit;
+}
+
+.portfolio-page .slide .content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 240px;
+  padding: 1.5rem 1.5rem 1.35rem;
+  border: 1px solid rgba(10, 10, 10, 0.18);
+  transition: border-color 0.25s ease, transform 0.25s ease;
+}
+
+.portfolio-page .slide:hover .content {
+  border-color: var(--accent);
+  transform: translateY(-4px);
+}
+
+.portfolio-page .slide-index {
+  font-family: "Acid Grotesk", sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  color: var(--accent);
+  margin-bottom: 1.1rem;
+}
+
+.portfolio-page .slide h3 {
+  font-family: "Canopee", "Times New Roman", serif;
+  text-transform: uppercase;
+  font-size: clamp(1.5rem, 2.6vw, 2.1rem);
+  line-height: 0.95;
+  color: var(--text-color);
+  overflow-wrap: anywhere;
+  margin: 0 0 0.85rem;
+}
+
+/* Featured single project can breathe */
+.portfolio-page .slide--full h3 {
+  font-size: clamp(2rem, 4.5vw, 3.4rem);
+  max-width: 26ch;
+}
+
+/* Long titles step down so they don't dominate the card */
+.portfolio-page .slide--long-title h3 {
+  font-size: clamp(1.15rem, 2vw, 1.5rem);
+  line-height: 1.05;
+}
+
+.portfolio-page .slide p {
+  font-size: clamp(0.8rem, 1.3vw, 0.92rem);
+  font-family: "Acid Grotesk", sans-serif;
+  opacity: 0.6;
+  margin: 0;
+}
+
+.portfolio-page .slide-cta {
+  margin-top: auto;
+  padding-top: 1.4rem;
+  font-family: "Acid Grotesk", sans-serif;
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  opacity: 0.55;
+  transition: opacity 0.25s ease, color 0.25s ease;
+}
+
+.portfolio-page .slide:hover .slide-cta {
+  opacity: 1;
+  color: var(--accent);
+}
+
+.portfolio-page .slide--empty .content {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  border-style: dashed;
+}
+
+.portfolio-body {
+  padding: clamp(7rem, 14vh, 10rem) 0 2rem;
+  width: min(1100px, 88%);
+  margin: 0 auto;
+}
+
+.portfolio-body--lower {
+  padding-top: 0;
+  padding-bottom: 5rem;
+}
+
+.section-kicker {
+  display: inline-block;
+  font-family: "Acid Grotesk", sans-serif;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 0.75rem;
+}
+
+.portfolio-about {
+  margin-bottom: 4rem;
+}
+
+.about-grid {
+  display: grid;
+  grid-template-columns: minmax(180px, 280px) 1fr;
+  gap: 2.5rem;
+  align-items: start;
+}
+
+.about-photo img {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  display: block;
+}
+
+.about-copy-block h2 {
+  font-size: clamp(2.5rem, 7vw, 5rem);
+  line-height: 0.95;
+  margin-bottom: 0.5rem;
+}
+
+.about-copy-block h3 {
+  font-size: clamp(1.1rem, 2.5vw, 1.6rem);
+  margin-bottom: 1rem;
+  opacity: 0.75;
+}
+
+.about-copy-block p {
+  font-size: clamp(0.95rem, 1.5vw, 1.15rem);
+  opacity: 0.7;
+  max-width: 58ch;
+}
+
+.about-status {
+  font-weight: 600;
+  opacity: 0.85 !important;
+  margin-bottom: 0.75rem;
+}
+
+.about-goal {
+  margin-top: 1rem;
+  font-style: italic;
+}
+
+.portfolio-page .awards {
+  margin: 3rem 0;
+  padding-top: 2rem;
+  border-top: 1px solid rgba(10, 10, 10, 0.1);
+}
+
+.portfolio-page .awards[hidden],
+.portfolio-page .awards[style*="display: none"] {
+  display: none !important;
+}
+
+.portfolio-page .awards-header h3 {
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  margin-bottom: 1.5rem;
+}
+
+.portfolio-page .award {
+  display: grid;
+  grid-template-columns: 48px 1fr auto;
+  gap: 1rem;
+  padding: 1rem 0;
+  border-bottom: 1px solid rgba(10, 10, 10, 0.08);
+  align-items: start;
+}
+
+.portfolio-page .award-title h4 {
+  font-size: clamp(1.1rem, 2.2vw, 1.6rem);
+}
+
+.portfolio-page .award-title p {
+  font-size: 0.9rem;
+  opacity: 0.55;
+}
+
+.portfolio-page .award-year h4 {
+  font-family: "Acid Grotesk", sans-serif;
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+.skills-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.skill-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0.4rem 0.85rem;
+  border: 1px solid rgba(10, 10, 10, 0.18);
+  font-family: "Acid Grotesk", sans-serif;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.award-actions .asset-btn {
+  min-height: 36px;
+  font-size: 10px;
+  padding: 0.45rem 0.8rem;
+}
+
+/* Tablet: three-up gets cramped, so pair the cards two per row and let a
+   trailing odd card take the full row — rows stay filled for any count. */
+@media (max-width: 1100px) and (min-width: 901px) {
+  .portfolio-page .slide,
+  .portfolio-page .slide--half {
+    grid-column: span 3;
+  }
+
+  .portfolio-page .slide--full,
+  .portfolio-page .slide--empty,
+  .portfolio-page .slide:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 900px) {
+  .portfolio-body {
+    padding-top: 6.5rem;
+    width: 100%;
+    padding-left: 1.25rem;
+    padding-right: 1.25rem;
+    box-sizing: border-box;
+  }
+
+  .portfolio-body--lower {
+    padding-top: 0;
+  }
+
+  .portfolio-rail {
+    min-height: auto;
+    padding: 2rem 0 1rem;
+  }
+
+  .portfolio-rail-label {
+    width: 100%;
+    padding: 0 1.25rem 1rem;
+    box-sizing: border-box;
+  }
+
+  .portfolio-page .content-container {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    width: 100%;
+    min-height: 0;
+    padding: 0 1.25rem 1rem;
+    box-sizing: border-box;
+  }
+
+  /* Every card stacks full-width on mobile regardless of span class */
+  .portfolio-page .slide,
+  .portfolio-page .slide--half,
+  .portfolio-page .slide--full {
+    grid-column: 1 / -1;
+  }
+
+  .portfolio-page .slide:hover .content {
+    transform: none;
+  }
+
+  .portfolio-page .slide .content {
+    min-height: 0;
+    padding: 1.35rem 1.25rem 1.2rem;
+  }
+
+  .portfolio-page .slide h3,
+  .portfolio-page .slide--full h3 {
+    font-size: clamp(1.3rem, 6vw, 1.8rem);
+  }
+
+  .portfolio-page .slide--long-title h3 {
+    font-size: clamp(1.05rem, 4.6vw, 1.35rem);
+  }
+
+  .portfolio-page .slide-cta {
+    padding-top: 1.1rem;
+  }
+
+  .about-grid {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+
+  .about-photo {
+    max-width: 220px;
+    margin: 0 auto;
+  }
+
+  .portfolio-page .awards {
+    margin: 2rem 0;
+    padding-top: 1.5rem;
+  }
+
+  .portfolio-page .award {
+    grid-template-columns: 32px 1fr;
+    gap: 0.75rem;
+  }
+
+  .portfolio-page .award-year {
+    grid-column: 2;
+  }
+
+  .portfolio-page .award-year h4 {
+    opacity: 0.6;
+  }
+}

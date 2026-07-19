@@ -1,0 +1,556 @@
+/* Shared BEXO production chrome for Sierra Montana */
+
+:root {
+  --bg: #e4e3db;
+  --text-color: #0a0a0a;
+  --ink: #0a0a0a;
+  --paper: #e4e3db;
+  --project-primary: rgb(var(--accent-rgb, 200, 140, 70));
+  --project-footer: #0a0a0a;
+  --accent: rgb(var(--accent-rgb, 200, 140, 70));
+  --accent-rgb: 200, 140, 70;
+  --accent-solid-text: #0a0a0a;
+  --menu-ink: #e4e3db;
+  --overlay-bg: #000;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--text-color);
+  min-height: 100dvh;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-solid-text);
+}
+
+.skip-link {
+  position: absolute;
+  left: 1rem;
+  top: -100px;
+  z-index: 10000;
+  background: var(--ink);
+  color: var(--paper);
+  padding: 0.75rem 1rem;
+  font-family: "Acid Grotesk", sans-serif;
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.skip-link:focus {
+  top: 1rem;
+}
+
+/* Boot loader — premium brand reveal with a progress sweep */
+.boot-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  background: var(--bg);
+  transition: opacity 0.5s ease, visibility 0.5s ease;
+}
+
+.boot-loader.is-done {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.boot-loader-brand {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+  opacity: 0;
+  animation: boot-brand-in 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Old spinner kept hidden for backward compatibility with existing markup */
+.boot-loader-mark {
+  display: none;
+}
+
+.boot-loader-text {
+  font-family: "Acid Grotesk", sans-serif;
+  font-size: 0.7rem;
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+  opacity: 0;
+  animation: boot-text-in 0.7s ease 0.15s forwards;
+}
+
+/* Progress track that fills once, then loops subtly until dismissed */
+.boot-loader-text::after {
+  content: "";
+  display: block;
+  width: 140px;
+  height: 1.5px;
+  margin: 1rem auto 0;
+  background:
+    linear-gradient(90deg, var(--accent), var(--accent)) no-repeat,
+    rgba(10, 10, 10, 0.12);
+  background-size: 40% 100%, 100% 100%;
+  animation: boot-progress 1.4s ease-in-out infinite;
+}
+
+@keyframes boot-brand-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.94); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes boot-text-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 0.6; transform: none; }
+}
+
+@keyframes boot-progress {
+  0% { background-position: -60% 0, 0 0; }
+  100% { background-position: 160% 0, 0 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boot-loader-brand,
+  .boot-loader-text { animation-duration: 0.01ms; opacity: 1; }
+  .boot-loader-text::after { animation: none; }
+}
+
+/* Theme backgrounds — each is a distinct, accent-tied canvas treatment so
+   switching the background (or the accent) visibly changes the whole page.
+   Two layers per theme: a fixed pattern (::before) and, for some, a soft
+   accent wash (::after) for depth. */
+html[data-theme-bg] body::before,
+html[data-theme-bg] body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+html[data-theme-bg] body::before {
+  z-index: 0;
+}
+
+html[data-theme-bg] body::after {
+  z-index: 0;
+}
+
+/* GRID — architectural graph paper: fine minor lines + bold accent major
+   lines every 5 cells. Reads clearly as a blueprint grid. */
+html[data-theme-bg="grid"] body::before {
+  background-image:
+    linear-gradient(rgba(10, 10, 10, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(10, 10, 10, 0.05) 1px, transparent 1px),
+    linear-gradient(rgba(var(--accent-rgb), 0.22) 1.5px, transparent 1.5px),
+    linear-gradient(90deg, rgba(var(--accent-rgb), 0.22) 1.5px, transparent 1.5px);
+  background-size: 34px 34px, 34px 34px, 170px 170px, 170px 170px;
+  background-position: -1px -1px, -1px -1px, -1px -1px, -1px -1px;
+  opacity: 0.85;
+}
+
+html[data-theme-bg="grid"] body::after {
+  background: radial-gradient(ellipse 80% 60% at 50% 0%, transparent 55%, rgba(10, 10, 10, 0.05) 100%);
+  opacity: 1;
+}
+
+/* DOTS — engineered dot matrix in the accent color, denser and bolder than
+   before so it clearly reads as a dotted field. */
+html[data-theme-bg="dots"] body::before {
+  background-image: radial-gradient(rgba(var(--accent-rgb), 0.4) 1.6px, transparent 1.7px);
+  background-size: 22px 22px;
+  opacity: 0.9;
+}
+
+html[data-theme-bg="dots"] body::after {
+  background: radial-gradient(ellipse 90% 70% at 50% 20%, rgba(var(--accent-rgb), 0.06), transparent 70%);
+  opacity: 1;
+}
+
+/* WAVES — real flowing accent wave lines (SVG) that slowly drift, layered
+   over a soft diagonal accent wash. Distinctly organic vs. the grids. */
+html[data-theme-bg="waves"] body::before {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='40' viewBox='0 0 120 40'%3E%3Cpath d='M0 20 Q 15 4 30 20 T 60 20 T 90 20 T 120 20' fill='none' stroke='%230a0a0a' stroke-opacity='0.5' stroke-width='1'/%3E%3C/svg%3E");
+  background-size: 120px 40px;
+  opacity: 0.28;
+  animation: bexo-wave-drift 18s linear infinite;
+}
+
+html[data-theme-bg="waves"] body::after {
+  background:
+    radial-gradient(ellipse at 15% 0%, rgba(var(--accent-rgb), 0.18), transparent 45%),
+    radial-gradient(ellipse at 85% 100%, rgba(var(--accent-rgb), 0.16), transparent 42%);
+  opacity: 1;
+}
+
+@keyframes bexo-wave-drift {
+  from { background-position: 0 0; }
+  to { background-position: 120px 0; }
+}
+
+/* SOLID — clean flat canvas with a single soft accent glow in the corner and
+   a gentle vignette. Deliberately minimal; the opposite of the patterns. */
+html[data-theme-bg="solid"] body::before {
+  background:
+    radial-gradient(ellipse 70% 70% at 100% 0%, rgba(var(--accent-rgb), 0.2), transparent 55%),
+    radial-gradient(ellipse 90% 90% at 0% 100%, rgba(10, 10, 10, 0.05), transparent 60%);
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme-bg="waves"] body::before { animation: none; }
+}
+
+/* Keep chrome (logo/menu/overlay) on their own stacking contexts from nav.css.
+   Only lift page content above theme paper textures (::before + ::after). */
+.index,
+.index-hero,
+.smoothScroll,
+.wrapper,
+.site-content,
+.home,
+.contact-page-inner {
+  position: relative;
+  z-index: 1;
+}
+
+/* Scroll reveal — sections ease in as they enter the viewport */
+.bexo-reveal {
+  opacity: 0;
+  transform: translateY(26px);
+  transition:
+    opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  transition-delay: var(--reveal-delay, 0ms);
+  will-change: opacity, transform;
+}
+
+.bexo-reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bexo-reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+/* Footer */
+.site-footer {
+  padding: 3rem 1.5rem 2rem;
+  border-top: 1px solid rgba(10, 10, 10, 0.1);
+  margin-top: 4rem;
+}
+
+.site-footer .footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.5rem;
+  justify-content: center;
+  margin-bottom: 1.5rem;
+}
+
+.site-footer .footer-links a {
+  font-family: "Acid Grotesk", sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(10, 10, 10, 0.65);
+  text-decoration: none;
+}
+
+.site-footer .footer-links a:hover {
+  color: var(--accent);
+}
+
+.footer-copyright {
+  text-align: center;
+}
+
+.footer-copyright p {
+  font-family: "Acid Grotesk", sans-serif;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0.45;
+}
+
+.footer-bexo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  margin-top: 0.75em;
+  font-family: "Acid Grotesk", sans-serif;
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(10, 10, 10, 0.4);
+  text-decoration: none;
+}
+
+.footer-bexo img {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+  opacity: 0.85;
+}
+
+/* Asset buttons + lightbox */
+.asset-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.asset-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0.65rem 1.1rem;
+  border: 1px solid rgba(10, 10, 10, 0.35);
+  background: transparent;
+  color: var(--ink);
+  font-family: "Acid Grotesk", sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.asset-btn:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-solid-text);
+}
+
+.lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200000;
+  background: rgba(10, 10, 10, 0.92);
+  display: flex;
+  flex-direction: column;
+  color: #e4e3db;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+.lightbox-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.25rem;
+}
+
+.lightbox-caption {
+  font-family: "Acid Grotesk", sans-serif;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
+.lightbox-close,
+.lightbox-nav {
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid rgba(228, 227, 219, 0.35);
+  background: transparent;
+  color: #e4e3db;
+  font-family: "Acid Grotesk", sans-serif;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.lightbox-stage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 0 1rem;
+  min-height: 0;
+}
+
+.lightbox-image {
+  max-width: min(92vw, 1100px);
+  max-height: 70dvh;
+  object-fit: contain;
+}
+
+.lightbox-thumbs {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+  padding: 0.75rem 1rem 1.25rem;
+  overflow-x: auto;
+}
+
+.lightbox-thumb {
+  width: 56px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0.55;
+}
+
+.lightbox-thumb.is-active,
+.lightbox-thumb:hover {
+  opacity: 1;
+  border-color: rgba(228, 227, 219, 0.6);
+}
+
+.lightbox-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Theme lab */
+.theme-lab {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 5000;
+  font-family: "Acid Grotesk", sans-serif;
+}
+
+.theme-lab-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0.6rem 1rem;
+  border: 1px solid rgba(10, 10, 10, 0.22);
+  background: rgba(228, 227, 219, 0.95);
+  cursor: pointer;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  box-shadow: 0 6px 20px rgba(10, 10, 10, 0.1);
+}
+
+.theme-lab-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 1px rgba(10, 10, 10, 0.15);
+}
+
+.theme-lab-panel {
+  margin-top: 0.5rem;
+  width: 224px;
+  padding: 0.9rem;
+  background: #fff;
+  border: 1px solid rgba(10, 10, 10, 0.12);
+  box-shadow: 0 16px 40px rgba(10, 10, 10, 0.12);
+}
+
+.theme-lab-caption {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  opacity: 0.4;
+  margin-bottom: 0.85rem;
+}
+
+.theme-lab-title {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0.5;
+  margin-bottom: 0.45rem;
+}
+
+.theme-lab-swatches {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 0.85rem;
+}
+
+.theme-lab-swatches button {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(10, 10, 10, 0.2);
+  cursor: pointer;
+}
+
+.theme-lab-swatches button.is-active {
+  box-shadow: 0 0 0 2px #0a0a0a;
+}
+
+.theme-lab-bgs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+}
+
+.theme-lab-bgs button,
+.theme-lab-reset {
+  min-height: 36px;
+  border: 1px solid rgba(10, 10, 10, 0.15);
+  background: #f7f6f2;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.theme-lab-bgs button.is-active {
+  border-color: #0a0a0a;
+  background: #0a0a0a;
+  color: #f7f6f2;
+}
+
+.menu-handle {
+  font-family: "Acid Grotesk", sans-serif;
+  font-size: 14px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(228, 227, 219, 0.55);
+}
+
+.menu a.is-active {
+  color: var(--accent);
+}
+
+.hire-shell {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 2rem;
+  text-align: center;
+  font-family: "Acid Grotesk", sans-serif;
+}
+
+.hire-shell a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.empty-notice {
+  padding: 2rem;
+  font-family: "Acid Grotesk", sans-serif;
+}
+

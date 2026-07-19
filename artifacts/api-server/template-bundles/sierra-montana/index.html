@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Portfolio</title>
+    <link rel="icon" type="image/png" href="./assets/bexo-logo.png" />
+    <link rel="apple-touch-icon" href="./assets/bexo-logo.png" />
+    <link rel="stylesheet" href="./css/fonts.css?v=6" />
+    <link rel="stylesheet" href="./css/styles.css?v=6" />
+    <link rel="stylesheet" href="./css/nav.css?v=6" />
+    <link rel="stylesheet" href="./css/index.css?v=6" />
+    <link rel="stylesheet" href="./css/bexo.css?v=6" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <div class="boot-loader" role="status" aria-label="Loading portfolio">
+      <img class="boot-loader-brand" src="./assets/bexo-logo.png" alt="BEXO" />
+      <div class="boot-loader-mark"></div>
+      <div class="boot-loader-text">Portfolio</div>
+    </div>
+
+    <div class="btn" id="toggle-btn" role="button" tabindex="0" aria-label="Open menu" aria-expanded="false">
+      <div class="btn-outline btn-outline-1"></div>
+      <div class="btn-outline btn-outline-2"></div>
+      <div id="hamburger"><span></span></div>
+    </div>
+
+    <div class="overlay" aria-hidden="true">
+      <svg viewBox="0 0 350 1000">
+        <path d="M0 2S175 1 500 1s500 1 500 1V0H0Z"></path>
+      </svg>
+    </div>
+
+    <nav class="menu" id="site-menu" aria-label="Primary"></nav>
+
+    <main id="main" class="index">
+      <section class="index-hero" data-hero>
+        <div class="index-hero-copy">
+          <h1 class="index-name">
+            <span class="index-name-line index-name-first" data-bexo="user.name.first"></span>
+            <span class="index-name-line index-name-last" data-bexo="user.name.last"></span>
+          </h1>
+          <p class="index-headline" data-bexo="profile.headline"></p>
+          <div class="home-cta"></div>
+        </div>
+        <div class="index-hero-portrait">
+          <div class="home-img">
+            <img src="" alt="" />
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script src="./js/profile-data.js?v=6"></script>
+    <script src="./js/profile-runtime.js?v=6"></script>
+    <script src="./js/theme.js?v=6"></script>
+    <script src="./js/media.js?v=6"></script>
+    <script src="./js/contact.js?v=6"></script>
+    <script src="./js/nav.js?v=6"></script>
+    <script src="./js/render.js?v=6"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/CSSRulePlugin.min.js"></script>
+    <script src="./js/script.js?v=6"></script>
+    <script>
+      (function () {
+        const targets = ".index-name-line, .index-headline, .home-cta";
+        const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        if (reduce || typeof gsap === "undefined") {
+          document.querySelectorAll(targets).forEach((el) => {
+            el.style.opacity = "1";
+            el.style.transform = "none";
+          });
+          return;
+        }
+        gsap.set(targets, { opacity: 0, y: 34 });
+        gsap.set(".index-hero-portrait .home-img", { opacity: 0, scale: 0.9 });
+        const intro = gsap
+          .timeline({ delay: 0.15 })
+          .to(".index-name-line", {
+            opacity: 1,
+            y: 0,
+            duration: 0.9,
+            ease: "power4.out",
+            stagger: 0.12,
+          })
+          .to(
+            ".index-hero-portrait .home-img",
+            { opacity: 1, scale: 1, duration: 1.1, ease: "power4.out" },
+            "-=0.7",
+          )
+          .to(".index-headline", { opacity: 1, y: 0, duration: 0.55, ease: "power3.out" }, "-=0.65")
+          .to(".home-cta", { opacity: 1, y: 0, duration: 0.55, ease: "power3.out" }, "-=0.4");
+
+        // Safety: if the tab is throttled and the intro can't finish,
+        // jump to the end state so the hero is never left invisible.
+        setTimeout(() => {
+          if (intro.progress() < 1) intro.progress(1);
+        }, 3000);
+      })();
+    </script>
+  </body>
+</html>

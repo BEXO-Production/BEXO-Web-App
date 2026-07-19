@@ -1,0 +1,205 @@
+.contact-page {
+  background: var(--bg);
+  color: var(--text-color);
+}
+
+.contact-shell {
+  padding: 7rem 0 4rem;
+  width: min(1100px, 90%);
+  margin: 0 auto;
+}
+
+.contact-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.1fr;
+  gap: 3rem;
+  align-items: start;
+}
+
+.contact-kicker {
+  font-family: "Acid Grotesk", sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--accent);
+  opacity: 1;
+  margin-bottom: 1rem;
+}
+
+.contact-heading {
+  font-family: "Canopee", serif;
+  font-size: clamp(3rem, 8vw, 6.5rem);
+  line-height: 0.9;
+  margin-bottom: 1rem;
+}
+
+.contact-heading em {
+  font-style: italic;
+  color: var(--accent);
+}
+
+.contact-sub {
+  font-size: 1.1rem;
+  opacity: 0.55;
+  margin-bottom: 1.5rem;
+}
+
+.contact-email {
+  display: inline-block;
+  font-family: "Acid Grotesk", sans-serif;
+  font-size: clamp(1rem, 2vw, 1.4rem);
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid var(--accent);
+  margin-bottom: 1rem;
+  text-transform: none;
+}
+
+.contact-badge {
+  display: inline-flex;
+  margin-left: 0.75rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(var(--accent-rgb), 0.15);
+  color: var(--accent);
+  font-family: "Acid Grotesk", sans-serif;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.contact-socials {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  margin-top: 1.5rem;
+}
+
+.contact-socials a {
+  font-family: "Acid Grotesk", sans-serif;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(10, 10, 10, 0.65);
+  text-decoration: none;
+}
+
+.contact-socials a:hover {
+  color: var(--accent);
+}
+
+.contact-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  background: rgba(255, 255, 255, 0.45);
+  border: 1px solid rgba(10, 10, 10, 0.08);
+  padding: 1.5rem;
+}
+
+.contact-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-family: "Acid Grotesk", sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.contact-form input,
+.contact-form textarea {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid rgba(10, 10, 10, 0.18);
+  background: #fff;
+  padding: 0.85rem 1rem;
+  font-family: "Acid Grotesk", sans-serif;
+  font-size: 15px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #0a0a0a;
+}
+
+.contact-form textarea {
+  min-height: 140px;
+  resize: vertical;
+}
+
+.contact-form input:focus,
+.contact-form textarea:focus {
+  outline: 2px solid rgba(var(--accent-rgb), 0.45);
+  border-color: var(--accent);
+}
+
+.contact-error {
+  font-style: normal;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: #b42318;
+  min-height: 1em;
+}
+
+.contact-honeypot {
+  position: absolute !important;
+  left: -9999px !important;
+  opacity: 0 !important;
+  height: 0 !important;
+  width: 0 !important;
+}
+
+.contact-submit {
+  min-height: 52px;
+  border: none;
+  background: #0a0a0a;
+  color: #e4e3db;
+  font-family: "Acid Grotesk", sans-serif;
+  font-size: 13px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.15s ease;
+}
+
+.contact-submit:hover {
+  background: var(--accent);
+  color: var(--accent-solid-text);
+}
+
+.contact-submit:active {
+  transform: scale(0.98);
+}
+
+.contact-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.contact-status {
+  font-family: "Acid Grotesk", sans-serif;
+  font-size: 13px;
+  opacity: 0.75;
+  min-height: 1.2em;
+}
+
+.contact-status[data-state="success"] {
+  color: #1f7a4c;
+  opacity: 1;
+}
+
+.contact-status[data-state="error"] {
+  color: #b42318;
+  opacity: 1;
+}
+
+@media (max-width: 900px) {
+  .contact-shell {
+    padding-top: 5.5rem;
+  }
+
+  .contact-grid {
+    grid-template-columns: 1fr;
+    gap: 2rem;
+  }
+}
