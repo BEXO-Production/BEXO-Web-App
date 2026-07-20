@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { buildPublicProfile } from "./publicProfile";
 
@@ -7,11 +8,17 @@ import { buildPublicProfile } from "./publicProfile";
  */
 export const MARKETING_DEMO_HANDLE = "bexo-demo";
 
-/** Absolute directory served at /api/marketing-demo/* (cwd = api-server package). */
-export const MARKETING_DEMO_ASSETS_DIR = path.resolve(
-  process.cwd(),
-  "public/marketing-demo",
-);
+/**
+ * Absolute directory served at /api/marketing-demo/*.
+ * pnpm/dev cwd is artifacts/api-server; Cloud Run cwd is the monorepo root.
+ */
+export const MARKETING_DEMO_ASSETS_DIR = (() => {
+  const candidates = [
+    path.resolve(process.cwd(), "public", "marketing-demo"),
+    path.resolve(process.cwd(), "artifacts", "api-server", "public", "marketing-demo"),
+  ];
+  return candidates.find((dir) => existsSync(dir)) || candidates[0];
+})();
 
 const asset = (file: string) => `/api/marketing-demo/${file}`;
 
