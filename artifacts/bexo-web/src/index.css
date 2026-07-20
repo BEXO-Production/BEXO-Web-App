@@ -3,6 +3,116 @@
 @import 'tw-animate-css';
 @plugin "@tailwindcss/typography";
 
+/* Landing marquee */
+@keyframes landing-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.landing-marquee {
+  animation: landing-marquee 32s linear infinite;
+}
+
+/* Hard colors — Safari often fails to paint Tailwind arbitrary bg/text over body.bg-background */
+.landing-root {
+  --landing-ink: #0b1220;
+  --landing-paper: #f7f4ef;
+  --landing-accent: #2f6bff;
+  background-color: var(--landing-ink) !important;
+  color: #f8fafc !important;
+  min-height: 100vh;
+  color-scheme: dark;
+  font-family: var(--app-font-sans);
+  isolation: isolate;
+}
+.landing-root .landing-surface-dark {
+  background-color: var(--landing-ink) !important;
+  color: #f8fafc !important;
+}
+.landing-root .landing-surface-darker {
+  background-color: #070b14 !important;
+  color: #f8fafc !important;
+}
+.landing-root .landing-surface-paper {
+  background-color: var(--landing-paper) !important;
+  color: #0f172a !important;
+  color-scheme: light;
+}
+.landing-root .landing-muted {
+  color: rgba(248, 250, 252, 0.55) !important;
+}
+.landing-root .landing-muted-strong {
+  color: rgba(248, 250, 252, 0.9) !important;
+}
+.landing-cursor-root {
+  cursor: none;
+}
+@media (pointer: coarse) {
+  .landing-cursor-root {
+    cursor: auto;
+  }
+}
+@keyframes landing-orb-drift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(18px, -12px) scale(1.06); }
+}
+.landing-orb-a {
+  animation: landing-orb-drift 14s ease-in-out infinite;
+}
+.landing-orb-b {
+  animation: landing-orb-drift 18s ease-in-out infinite reverse;
+}
+
+@keyframes landing-ring-pulse {
+  0% { transform: scale(0.92); opacity: 0.55; }
+  70% { transform: scale(1.08); opacity: 0; }
+  100% { transform: scale(1.08); opacity: 0; }
+}
+.landing-ring-1 { animation: landing-ring-pulse 3.2s ease-out infinite; }
+.landing-ring-2 { animation: landing-ring-pulse 3.2s ease-out 0.7s infinite; }
+.landing-ring-3 { animation: landing-ring-pulse 3.2s ease-out 1.4s infinite; }
+
+@keyframes landing-caret-blink {
+  0%, 45% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+.landing-caret {
+  height: 0.95em;
+  margin-left: 1px;
+  animation: landing-caret-blink 1s step-end infinite;
+}
+
+@keyframes landing-live-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.85); }
+}
+.landing-live-dot {
+  animation: landing-live-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes landing-chip-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+.landing-float-chip:nth-child(1) { animation: landing-chip-float 4.5s ease-in-out infinite; }
+.landing-float-chip:nth-child(2) { animation: landing-chip-float 4.5s ease-in-out 0.4s infinite; }
+.landing-float-chip:nth-child(3) { animation: landing-chip-float 4.5s ease-in-out 0.8s infinite; }
+
+.landing-preview-frame {
+  position: relative;
+  overflow: hidden;
+  background: #0d0d11;
+}
+/* Do NOT use inset:0 with width/height scale — that shrinks the iframe to the top-left */
+.landing-preview-frame .landing-preview-iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border: 0;
+  background: #0d0d11;
+  pointer-events: none;
+  will-change: transform;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

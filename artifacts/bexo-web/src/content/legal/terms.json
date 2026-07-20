@@ -1,0 +1,435 @@
+{
+  "title": "Terms of Service",
+  "lead": "Binding terms governing your use of BEXO's professional portfolio-building platform",
+  "sections": [
+    {
+      "title": "Introduction & Acceptance of Terms",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "These Terms of Service (\"Terms\") constitute a legally binding agreement between you (\"User\", \"you\") and Ace Digital (\"Company\", \"we\", \"us\", \"our\"). Ace Digital is owned and operated by KSKG Private Ltd. BEXO is a product of Ace Digital, accessible at www.mybexo.com and all associated subdomains, mobile applications, and APIs (collectively, the \"Platform\"). These Terms govern your access to and use of the Platform and all services offered therein."
+        },
+        {
+          "type": "p",
+          "text": "By creating an account, accessing, browsing, or using any part of the Platform — including making a payment or utilising a free feature — you confirm that you have read, understood, and agree to be bound by these Terms, our Privacy Policy, our Refund & Cancellation Policy, and our Cookie Policy, all of which are incorporated herein by reference."
+        },
+        {
+          "type": "p",
+          "text": "These Terms apply in addition to any other agreements between you and the Company. In the event of a conflict, these Terms shall prevail unless expressly stated otherwise in a separate written agreement signed by an authorised representative of the Company."
+        }
+      ]
+    },
+    {
+      "title": "Definitions",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "For the purposes of these Terms, the following definitions shall apply:"
+        },
+        {
+          "type": "ul",
+          "items": [
+            "\"BEXO\" refers to the online portfolio-building and professional showcase product of Ace Digital, operated by the Company at www.mybexo.com and associated subdomains including {handle}.mybexo.com.",
+            "\"User\" means any individual or entity who accesses, browses, registers on, or uses the Platform in any capacity, whether as a Free User or a Subscribed User.",
+            "\"Account\" means the registered user profile created upon completing the sign-up process on the Platform.",
+            "\"Content\" means any text, images, photographs, videos, files, documents, links, data, or other material uploaded, submitted, created, or published by a User on the Platform.",
+            "\"Portfolio\" means the personalised public-facing webpage created and hosted for a User at {handle}.mybexo.com.",
+            "\"Subscription\" means a paid access plan (Annual or Lifetime) that unlocks premium features on the Platform.",
+            "\"Subscription Fee\" means the applicable fee charged for a Subscription plan as listed on the Platform's pricing page at any given time.",
+            "\"Intellectual Property Rights\" means all patents, copyrights, trademarks, trade secrets, database rights, and any other proprietary rights recognised under Indian or international law.",
+            "\"Third-Party Services\" means external platforms, tools, or services integrated with or linked from BEXO, including but not limited to payment processors, cloud infrastructure providers, and analytics tools.",
+            "\"Personal Data\" has the meaning assigned to it under the Information Technology (Reasonable Security Practices and Procedures and Sensitive Personal Data or Information) Rules, 2011.",
+            "\"Sensitive Personal Data or Information (SPDI)\" means passwords, financial information (bank account, credit/debit card details), physical/physiological/mental health information, and any other information classified as sensitive under applicable Indian law."
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Eligibility & User Representations",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "To use the Platform, you must meet all of the following eligibility requirements:"
+        },
+        {
+          "type": "ul",
+          "items": [
+            "You must be at least 13 years of age. Users between the ages of 13 and 18 must obtain verifiable parental or guardian consent before creating an account.",
+            "You must be legally capable of entering into a binding contract under the Indian Contract Act, 1872.",
+            "You must not be a person barred from receiving services under applicable Indian law or under any jurisdiction in which you reside.",
+            "If accessing the Platform on behalf of an organisation, you represent that you have authority to bind that entity to these Terms."
+          ]
+        },
+        {
+          "type": "p",
+          "text": "By using the Platform, you represent, warrant, and covenant that all information you provide is accurate, current, and complete, and that you will keep such information updated."
+        }
+      ]
+    },
+    {
+      "title": "Account Registration & Security",
+      "blocks": [
+        {
+          "type": "h3",
+          "text": "4.1 Registration Process"
+        },
+        {
+          "type": "p",
+          "text": "To access the Platform's core features, you must register for an Account. During registration you will be required to provide your name, a valid email address, and a password, or authenticate via an approved third-party OAuth provider (Google or LinkedIn). You agree to provide accurate and truthful information and to update it promptly if it changes."
+        },
+        {
+          "type": "h3",
+          "text": "4.2 Account Security"
+        },
+        {
+          "type": "p",
+          "text": "You are solely responsible for maintaining the confidentiality of your login credentials. You agree to choose a strong, unique password, log out after each session on shared or public devices, and notify us immediately at support@acedigital.cc if you suspect any unauthorised access. The Company will not be liable for any loss arising from your failure to maintain account security."
+        },
+        {
+          "type": "h3",
+          "text": "4.3 One Account Per User"
+        },
+        {
+          "type": "p",
+          "text": "Each individual is permitted to maintain only one active Account. Creation of multiple Accounts to circumvent restrictions, promotional limits, or bans is strictly prohibited and will result in immediate termination of all associated Accounts."
+        },
+        {
+          "type": "h3",
+          "text": "4.4 Account Verification"
+        },
+        {
+          "type": "p",
+          "text": "The Company may, at its discretion, require identity or email verification before granting full access to certain features. Failure to complete verification within a reasonable time may result in restricted access or Account suspension."
+        }
+      ]
+    },
+    {
+      "title": "Description of Services",
+      "blocks": [
+        {
+          "type": "h3",
+          "text": "5.1 Core Platform Features"
+        },
+        {
+          "type": "ul",
+          "items": [
+            "Portfolio Builder: An intuitive interface to create and customise a professional portfolio website.",
+            "Subdomain Hosting: A unique live portfolio hosted at {yourhandle}.mybexo.com.",
+            "Asset Storage: Up to 100 MB of cloud storage per Account.",
+            "Lifetime Hosting: Continued hosting for the duration of your active Subscription or indefinitely (Lifetime plan).",
+            "Profile Analytics: Basic statistics on portfolio visits and engagement (Subscribed Users).",
+            "Custom Handle: A personalised subdomain handle of your choice, subject to availability.",
+            "Portfolio Sharing Tools: One-click links, QR code generation, and social sharing integrations."
+          ]
+        },
+        {
+          "type": "h3",
+          "text": "5.2 Free vs. Subscribed Features"
+        },
+        {
+          "type": "p",
+          "text": "Certain features may be accessible in a limited capacity without a paid Subscription. The full feature set is available exclusively to Subscribed Users. The Company reserves the right to modify the feature tiers at any time with reasonable notice."
+        },
+        {
+          "type": "h3",
+          "text": "5.3 Beta Features"
+        },
+        {
+          "type": "p",
+          "text": "Beta or preview features are provided 'as is' without warranty and may be withdrawn at any time without notice."
+        },
+        {
+          "type": "h3",
+          "text": "5.4 Availability & Uptime"
+        },
+        {
+          "type": "p",
+          "text": "The Company will use commercially reasonable efforts to maintain Platform availability of at least 99% on a monthly basis, excluding scheduled maintenance windows. Scheduled maintenance will be communicated to Subscribed Users via email at least 48 hours in advance."
+        }
+      ]
+    },
+    {
+      "title": "Subscription Plans & Payment Terms",
+      "blocks": [
+        {
+          "type": "h3",
+          "text": "6.1 Available Plans"
+        },
+        {
+          "type": "ul",
+          "items": [
+            "Annual Plan — Standard Rate: INR 1,499/year (exclusive of GST at 18%).",
+            "Annual Plan — Launch Promotional Rate: INR 999/year (exclusive of GST). Limited-time coupon codes may apply.",
+            "Lifetime Plan — Standard Rate: INR 2,999 (one-time payment, exclusive of GST at 18%).",
+            "Lifetime Plan — Launch Promotional Rate: INR 1,999 (one-time payment, exclusive of GST). Limited-time coupon codes may apply.",
+            "Storage: Free 10MB · Yearly 100MB base · Lifetime 500MB base. Lifetime users may purchase Yearly as a +100MB storage add-on."
+          ]
+        },
+        {
+          "type": "h3",
+          "text": "6.2 Payment Processing"
+        },
+        {
+          "type": "p",
+          "text": "All payments are processed by Razorpay Software Private Limited, an RBI-regulated Payment Aggregator. The Company does not store, process, or have access to your full card details, bank account numbers, or CVV/CVC data at any time."
+        },
+        {
+          "type": "h3",
+          "text": "6.3 GST & Invoicing"
+        },
+        {
+          "type": "p",
+          "text": "Our GSTIN is 33AAACA0000A1Z5. Subscription Fees are charged exclusive of GST at 18%, which is added at checkout. A GST-compliant tax invoice will be emailed to your registered email address within 24 hours of a successful payment."
+        },
+        {
+          "type": "h3",
+          "text": "6.4 Auto-Renewal (Annual Plans)"
+        },
+        {
+          "type": "p",
+          "text": "Annual Subscriptions renew at INR 1,499/year (exclusive of GST) unless you cancel before the renewal date. A reminder email will be sent at least 7 days prior. You may cancel at any time from Account Settings."
+        },
+        {
+          "type": "h3",
+          "text": "6.5 Payment Failures"
+        },
+        {
+          "type": "p",
+          "text": "If a payment fails, you will have a grace period of 7 days to resolve it before your Account is downgraded to the Free tier."
+        },
+        {
+          "type": "h3",
+          "text": "6.6 Price Changes"
+        },
+        {
+          "type": "p",
+          "text": "Price changes will be communicated to active Subscribers via email at least 30 days in advance. Continued use after the effective date of a price change constitutes acceptance of the new pricing."
+        }
+      ]
+    },
+    {
+      "title": "User Content & Conduct",
+      "blocks": [
+        {
+          "type": "h3",
+          "text": "7.1 Ownership of User Content"
+        },
+        {
+          "type": "p",
+          "text": "You retain full ownership of all Content you upload or publish on the Platform. By submitting Content, you grant the Company a non-exclusive, worldwide, royalty-free licence to host, store, reproduce, and display your Content solely for the purpose of operating, improving, and promoting the Platform. This licence terminates when you delete the Content or your Account."
+        },
+        {
+          "type": "h3",
+          "text": "7.2 Content Standards"
+        },
+        {
+          "type": "p",
+          "text": "You represent and warrant that you own all rights to the Content, that it does not infringe any third-party rights, that it is accurate and not misleading, and that it complies with all applicable laws and these Terms."
+        },
+        {
+          "type": "h3",
+          "text": "7.3 Prohibited Content"
+        },
+        {
+          "type": "p",
+          "text": "You must not upload Content that is unlawful, defamatory, obscene, pornographic, promotes violence or hate speech, infringes Intellectual Property Rights, contains malware or viruses, constitutes spam, is designed to impersonate another person, or violates the Information Technology Act, 2000."
+        },
+        {
+          "type": "h3",
+          "text": "7.4 Content Removal"
+        },
+        {
+          "type": "p",
+          "text": "The Company reserves the right to remove or disable access to any Content that violates these Terms or applicable law. We will make reasonable efforts to notify you before removal unless doing so would compromise an investigation or legal proceedings."
+        },
+        {
+          "type": "h3",
+          "text": "7.5 Acceptable Use Policy"
+        },
+        {
+          "type": "p",
+          "text": "You agree not to attempt unauthorised access to the Platform, reverse-engineer its software, use automated bots or scrapers, interfere with Platform integrity, circumvent security mechanisms, or resell, sublicence, or transfer your Subscription or Account to any third party."
+        }
+      ]
+    },
+    {
+      "title": "Intellectual Property Rights",
+      "blocks": [
+        {
+          "type": "h3",
+          "text": "8.1 Company's Intellectual Property"
+        },
+        {
+          "type": "p",
+          "text": "All rights in and to the Platform — including its design, source code, BEXO brand name, logo, and trademarks — are owned exclusively by Ace Digital or its licensors and are protected under the Copyright Act, 1957, Trade Marks Act, 1999, and other applicable laws. Nothing in these Terms grants you any right or licence to the Company's Intellectual Property except the limited right to use the Platform as described herein."
+        },
+        {
+          "type": "h3",
+          "text": "8.2 Feedback"
+        },
+        {
+          "type": "p",
+          "text": "If you provide feedback or feature requests, you hereby irrevocably assign to the Company all Intellectual Property Rights in such Feedback. The Company may use Feedback for any purpose without obligation or compensation to you."
+        },
+        {
+          "type": "h3",
+          "text": "8.3 Copyright Infringement Notices"
+        },
+        {
+          "type": "p",
+          "text": "If you believe your copyrighted work has been reproduced on the Platform without authorisation, please submit a takedown notice to legal@acedigital.cc with: identification of the copyrighted work; identification of the infringing material and its URL; your contact information; a statement of good faith belief; and a statement under penalty of perjury that the information is accurate."
+        }
+      ]
+    },
+    {
+      "title": "Third-Party Services & Links",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "The Platform may contain links to third-party websites or integrate with third-party services (including Razorpay, Google OAuth, LinkedIn OAuth, and analytics providers). These integrations are provided for convenience only. The Company does not endorse or accept responsibility for the content, privacy practices, or terms of any third-party service."
+        },
+        {
+          "type": "p",
+          "text": "Your use of any third-party service is governed solely by that service's own terms. The Company shall not be liable for any loss or damage arising from your use of or reliance on any third-party service."
+        }
+      ]
+    },
+    {
+      "title": "Privacy & Data Protection",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "The Company is committed to protecting your privacy. The collection, use, and disclosure of your Personal Data is governed by our Privacy Policy, which is incorporated into these Terms by reference. The Platform is designed in compliance with the Information Technology Act, 2000, the SPDI Rules, 2011, and, where applicable, the principles of the Digital Personal Data Protection Act, 2023 (DPDPA)."
+        }
+      ]
+    },
+    {
+      "title": "Disclaimers & Limitation of Liability",
+      "blocks": [
+        {
+          "type": "h3",
+          "text": "11.1 Disclaimer of Warranties"
+        },
+        {
+          "type": "h3",
+          "text": "11.2 Limitation of Liability"
+        },
+        {
+          "type": "h3",
+          "text": "11.3 Indemnification"
+        },
+        {
+          "type": "p",
+          "text": "You agree to indemnify, defend, and hold harmless Ace Digital, KSKG Private Ltd., and their respective directors, officers, employees, and agents from and against any claims, liabilities, damages, losses, and expenses (including reasonable legal fees) arising out of or in connection with your use of the Platform, your Content, your breach of these Terms, or your violation of any applicable law or the rights of any third party."
+        }
+      ]
+    },
+    {
+      "title": "Termination & Suspension",
+      "blocks": [
+        {
+          "type": "h3",
+          "text": "12.1 Termination by User"
+        },
+        {
+          "type": "p",
+          "text": "You may close your Account at any time from Account Settings. Upon closure, your portfolio and all associated data will be permanently deleted within 30 days, except where retention is required by applicable law. Closing your Account does not entitle you to a refund unless you meet the criteria in our Refund & Cancellation Policy."
+        },
+        {
+          "type": "h3",
+          "text": "12.2 Termination by Company"
+        },
+        {
+          "type": "p",
+          "text": "The Company may suspend or permanently terminate your Account immediately and without prior notice if you breach any provision of these Terms, we reasonably suspect fraudulent or illegal activity, your use harms other users or the Company's reputation, or we are required to do so by applicable law. Upon termination for cause, you will forfeit any remaining Subscription period and will not be eligible for a refund."
+        },
+        {
+          "type": "h3",
+          "text": "12.3 Effect of Termination"
+        },
+        {
+          "type": "p",
+          "text": "Upon termination, your right to access and use the Platform immediately ceases. Provisions that by their nature should survive termination — including intellectual property rights, disclaimers, limitations of liability, indemnification, and dispute resolution — shall survive."
+        }
+      ]
+    },
+    {
+      "title": "Grievance Redressal",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "In accordance with the Information Technology Act, 2000 and the IT (Intermediary Guidelines and Digital Media Ethics Code) Rules, 2021, the Company has designated a Grievance Officer:"
+        }
+      ]
+    },
+    {
+      "title": "Governing Law & Dispute Resolution",
+      "blocks": [
+        {
+          "type": "h3",
+          "text": "14.1 Governing Law"
+        },
+        {
+          "type": "p",
+          "text": "These Terms shall be governed by and construed in accordance with the laws of the Republic of India. The Indian Contract Act 1872, the Information Technology Act 2000, the Consumer Protection Act 2019, and all applicable rules thereunder shall apply."
+        },
+        {
+          "type": "h3",
+          "text": "14.2 Dispute Resolution Process"
+        },
+        {
+          "type": "ul",
+          "items": [
+            "Step 1 — Internal Resolution: Contact us at legal@acedigital.cc with a written description of the dispute. We will endeavour to resolve within 30 days of receipt.",
+            "Step 2 — Mediation: If unresolved, the parties shall attempt non-binding mediation before a mutually agreed mediator.",
+            "Step 3 — Jurisdiction: If mediation fails, the parties submit to the exclusive jurisdiction of the competent courts in Tamil Nadu, India."
+          ]
+        },
+        {
+          "type": "h3",
+          "text": "14.3 Consumer Rights"
+        },
+        {
+          "type": "p",
+          "text": "Nothing in this Section limits your statutory rights as a consumer under the Consumer Protection Act, 2019, including your right to approach the appropriate Consumer Disputes Redressal Commission."
+        }
+      ]
+    },
+    {
+      "title": "Amendments",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "The Company reserves the right to update or modify these Terms at any time. Material changes will be communicated via email and via a prominent notice on the Platform at least 15 days before taking effect. Continued use after the effective date constitutes acceptance of the revised Terms. The most current version will always be available at https://mybexo.com/terms."
+        }
+      ]
+    },
+    {
+      "title": "Force Majeure",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "The Company shall not be liable for any failure or delay in performing its obligations caused by events beyond its reasonable control, including acts of God, natural disasters, war, terrorism, government action, pandemic, labour disputes, power outages, or failures of internet infrastructure or third-party service providers."
+        }
+      ]
+    },
+    {
+      "title": "Entire Agreement & Severability",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "These Terms, together with the Privacy Policy, Refund & Cancellation Policy, and Cookie Policy, constitute the entire agreement between you and the Company with respect to the Platform. If any provision is held to be invalid or unenforceable, the remaining provisions shall continue in full force and effect."
+        }
+      ]
+    },
+    {
+      "title": "Waiver",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "The Company's failure to enforce any right or provision of these Terms shall not constitute a waiver of such right or provision. Any waiver must be in writing and signed by an authorised representative of the Company."
+        }
+      ]
+    }
+  ]
+}

@@ -11,14 +11,74 @@ import {
   injectPortfolioBootstrap,
   resolveTemplateFile,
 } from "../lib/templateRuntime";
+import {
+  getMarketingDemoProfile,
+  isMarketingDemoHandle,
+  MARKETING_DEMO_ASSETS_DIR,
+} from "../lib/marketingDemoProfile";
+import express from "express";
 
 // Map template IDs to their deployed URLs (or localhost for dev)
 const TEMPLATE_URLS: Record<string, string> = {
   minimal: "https://resilient-hummingbird-87fc89.netlify.app",
   "cura-futuri": "http://localhost:5174", // TODO: Update with production URL
   "sierra-montana": "http://localhost:5500", // TODO: Update with production URL
-  "nico-palmer": "http://localhost:5175", // TODO: Update with production URL
+  "nico-palmer": "http://localhost:5175", // fallback when bundle missing; production uses template-bundles
 };
+
+/** Serve AI marketing demo assets (portrait / project stills). */
+export const marketingDemoStatic = express.static(MARKETING_DEMO_ASSETS_DIR, {
+  maxAge: process.env.NODE_ENV === "production" ? "7d" : 0,
+  fallthrough: false,
+});
+
+async function renderBundledTemplate(
+  req: Request,
+  res: Response,
+  profileData: ReturnType<typeof getMarketingDemoProfile>,
+  templateId: string,
+  basePath: string,
+  pathName: string,
+  subdomain: string,
+): Promise<boolean> {
+  const localBundleRoot = getTemplateBundleRoot(templateId);
+  if (!localBundleRoot) return false;
+
+  const templateFile = resolveTemplateFile(localBundleRoot, pathName);
+  if (!templateFile) {
+    res.status(404).send("Template asset not found.");
+    return true;
+  }
+
+  logger.info(`Serving bundled template ${templateId} for ${subdomain}`);
+
+  if (templateFile.endsWith(".html")) {
+    const html = await readFile(templateFile, "utf8");
+    res
+      .status(200)
+      .set("Cache-Control", "private, no-cache, no-store, must-revalidate")
+      .type("html")
+      .send(injectPortfolioBootstrap(html, profileData, basePath));
+    return true;
+  }
+
+  if (
+    pathName.startsWith("/assets/") ||
+    pathName.startsWith("/css/") ||
+    pathName.startsWith("/js/") ||
+    pathName.startsWith("/Fonts/") ||
+    pathName.startsWith("/fonts/")
+  ) {
+    res.set(
+      "Cache-Control",
+      process.env.NODE_ENV === "production"
+        ? "public, max-age=31536000, immutable"
+        : "no-cache",
+    );
+  }
+  res.sendFile(templateFile);
+  return true;
+}
 
 export async function subdomainRouter(req: Request, res: Response, next: NextFunction): Promise<void> {
   const host = req.hostname; // e.g., 'kavin.mybexo.com' or 'kavin.localhost'
@@ -61,8 +121,48 @@ export async function renderPortfolioForHandle(
 ): Promise<void> {
   const subdomain = handle.toLowerCase().trim();
   const basePath = options.basePath || "/";
+  const requestPath = options.requestPath || req.path || "/";
 
   try {
+    // ── Marketing showcase (landing previews) — never a real user profile ──
+    if (isMarketingDemoHandle(subdomain)) {
+      let previewOverride =
+        options.templateOverride || (req.query.preview_template as string) || "";
+      if (!previewOverride && req.cookies?.preview_template) {
+        previewOverride = req.cookies.preview_template;
+      }
+      if (previewOverride) {
+        res.cookie("preview_template", previewOverride, {
+          maxAge: 1000 * 60 * 60,
+          httpOnly: false,
+        });
+      }
+
+      const profileData = getMarketingDemoProfile(previewOverride || undefined);
+      const templateId = previewOverride || profileData.user.templateId;
+
+      if (requestPath === "/hire-me" || requestPath.startsWith("/hire-me/")) {
+        const webBase =
+          process.env.FRONTEND_URL || process.env.WEB_URL || "http://localhost:5173";
+        res.redirect(302, `${webBase.replace(/\/$/, "")}/hire-me/${encodeURIComponent(subdomain)}`);
+        return;
+      }
+
+      const served = await renderBundledTemplate(
+        req,
+        res,
+        profileData,
+        templateId,
+        basePath,
+        requestPath,
+        subdomain,
+      );
+      if (served) return;
+
+      res.status(404).send("Marketing demo template not available.");
+      return;
+    }
+
     // 1. Look up profile by handle or subdomain
     const profileMatch = await db.select()
       .from(profiles)
@@ -119,7 +219,6 @@ export async function renderPortfolioForHandle(
     });
 
     // 5. Shared Hire Me page is template-neutral and served by the web app
-    const requestPath = req.path || "/";
     if (requestPath === "/hire-me" || requestPath.startsWith("/hire-me/")) {
       const webBase =
         process.env.FRONTEND_URL ||
@@ -159,8 +258,7 @@ export async function renderPortfolioForHandle(
     const localBundleRoot = getTemplateBundleRoot(templateId);
     const targetUrl = TEMPLATE_URLS[templateId] || TEMPLATE_URLS["minimal"];
 
-    // 7. Proxy the request
-    // If it's a request for an asset or static file, just stream it directly
+    // 7. Proxy / serve the request
     const path = options.requestPath || req.path;
     const fullTargetUrl = `${targetUrl}${req.originalUrl}`;
     
@@ -209,6 +307,36 @@ export async function renderPortfolioForHandle(
         );
       }
       res.sendFile(templateFile);
+      return;
+    }
+
+    // No local bundle (e.g. free users forced onto "minimal"). Never proxy the
+    // Netlify demo site for subdomain visits — send them to the free path URL.
+    if (!previewOverride && templateId === "minimal") {
+      const webBase =
+        process.env.FRONTEND_URL ||
+        process.env.WEB_URL ||
+        "http://localhost:5173";
+      const freeUrl = `${webBase.replace(/\/$/, "")}/${encodeURIComponent(subdomain)}`;
+      const isPremiumUser = !!(subscriptionState.isPremium || profile.isPremium);
+      res
+        .status(200)
+        .type("html")
+        .send(`<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>${isPremiumUser ? "Portfolio" : "Subdomain locked"} · BEXO</title>
+<style>
+  body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:system-ui,sans-serif;background:#f8fafc;color:#0f172a}
+  .card{max-width:28rem;padding:2rem;border-radius:1.25rem;background:#fff;border:1px solid #e2e8f0;box-shadow:0 10px 30px rgba(15,23,42,.06);text-align:center}
+  a{display:inline-flex;margin-top:1.25rem;padding:.75rem 1.25rem;border-radius:.75rem;background:#0f172a;color:#fff;text-decoration:none;font-weight:700;font-size:.8rem}
+  p{color:#64748b;line-height:1.5;font-size:.9rem}
+</style></head><body><div class="card">
+<h1 style="margin:0 0 .5rem;font-size:1.35rem">${isPremiumUser ? "Open your portfolio" : "Custom subdomain is Pro"}</h1>
+<p>${isPremiumUser
+  ? "Your free Minimal layout lives on the BEXO path URL."
+  : `Custom subdomains like <strong>${subdomain}.mybexo.com</strong> need Pro. Your free portfolio is still live:`}</p>
+<a href="${freeUrl}">${freeUrl.replace(/^https?:\/\//, "")}</a>
+</div></body></html>`);
       return;
     }
     

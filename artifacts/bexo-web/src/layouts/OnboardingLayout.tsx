@@ -285,13 +285,18 @@ export function OnboardingLayout({ children }: { children: React.ReactNode }) {
             )}
 
             {/* Compact mobile step cue — no large carousel image */}
-            <div className="md:hidden mb-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-              <h4 className="font-serif font-bold text-slate-900 text-base">{STEP_CONTENT[currentStep]?.title}</h4>
-              <p className="text-xs text-slate-500 mt-0.5">{STEP_CONTENT[currentStep]?.subtitle}</p>
+            <div className="md:hidden mb-3 rounded-2xl border border-slate-200 bg-white/95 px-3.5 py-2.5 shadow-sm backdrop-blur-sm">
+              <div className="flex items-center justify-between gap-2">
+                <h4 className="font-serif font-bold text-slate-900 text-[15px] leading-tight">{STEP_CONTENT[currentStep]?.title}</h4>
+                <span className="shrink-0 rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-indigo-600">
+                  {progressPercentage}%
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">{STEP_CONTENT[currentStep]?.subtitle}</p>
             </div>
 
             {/* Page Content */}
-            <div className="flex-1 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="flex-1 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500 pb-2">
               {children}
             </div>
           </div>

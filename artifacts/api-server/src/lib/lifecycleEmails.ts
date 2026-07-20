@@ -1,7 +1,9 @@
-import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
-import { db, users, profiles } from "@workspace/db";
+import { and, eq, gte, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { db, users, profiles, payments, subscriptions } from "@workspace/db";
 import { enqueueEmail } from "./emailOutbox";
 import { logger } from "./logger";
+
+const APP_ORIGIN = process.env.FRONTEND_URL || process.env.WEB_URL || "https://mybexo.com";
 
 export async function enqueueWelcomeEmail(userId: string, email: string, userName: string) {
   if (!email) return;
@@ -72,13 +74,138 @@ export async function scheduleRecoveryEmails() {
         userId: user.id,
         payload: {
           userName: user.name || "there",
-          resumeUrl: "https://mybexo.com/",
+          resumeUrl: `${APP_ORIGIN}/`,
         },
       });
     }
   } catch (error) {
     logger.error({ error }, "Failed scheduling recovery emails");
   }
+}
+
+/**
+ * Cart abandon: pending payment older than 1h, user still eligible to buy.
+ */
+export async function scheduleCartRecoveryEmails() {
+  try {
+    const cutoff = new Date(Date.now() - 60 * 60 * 1000);
+    const pending = await db
+      .select({
+        paymentId: payments.id,
+        userId: payments.userId,
+        createdAt: payments.createdAt,
+        email: users.email,
+        name: users.name,
+        onboardingCompletedAt: users.onboardingCompletedAt,
+      })
+      .from(payments)
+      .innerJoin(users, eq(payments.userId, users.id))
+      .where(
+        and(
+          eq(payments.status, "pending"),
+          lt(payments.createdAt, cutoff),
+          sql`${users.email} IS NOT NULL`,
+        ),
+      )
+      .limit(50);
+
+    for (const row of pending) {
+      if (!row.email || !row.createdAt) continue;
+
+      // Skip if a successful payment was completed after this abandoned order
+      const [laterSuccess] = await db
+        .select({ id: payments.id })
+        .from(payments)
+        .where(
+          and(
+            eq(payments.userId, row.userId),
+            eq(payments.status, "success"),
+            sql`${payments.createdAt} > ${row.createdAt}`,
+          ),
+        )
+        .limit(1);
+      if (laterSuccess) continue;
+
+      const checkoutPath = row.onboardingCompletedAt ? "/billing" : "/step/9";
+      await enqueueEmail({
+        eventType: "cart_recovery",
+        recipient: row.email,
+        subject: "Complete your Bexo Pro checkout",
+        dedupeKey: `cart_recovery:${row.userId}:${row.paymentId}`,
+        userId: row.userId,
+        relatedId: row.paymentId,
+        payload: {
+          userName: row.name || "there",
+          checkoutUrl: `${APP_ORIGIN}${checkoutPath}`,
+        },
+      });
+    }
+  } catch (error) {
+    logger.error({ error }, "Failed scheduling cart recovery emails");
+  }
+}
+
+/**
+ * Renewal reminder: active annual plans expiring within 14 days.
+ */
+export async function scheduleRenewalReminderEmails() {
+  try {
+    const now = new Date();
+    const windowEnd = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+
+    const due = await db
+      .select({
+        userId: subscriptions.userId,
+        expiresAt: subscriptions.expiresAt,
+        email: users.email,
+        name: users.name,
+      })
+      .from(subscriptions)
+      .innerJoin(users, eq(subscriptions.userId, users.id))
+      .where(
+        and(
+          eq(subscriptions.status, "active"),
+          eq(subscriptions.plan, "annual"),
+          sql`${subscriptions.expiresAt} IS NOT NULL`,
+          gte(subscriptions.expiresAt, now),
+          lte(subscriptions.expiresAt, windowEnd),
+          sql`${users.email} IS NOT NULL`,
+        ),
+      )
+      .limit(50);
+
+    for (const row of due) {
+      if (!row.email || !row.expiresAt) continue;
+      const expiresLabel = row.expiresAt.toLocaleDateString("en-IN", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      });
+      const expiryKey = row.expiresAt.toISOString().slice(0, 10);
+      await enqueueEmail({
+        eventType: "renewal_reminder",
+        recipient: row.email,
+        subject: "Renew your Bexo Yearly plan",
+        dedupeKey: `renewal_reminder:${row.userId}:${expiryKey}`,
+        userId: row.userId,
+        relatedId: expiryKey,
+        payload: {
+          userName: row.name || "there",
+          renewUrl: `${APP_ORIGIN}/billing`,
+          expiresLabel,
+        },
+      });
+    }
+  } catch (error) {
+    logger.error({ error }, "Failed scheduling renewal reminder emails");
+  }
+}
+
+/** Run all lifecycle email schedulers (onboarding, cart, renewal). */
+export async function scheduleLifecycleEmails() {
+  await scheduleRecoveryEmails();
+  await scheduleCartRecoveryEmails();
+  await scheduleRenewalReminderEmails();
 }
 
 export async function markOnboardingActivity(userId: string) {

@@ -9,10 +9,10 @@ import { markOnboardingComplete } from "../lib/lifecycleEmails";
 import { requireAuth } from "../middlewares/auth";
 import {
   FREE_STORAGE_BYTES,
-  ANNUAL_STORAGE_BYTES,
-  LIFETIME_STORAGE_BYTES,
-  addAnnualTerm,
+  activatePaidPlan,
+  getRenewalExpiry,
   resolveSubscriptionState,
+  type PaidPlan,
 } from "../lib/subscriptions";
 
 const router = Router();
@@ -29,10 +29,8 @@ const razorpay = isRazorpayConfigured
   ? new Razorpay({ key_id: razorpayKeyId, key_secret: razorpayKeySecret })
   : null;
 
-type PaidPlan = "annual" | "lifetime";
-
 const planPrices: Record<PaidPlan, number> = {
-  annual: 999,
+  annual: 1499,
   lifetime: 2999,
 };
 
@@ -49,9 +47,9 @@ const calculateAmount = (plan: PaidPlan, couponCode?: string) => {
 
   if (isPromoValid && (coupon === "BEXO2026" || coupon === "PROMO2026")) {
     if (plan === "annual") {
-      discount = base - 799; // Reduces base price to 799
+      discount = base - 999; // Promo → ₹999/year
     } else if (plan === "lifetime") {
-      discount = base - 1999; // Reduces base price to 1999
+      discount = base - 1999; // Promo → ₹1999
     }
   } else if (coupon === "BEXO50") {
     discount = base * 0.5;
@@ -66,46 +64,23 @@ const calculateAmount = (plan: PaidPlan, couponCode?: string) => {
   return { base, discount, gst, total, coupon };
 };
 
-const getRenewalExpiry = async (userId: string, plan: PaidPlan) => {
-  if (plan === "lifetime") return null;
-
-  const state = await resolveSubscriptionState(userId);
-  const start =
-    state.subscription?.plan === "annual" &&
-    state.subscription.status === "active" &&
-    state.subscription.expiresAt &&
-    state.subscription.expiresAt.getTime() > Date.now()
-      ? state.subscription.expiresAt
-      : new Date();
-
-  return addAnnualTerm(start);
-};
-
 const timingSafeEqualHex = (left: string, right: string) => {
   const leftBuffer = Buffer.from(left, "hex");
   const rightBuffer = Buffer.from(right, "hex");
   return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
 };
 
-const activateSubscription = async (userId: string, plan: PaidPlan, expiresAt: Date | null) => {
-  const existing = await db.select().from(subscriptions).where(eq(subscriptions.userId, userId)).limit(1);
-
-  if (existing.length > 0) {
-    await db
-      .update(subscriptions)
-      .set({ plan, status: "active", expiresAt })
-      .where(eq(subscriptions.userId, userId));
-  } else {
-    await db.insert(subscriptions).values({
-      userId,
-      plan,
-      status: "active",
-      expiresAt,
-    });
+const assertCanPurchase = (state: Awaited<ReturnType<typeof resolveSubscriptionState>>, plan: PaidPlan) => {
+  if (plan === "lifetime" && !state.canBuy.lifetime) {
+    if (state.plan === "lifetime") {
+      return "Lifetime Pro is already active on this account.";
+    }
+    return "You already have an active Yearly plan. Renew Yearly instead — Lifetime is not available on this screen.";
   }
-
-  const quotaBytes = plan === "annual" ? ANNUAL_STORAGE_BYTES : LIFETIME_STORAGE_BYTES;
-  await db.update(users).set({ storageQuotaBytes: quotaBytes }).where(eq(users.id, userId));
+  if (plan === "annual" && !state.canBuy.annual) {
+    return "Yearly plan is not available for this account right now.";
+  }
+  return null;
 };
 
 const sendBillingReceipts = async (userId: string, plan: PaidPlan | "activation_code", amountPaid: number, reference: string) => {
@@ -148,6 +123,10 @@ router.get("/status", requireAuth, async (req: any, res: any) => {
       isPremium: state.isPremium,
       expiresAt: state.expiresAt,
       storageQuotaBytes: state.storageQuotaBytes,
+      storageBonusBytes: state.storageBonusBytes,
+      effectiveQuotaBytes: state.storageQuotaBytes,
+      canBuy: state.canBuy,
+      renewalMode: state.renewalMode,
       subscription: state.subscription
         ? {
             plan: state.subscription.plan,
@@ -186,8 +165,9 @@ router.post("/create-order", requireAuth, async (req: any, res: any) => {
 
   try {
     const current = await resolveSubscriptionState(userId);
-    if (current.plan === "lifetime") {
-      return res.status(409).json({ error: "Lifetime Pro is already active on this account." });
+    const blocked = assertCanPurchase(current, plan);
+    if (blocked) {
+      return res.status(409).json({ error: blocked, canBuy: current.canBuy, renewalMode: current.renewalMode });
     }
 
     const pricing = calculateAmount(plan, couponCode);
@@ -200,6 +180,7 @@ router.post("/create-order", requireAuth, async (req: any, res: any) => {
         userId,
         plan,
         coupon: pricing.coupon || "",
+        renewalMode: current.renewalMode,
       },
     };
 
@@ -238,6 +219,8 @@ router.post("/create-order", requireAuth, async (req: any, res: any) => {
       key: razorpayKeyId,
       mock,
       pricing,
+      renewalMode: current.renewalMode,
+      canBuy: current.canBuy,
     });
   } catch (error) {
     logger.error({ error, userId }, "Failed to create Razorpay order");
@@ -270,7 +253,23 @@ router.post("/verify", requireAuth, async (req: any, res: any) => {
 
     if (payment.status === "success") {
       const state = await resolveSubscriptionState(userId);
-      return res.json({ success: true, message: "Payment already verified.", plan: state.plan, isPremium: state.isPremium });
+      return res.json({
+        success: true,
+        message: "Payment already verified.",
+        plan: state.plan,
+        isPremium: state.isPremium,
+        expiresAt: state.expiresAt,
+        storageQuotaBytes: state.storageQuotaBytes,
+        storageBonusBytes: state.storageBonusBytes,
+        stacked: false,
+        renewalMode: state.renewalMode,
+      });
+    }
+
+    const current = await resolveSubscriptionState(userId);
+    const blocked = assertCanPurchase(current, plan);
+    if (blocked) {
+      return res.status(409).json({ error: blocked, canBuy: current.canBuy, renewalMode: current.renewalMode });
     }
 
     if (isRazorpayConfigured) {
@@ -290,19 +289,30 @@ router.post("/verify", requireAuth, async (req: any, res: any) => {
       return res.status(503).json({ error: "Payments are not configured. Please contact support." });
     }
 
+    // Mark success before activating so retries are idempotent and do not double-stack bonus.
     await db
       .update(payments)
       .set({ razorpayPaymentId: razorpay_payment_id, status: "success" })
       .where(eq(payments.id, payment.id));
 
     const expiresAt = await getRenewalExpiry(userId, plan);
-    await activateSubscription(userId, plan, expiresAt);
+    const activated = await activatePaidPlan(userId, plan, expiresAt);
     await sendBillingReceipts(userId, plan, payment.amount / 100, razorpay_payment_id);
     await markOnboardingComplete(userId).catch((err) =>
       logger.warn({ err, userId }, "markOnboardingComplete failed after payment"),
     );
 
-    res.json({ success: true, message: "Payment verified successfully", plan, isPremium: true, expiresAt });
+    res.json({
+      success: true,
+      message: "Payment verified successfully",
+      plan: activated.plan,
+      isPremium: true,
+      expiresAt: activated.expiresAt,
+      storageQuotaBytes: activated.storageQuotaBytes,
+      storageBonusBytes: activated.storageBonusBytes,
+      stacked: activated.stacked,
+      renewalMode: activated.renewalMode,
+    });
   } catch (error) {
     logger.error({ error, userId }, "Failed to verify Razorpay payment");
     res.status(500).json({ error: "Unable to verify payment right now." });
@@ -336,7 +346,7 @@ router.post("/activation", requireAuth, async (req: any, res: any) => {
     }
 
     const expiresAt = await getRenewalExpiry(userId, "annual");
-    await activateSubscription(userId, "annual", expiresAt);
+    const activated = await activatePaidPlan(userId, "annual", expiresAt);
 
     await db.insert(payments).values({
       userId,
@@ -351,7 +361,17 @@ router.post("/activation", requireAuth, async (req: any, res: any) => {
       logger.warn({ err, userId }, "markOnboardingComplete failed after activation"),
     );
 
-    res.json({ success: true, message: "Account activated successfully", plan: "annual", isPremium: true, expiresAt });
+    res.json({
+      success: true,
+      message: "Account activated successfully",
+      plan: activated.plan,
+      isPremium: true,
+      expiresAt: activated.expiresAt,
+      storageQuotaBytes: activated.storageQuotaBytes,
+      storageBonusBytes: activated.storageBonusBytes,
+      stacked: activated.stacked,
+      renewalMode: activated.renewalMode,
+    });
   } catch (error) {
     logger.error({ error, userId }, "Failed to process activation code");
     res.status(500).json({ error: "Unable to redeem activation code right now." });
@@ -379,8 +399,11 @@ router.post("/free-activate", requireAuth, async (req: any, res: any) => {
       });
     }
 
-    // Free plan gets 10MB storage limit
-    await db.update(users).set({ storageQuotaBytes: FREE_STORAGE_BYTES }).where(eq(users.id, userId));
+    // Free plan gets 10MB storage limit; clear stacked bonuses
+    await db
+      .update(users)
+      .set({ storageQuotaBytes: FREE_STORAGE_BYTES, storageBonusBytes: 0 })
+      .where(eq(users.id, userId));
     await markOnboardingComplete(userId).catch((err) =>
       logger.warn({ err, userId }, "markOnboardingComplete failed after free activate"),
     );
@@ -438,10 +461,16 @@ router.post("/webhook", async (req: any, res: any) => {
 
       const planNote = (paymentEntity.notes?.plan || "annual") as PaidPlan;
       const plan = planNote === "lifetime" ? "lifetime" : "annual";
-      const expiresAt = await getRenewalExpiry(payment.userId, plan);
-      await activateSubscription(payment.userId, plan, expiresAt);
-      await sendBillingReceipts(payment.userId, plan, payment.amount / 100, paymentId);
-      await markOnboardingComplete(payment.userId).catch(() => undefined);
+      const state = await resolveSubscriptionState(payment.userId);
+      const blocked = assertCanPurchase(state, plan);
+      if (!blocked) {
+        const expiresAt = await getRenewalExpiry(payment.userId, plan);
+        await activatePaidPlan(payment.userId, plan, expiresAt);
+        await sendBillingReceipts(payment.userId, plan, payment.amount / 100, paymentId);
+        await markOnboardingComplete(payment.userId).catch(() => undefined);
+      } else {
+        logger.warn({ userId: payment.userId, plan, blocked }, "Webhook skipped activate: plan not purchasable");
+      }
     }
 
     res.json({ received: true });

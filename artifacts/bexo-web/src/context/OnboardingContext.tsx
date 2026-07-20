@@ -64,11 +64,15 @@ export type OnboardingData = {
   visitedTabs: string[];
   openToHire: boolean;
   storageQuotaBytes: number;
+  storageBonusBytes: number;
   isPremium: boolean;
   hasCompletedOnboarding: boolean;
   payments?: any[];
   resumeParsesThisMonth: number;
   lastResumeParseReset?: string | Date;
+  canBuy: { annual: boolean; lifetime: boolean };
+  renewalMode: 'purchase' | 'renew' | 'addon';
+  expiresAt?: string | Date | null;
 };
 
 interface OnboardingContextType {
@@ -115,11 +119,15 @@ const defaultData: OnboardingData = {
   visitedTabs: [],
   openToHire: false,
   storageQuotaBytes: 10485760, // 10MB default
+  storageBonusBytes: 0,
   isPremium: false,
   hasCompletedOnboarding: false,
   payments: [],
   resumeParsesThisMonth: 0,
-  lastResumeParseReset: new Date().toISOString()
+  lastResumeParseReset: new Date().toISOString(),
+  canBuy: { annual: true, lifetime: true },
+  renewalMode: 'purchase',
+  expiresAt: null,
 };
 
 const OnboardingContext = createContext<OnboardingContextType | undefined>(undefined);
@@ -281,6 +289,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
             plan: result.plan !== undefined ? result.plan : prev.plan,
             openToHire: result.user?.openToHire !== undefined ? result.user.openToHire : prev.openToHire,
             storageQuotaBytes: result.user?.storageQuotaBytes !== undefined ? result.user.storageQuotaBytes : prev.storageQuotaBytes,
+            storageBonusBytes: result.user?.storageBonusBytes !== undefined ? result.user.storageBonusBytes : prev.storageBonusBytes,
             isPremium: result.isPremium !== undefined ? result.isPremium : prev.isPremium,
             templateId: result.user?.templateId || prev.templateId,
             themeColor: result.user?.themeColor || prev.themeColor,
@@ -288,7 +297,10 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
             hasCompletedOnboarding: !!(result.user?.onboardingCompletedAt || (result.profile?.handle && result.plan)),
             payments: result.payments || prev.payments,
             resumeParsesThisMonth: result.user?.resumeParsesThisMonth !== undefined ? result.user.resumeParsesThisMonth : prev.resumeParsesThisMonth,
-            lastResumeParseReset: result.user?.lastResumeParseReset || prev.lastResumeParseReset
+            lastResumeParseReset: result.user?.lastResumeParseReset || prev.lastResumeParseReset,
+            canBuy: result.canBuy || prev.canBuy,
+            renewalMode: result.renewalMode || prev.renewalMode,
+            expiresAt: result.expiresAt !== undefined ? result.expiresAt : prev.expiresAt,
           }));
         }
       })

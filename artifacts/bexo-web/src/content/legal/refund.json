@@ -1,0 +1,281 @@
+{
+  "title": "Refund & Cancellation Policy",
+  "lead": "Understanding your rights and obligations when it comes to payments, subscriptions, and cancellations",
+  "sections": [
+    {
+      "title": "Introduction",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "This Refund & Cancellation Policy (\"Policy\") governs all financial transactions made on BEXO, a product of Ace Digital. Ace Digital is owned and operated by KSKG Private Ltd. This Policy establishes the conditions under which refunds will be granted, the process for requesting a refund, the terms for cancelling a Subscription, and the handling of payment disputes. It forms part of our Terms of Service."
+        },
+        {
+          "type": "p",
+          "text": "By completing a purchase on the Platform, you acknowledge that you have read and understood this Policy, including the specific refund window and non-refundable circumstances described herein."
+        }
+      ]
+    },
+    {
+      "title": "Subscription Plans & Pricing",
+      "blocks": [
+        {
+          "type": "h3",
+          "text": "2.1 Current Plans"
+        },
+        {
+          "type": "p",
+          "text": "All prices are in Indian Rupees (INR) and are inclusive of Goods and Services Tax (GST) at 18%:"
+        },
+        {
+          "type": "p",
+          "text": "Launch Promotional Pricing is offered on a limited, first-come-first-served basis. The Company reserves the right to end promotional pricing at any time without prior notice. Promotional rates apply only to the initial purchase — standard pricing applies on renewal."
+        },
+        {
+          "type": "h3",
+          "text": "2.2 GST & Invoicing"
+        },
+        {
+          "type": "p",
+          "text": "BEXO is registered under GST (GSTIN: 33AAACA0000A1Z5). All Subscription Fees are inclusive of 18% GST. A GST-compliant invoice will be emailed to your registered email address within 24 hours of payment confirmation. If your invoice has an error, contact support@acedigital.cc within 7 days of receipt for a correction."
+        }
+      ]
+    },
+    {
+      "title": "Payment Processing",
+      "blocks": [
+        {
+          "type": "h3",
+          "text": "3.1 Payment Partner"
+        },
+        {
+          "type": "p",
+          "text": "All payments on BEXO are processed by Razorpay Software Private Limited (\"Razorpay\"), a licensed Payment Aggregator regulated by the Reserve Bank of India (RBI). Razorpay is PCI-DSS Level 1 certified, the highest level of security certification for payment processors."
+        },
+        {
+          "type": "h3",
+          "text": "3.2 Accepted Payment Methods"
+        },
+        {
+          "type": "ul",
+          "items": [
+            "Credit Cards (Visa, Mastercard, RuPay, American Express)",
+            "Debit Cards (Visa, Mastercard, RuPay, Maestro)",
+            "UPI — Google Pay, PhonePe, Paytm, BHIM, and others",
+            "Net Banking (major Indian banks)",
+            "Razorpay Wallets",
+            "EMI (Equated Monthly Instalment) — subject to bank availability"
+          ]
+        },
+        {
+          "type": "h3",
+          "text": "3.3 Data Security"
+        },
+        {
+          "type": "p",
+          "text": "BEXO does not store, process, or have access to your full credit/debit card numbers, CVV/CVC codes, or bank account credentials at any point. All payment data is encrypted and processed directly by Razorpay's secure, PCI-DSS compliant environment."
+        },
+        {
+          "type": "h3",
+          "text": "3.4 Payment Confirmation"
+        },
+        {
+          "type": "p",
+          "text": "Upon successful payment, you will receive: (a) a payment confirmation email from Razorpay, and (b) a tax invoice and subscription activation confirmation email from BEXO. If you do not receive both emails within 30 minutes, please check your spam folder and contact support@acedigital.cc."
+        }
+      ]
+    },
+    {
+      "title": "Refund Policy",
+      "blocks": [
+        {
+          "type": "h3",
+          "text": "4.1 Non-Refundable Payments"
+        },
+        {
+          "type": "p",
+          "text": "All subscription fees and one-time payments made to BEXO are final and non-refundable."
+        },
+        {
+          "type": "p",
+          "text": "As BEXO provides AI-powered website and portfolio generation services, computational resources and infrastructure are allocated immediately after your purchase and the generation process begins. For this reason, payments cannot be refunded once successfully processed."
+        },
+        {
+          "type": "p",
+          "text": "Refunds will not be provided for:"
+        },
+        {
+          "type": "ul",
+          "items": [
+            "Cancellation after payment.",
+            "Change of mind.",
+            "Dissatisfaction with generated content.",
+            "Failure to use the service.",
+            "Partial use of a subscription.",
+            "Promotional or discounted purchases.",
+            "Any request made after website or portfolio generation has started."
+          ]
+        },
+        {
+          "type": "p",
+          "text": "Genuine duplicate or incorrect charges caused by a technical or billing error will be corrected after verification."
+        }
+      ]
+    },
+    {
+      "title": "Cancellation Policy",
+      "blocks": [
+        {
+          "type": "h3",
+          "text": "5.1 Cancelling Auto-Renewal"
+        },
+        {
+          "type": "p",
+          "text": "You may cancel auto-renewal of your Annual Subscription at any time from your Account Settings under the Subscription & Billing section. Cancellation takes effect at the end of the current billing period. You will retain full premium access until the subscription expiry date. Cancellation of auto-renewal does not entitle you to any refund for the current billing period."
+        },
+        {
+          "type": "h3",
+          "text": "5.2 Immediate Account Closure"
+        },
+        {
+          "type": "p",
+          "text": "If you wish to close your Account entirely, you may do so from Account Settings. Account closure does not constitute a cancellation eligible for a refund unless it falls within the 7-day refund window and all eligibility criteria are met."
+        },
+        {
+          "type": "h3",
+          "text": "5.3 Company-Initiated Cancellation"
+        },
+        {
+          "type": "p",
+          "text": "If the Company terminates your Account or Subscription for a breach of our Terms of Service, you will not be entitled to any refund. If the Company discontinues a paid feature you purchased as part of your Subscription, we will offer a pro-rated credit or service equivalent of equal value."
+        }
+      ]
+    },
+    {
+      "title": "Refund Process & Timeline",
+      "blocks": [
+        {
+          "type": "h3",
+          "text": "6.1 How to Request a Refund"
+        },
+        {
+          "type": "p",
+          "text": "To initiate a refund, send an email to support@acedigital.cc with the subject line: \"Refund Request — [Your Registered Email Address]\". Your request must include:"
+        },
+        {
+          "type": "ul",
+          "items": [
+            "Your full name and registered email address on BEXO.",
+            "Razorpay Transaction ID (found in your payment confirmation email or Razorpay receipt).",
+            "Date of purchase.",
+            "Plan purchased (Annual or Lifetime).",
+            "Reason for the refund request."
+          ]
+        },
+        {
+          "type": "h3",
+          "text": "6.2 Processing Timeline"
+        },
+        {
+          "type": "ul",
+          "items": [
+            "Acknowledgement: Within 1 (one) business day of receipt.",
+            "Review: Within 3 (three) business days of acknowledgement.",
+            "Decision: Notification of approval or rejection within 5 (five) business days of receipt.",
+            "Credit: Approved refunds processed to your original payment method within 7–10 business days of approval, subject to your bank's processing time."
+          ]
+        },
+        {
+          "type": "p",
+          "text": "Business days are Monday through Friday, excluding Indian public holidays."
+        },
+        {
+          "type": "h3",
+          "text": "6.3 Refund Method"
+        },
+        {
+          "type": "ul",
+          "items": [
+            "Credit/Debit Card: Credited back to the card (7–10 business days).",
+            "UPI: Credited back to the originating UPI account (typically 1–3 business days).",
+            "Net Banking: Credited back to the originating bank account (3–5 business days)."
+          ]
+        },
+        {
+          "type": "p",
+          "text": "The Company cannot issue refunds to a different payment method, bank account, or third-party wallet."
+        }
+      ]
+    },
+    {
+      "title": "Payment Disputes & Chargebacks",
+      "blocks": [
+        {
+          "type": "h3",
+          "text": "7.1 Contact Us First"
+        },
+        {
+          "type": "p",
+          "text": "If you believe a charge was made in error, is unauthorised, or does not correspond to a purchase you made, please contact us at support@acedigital.cc before raising a chargeback or payment dispute with your bank or card issuer. We will investigate and resolve valid payment errors swiftly."
+        },
+        {
+          "type": "h3",
+          "text": "7.2 Chargeback Consequences"
+        },
+        {
+          "type": "p",
+          "text": "Initiating a chargeback or payment dispute with your bank without first attempting resolution with BEXO may result in:"
+        },
+        {
+          "type": "ul",
+          "items": [
+            "Immediate suspension of your Account pending investigation.",
+            "Reporting of the disputed transaction to Razorpay in accordance with their chargeback management process.",
+            "Permanent termination of your Account if the chargeback is found to be fraudulent or in bad faith."
+          ]
+        },
+        {
+          "type": "p",
+          "text": "If the chargeback is ultimately resolved in the Company's favour, the suspended Account will be reinstated and any remaining Subscription period restored."
+        },
+        {
+          "type": "h3",
+          "text": "7.3 Fraud Reporting"
+        },
+        {
+          "type": "p",
+          "text": "If you suspect fraudulent activity on your payment method related to BEXO, please report it immediately to support@acedigital.cc and to your bank or card issuer. We take payment fraud seriously and will cooperate fully with investigations by Razorpay and law enforcement."
+        }
+      ]
+    },
+    {
+      "title": "Failed & Duplicate Payments",
+      "blocks": [
+        {
+          "type": "h3",
+          "text": "8.1 Failed Payments"
+        },
+        {
+          "type": "p",
+          "text": "If your payment fails during checkout (e.g., due to insufficient funds, bank decline, or network timeout), your Account will not be upgraded and no charge will be levied. A temporary 'hold' may appear on your account statement; this will typically be released by your bank within 5–7 business days without any action required from you."
+        },
+        {
+          "type": "h3",
+          "text": "8.2 Duplicate Charges"
+        },
+        {
+          "type": "p",
+          "text": "If you are charged more than once for a single Subscription due to a technical error, please contact support@acedigital.cc with both transaction IDs. We will verify the duplicate and process a refund for the additional charge within 5 business days. No eligibility criteria apply to refunds of genuine duplicate charges."
+        }
+      ]
+    },
+    {
+      "title": "Consumer Rights",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Nothing in this Policy limits or excludes your statutory rights as a consumer under the Consumer Protection Act, 2019, or any other applicable Indian consumer protection legislation. In particular, this Policy does not restrict your right to approach the National Consumer Disputes Redressal Commission (NCDRC), a State Consumer Disputes Redressal Commission, or a District Consumer Disputes Redressal Forum in the event of an unresolved dispute."
+        }
+      ]
+    }
+  ]
+}

@@ -15,6 +15,7 @@ export const users = pgTable("users", {
   profilePhotoAssetId: uuid("profile_photo_asset_id"),
   storageUsedBytes: bigint("storage_used_bytes", { mode: "number" }).default(0),
   storageQuotaBytes: bigint("storage_quota_bytes", { mode: "number" }).default(10485760), // 10MB free tier default
+  storageBonusBytes: bigint("storage_bonus_bytes", { mode: "number" }).default(0), // stacked add-on storage (e.g. yearly on lifetime)
   openToHire: boolean("open_to_hire").default(false),
   templateId: text("template_id").default("minimal"),
   themeColor: text("theme_color").default("blue"),
@@ -148,7 +149,7 @@ export const contactSubmissions = pgTable("contact_submissions", {
 // 12. Email Deliveries Outbox
 export const emailDeliveries = pgTable("email_deliveries", {
   id: uuid("id").defaultRandom().primaryKey(),
-  eventType: text("event_type").notNull(), // billing_receipt | activation | welcome | site_live | recovery | contact
+  eventType: text("event_type").notNull(), // billing_receipt | activation | welcome | site_live | recovery | cart_recovery | renewal_reminder | contact
   recipient: text("recipient").notNull(),
   subject: text("subject").notNull(),
   dedupeKey: text("dedupe_key").unique().notNull(),

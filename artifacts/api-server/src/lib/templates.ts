@@ -204,8 +204,8 @@ const wrapHtml = (title: string, content: string) => `
       </tr>
       <tr>
         <td class="footer">
-          <p class="footer-text">&copy; 2026 Ace Digital. ALL RIGHTS RESERVED.</p>
-          <p class="footer-text" style="margin-top: 8px;">Bexo is a registered service owned and operated by Ace Digital, Coimbatore, Tamil Nadu, India.</p>
+          <p class="footer-text">&copy; ${new Date().getFullYear()} BEXO FROM Ace Digital. All rights reserved.</p>
+          <p class="footer-text" style="margin-top: 8px;">BEXO is a product of Ace Digital, Coimbatore, Tamil Nadu, India.</p>
         </td>
       </tr>
     </table>
@@ -337,6 +337,36 @@ export const getRecoveryEmail = (userName: string, resumeUrl: string) => {
     <p class="content-text">If you already finished, you can ignore this email.</p>
   `;
   return wrapHtml("Continue your Bexo portfolio", content);
+};
+
+export const getCartRecoveryEmail = (userName: string, checkoutUrl: string) => {
+  const content = `
+    <h2 class="content-title">Complete your Bexo Pro checkout</h2>
+    <p class="content-text">Hi ${userName},</p>
+    <p class="content-text">You started upgrading to Bexo Pro but left before finishing payment. Your portfolio draft is still saved — complete checkout to publish with premium templates and storage.</p>
+    <div class="btn-container">
+      <a href="${checkoutUrl}" class="btn">Complete Checkout</a>
+    </div>
+    <p class="content-text">If you already paid, you can ignore this email.</p>
+  `;
+  return wrapHtml("Complete your Bexo Pro checkout", content);
+};
+
+export const getRenewalReminderEmail = (
+  userName: string,
+  renewUrl: string,
+  expiresLabel: string,
+) => {
+  const content = `
+    <h2 class="content-title">Your Yearly plan renews soon</h2>
+    <p class="content-text">Hi ${userName},</p>
+    <p class="content-text">Your Bexo Annual Support Plan ${expiresLabel ? `expires on <strong>${expiresLabel}</strong>` : "is ending soon"}. Renew Yearly to keep your premium subdomain, templates, and storage without interruption.</p>
+    <div class="btn-container">
+      <a href="${renewUrl}" class="btn">Renew Yearly</a>
+    </div>
+    <p class="content-text">Renewing extends your current expiry by one year. Storage stays the same.</p>
+  `;
+  return wrapHtml("Renew your Bexo Yearly plan", content);
 };
 
 export const getContactNotificationEmail = (

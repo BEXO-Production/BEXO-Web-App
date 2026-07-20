@@ -13,6 +13,7 @@ import {
 } from "@workspace/db";
 import { eq, and, desc, gt, sql } from "drizzle-orm";
 import { logger } from "../lib/logger";
+import { MARKETING_DEMO_HANDLE, getMarketingDemoProfile, isMarketingDemoHandle } from "../lib/marketingDemoProfile";
 import multer from "multer";
 import { createRequire } from "module";
 import { uploadToR2 } from "../lib/r2";
@@ -94,6 +95,7 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<voi
         profilePhotoAssetId: user.profilePhotoAssetId,
         storageUsedBytes: user.storageUsedBytes,
         storageQuotaBytes: subscriptionState.storageQuotaBytes,
+        storageBonusBytes: subscriptionState.storageBonusBytes,
         openToHire: user.openToHire ?? false,
         templateId: user.templateId ?? 'minimal',
         themeColor: user.themeColor ?? 'blue',
@@ -105,6 +107,9 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<voi
       },
       plan: subscriptionState.plan,
       isPremium: subscriptionState.isPremium,
+      canBuy: subscriptionState.canBuy,
+      renewalMode: subscriptionState.renewalMode,
+      expiresAt: subscriptionState.expiresAt,
       aboutEntries: getEntries("about"),
       educationEntries: getEntries("education"),
       experienceEntries: getEntries("experience"),
@@ -136,7 +141,10 @@ router.patch("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<v
   
       // Gate template selection for free users
       if (templateId !== undefined && templateId !== 'minimal' && !isPremium) {
-        res.status(403).json({ error: "Premium templates require a Pro subscription. Upgrade to unlock Academic and Creative layouts." });
+        res.status(403).json({
+          error:
+            "Premium templates require a Pro subscription. Upgrade to unlock Cura Futuri, Sierra Montana, and Nico Palmer.",
+        });
         return;
       }
   
@@ -183,6 +191,14 @@ router.patch("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<v
     if (careerGoal !== undefined) profileUpdates.careerGoal = careerGoal;
     if (bio !== undefined) profileUpdates.bio = bio;
     if (completionPct !== undefined) profileUpdates.completionPct = completionPct;
+    // Keep profile.templateId in sync — subdomain router prefers this field.
+    if (templateId !== undefined) profileUpdates.templateId = templateId;
+    if (isPremium && templateId !== undefined && templateId !== "minimal") {
+      profileUpdates.isPremium = true;
+      if (!profile.subdomain && profile.handle) {
+        profileUpdates.subdomain = profile.handle;
+      }
+    }
 
     if (Object.keys(profileUpdates).length > 0) {
       await db.update(profiles).set(profileUpdates).where(eq(profiles.id, profile.id));
@@ -235,6 +251,18 @@ router.get("/check-handle", requireAuth, async (req: AuthenticatedRequest, res):
     return;
   }
   try {
+    const normalized = handle.toLowerCase().trim();
+    if (
+      normalized === MARKETING_DEMO_HANDLE ||
+      normalized === "bexo" ||
+      normalized === "www" ||
+      normalized === "api" ||
+      normalized === "admin" ||
+      normalized === "support"
+    ) {
+      res.json({ available: false, reason: "reserved" });
+      return;
+    }
     const existing = await db.select().from(profiles).where(eq(profiles.handle, handle)).limit(1);
     const taken = existing.length > 0 && existing[0].userId !== req.user!.id;
     res.json({ available: !taken });
@@ -1048,6 +1076,12 @@ router.post("/public/:handle/contact", async (req, res): Promise<void> => {
   }
 
   try {
+    if (isMarketingDemoHandle(handle)) {
+      // Fictional landing showcase — accept form but do not persist
+      res.json({ success: true, message: "Demo preview — message was not delivered." });
+      return;
+    }
+
     const [profile] = await db.select().from(profiles).where(eq(profiles.handle, handle)).limit(1);
     if (!profile) {
       res.status(404).json({ error: "Portfolio not found." });
@@ -1138,6 +1172,15 @@ const PUBLIC_PROFILE_CACHE_TTL_MS = 30_000;
 router.get("/public/:handle", async (req, res): Promise<void> => {
   const { handle } = req.params;
   try {
+    // Landing template iframes fetch this endpoint — serve fictional demo, never a real user.
+    if (isMarketingDemoHandle(handle)) {
+      const payload = getMarketingDemoProfile();
+      res.setHeader("X-Cache", "DEMO");
+      res.setHeader("Cache-Control", "public, max-age=60");
+      res.json(payload);
+      return;
+    }
+
     const cached = publicProfileCache.get(handle);
     if (cached && cached.expires > Date.now()) {
       res.setHeader("X-Cache", "HIT");

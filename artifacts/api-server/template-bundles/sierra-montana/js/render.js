@@ -475,7 +475,9 @@
     // Dynamic copyright
     document.querySelectorAll(".project-footer .copyright span, .copyright").forEach((el) => {
       if (el.tagName === "SPAN" || el.classList.contains("copyright")) {
-        el.textContent = `© ${new Date().getFullYear()} ${profile.user.name || "Portfolio"}. All rights reserved.`;
+        el.textContent =
+          global.BexoProfile?.getFooterCopyright?.() ||
+          `© ${new Date().getFullYear()} BEXO FROM Ace Digital. All rights reserved.`;
       }
     });
 

@@ -1,0 +1,290 @@
+{
+  "title": "Privacy Policy",
+  "lead": "How BEXO collects, uses, and protects your personal data to ensure your digital security",
+  "sections": [
+    {
+      "title": "Overview & Commitment",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Ace Digital (\"we\", \"us\", \"our\") is committed to protecting the privacy and security of all users of BEXO (\"you\", \"your\"), a product of Ace Digital. Ace Digital is owned and operated by KSKG Private Ltd. This Privacy Policy explains what personal data we collect, why we collect it, how we use and protect it, with whom we share it, and your rights with respect to it."
+        },
+        {
+          "type": "p",
+          "text": "We process personal data in accordance with the Information Technology Act, 2000, the Information Technology (Reasonable Security Practices and Procedures and Sensitive Personal Data or Information) Rules, 2011 (\"SPDI Rules\"), and, where applicable, the principles of the Digital Personal Data Protection Act, 2023 (\"DPDPA\"). We also observe internationally recognised privacy principles, including data minimisation, purpose limitation, storage limitation, and data integrity."
+        }
+      ]
+    },
+    {
+      "title": "Scope of This Policy",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "This Policy applies to all Personal Data processed by us in connection with:"
+        },
+        {
+          "type": "ul",
+          "items": [
+            "Your use of the BEXO website at www.mybexo.com and its subdomains.",
+            "Your creation and use of a BEXO Account and Portfolio.",
+            "Your subscription to and payment for BEXO plans.",
+            "Your interactions with our support and communications team."
+          ]
+        },
+        {
+          "type": "p",
+          "text": "This Policy does not apply to third-party websites or services linked from the Platform, including Razorpay, Google, and LinkedIn. We encourage you to review those services' privacy policies independently."
+        }
+      ]
+    },
+    {
+      "title": "Data We Collect",
+      "blocks": [
+        {
+          "type": "h3",
+          "text": "3.1 Data You Provide Directly"
+        },
+        {
+          "type": "ul",
+          "items": [
+            "Registration Data: Full name, email address, and password (stored in hashed form).",
+            "Profile Data: Professional bio, education history, work experience, skills, project details, certifications, achievements, and social media profile links.",
+            "Portfolio Content: Images, PDFs, screenshots, and other media files you upload (subject to the 100 MB storage limit).",
+            "Payment Data: Billing name and email submitted during checkout. Full card numbers, CVV, and bank details are processed exclusively by Razorpay and are never transmitted to or stored by BEXO.",
+            "Communications: Emails, support tickets, and other messages you send us.",
+            "Survey & Feedback Data: Responses to optional surveys or feature feedback forms."
+          ]
+        },
+        {
+          "type": "h3",
+          "text": "3.2 Data Collected Automatically"
+        },
+        {
+          "type": "ul",
+          "items": [
+            "Device & Browser Data: IP address, browser type and version, operating system, screen resolution, and device type.",
+            "Usage Data: Pages visited, features used, time and duration of visits, referring URLs, and navigation paths.",
+            "Log Data: Server access logs including timestamps, request paths, response codes, and error logs.",
+            "Cookies & Tracking Data: As described in our Cookie Policy.",
+            "Portfolio View Data: Number and approximate geographic region of visits to your public portfolio."
+          ]
+        },
+        {
+          "type": "h3",
+          "text": "3.3 Data from Third Parties"
+        },
+        {
+          "type": "ul",
+          "items": [
+            "OAuth Providers: If you sign in via Google or LinkedIn, we receive your name, email address, and profile photo as permitted by your settings. We do not receive your password for those services.",
+            "Payment Processor: Razorpay shares with us a transaction ID, payment status, masked card/bank information (last 4 digits), and timestamp upon a successful or failed payment."
+          ]
+        },
+        {
+          "type": "h3",
+          "text": "3.4 Sensitive Personal Data"
+        },
+        {
+          "type": "p",
+          "text": "We do not intentionally collect Sensitive Personal Data (SPDI) such as health information, biometric data, sexual orientation, or religious beliefs. Financial data (card details) is collected and processed solely by Razorpay and is not stored by us."
+        }
+      ]
+    },
+    {
+      "title": "Legal Basis for Processing",
+      "blocks": [
+        {
+          "type": "ul",
+          "items": [
+            "Contractual Necessity: Processing required to provide you with the services described in our Terms of Service.",
+            "Consent: Processing activities for which you have given explicit consent (e.g., marketing communications, optional cookies). You may withdraw consent at any time.",
+            "Legitimate Interests: Processing necessary for our legitimate business interests (e.g., fraud prevention, platform security, analytics), provided such interests are not overridden by your rights.",
+            "Legal Obligation: Processing required to comply with applicable law (e.g., retaining financial records under the GST Act, 2017)."
+          ]
+        }
+      ]
+    },
+    {
+      "title": "How We Use Your Data",
+      "blocks": [
+        {
+          "type": "ul",
+          "items": [
+            "Service Delivery: Creating and maintaining your Account, building and hosting your Portfolio at {handle}.mybexo.com, and providing all platform features.",
+            "Payment Processing: Verifying and processing Subscription payments via Razorpay, issuing GST-compliant invoices, and managing renewals and cancellations.",
+            "Communications: Sending transactional emails (account confirmation, payment receipts, password resets, renewal reminders, service alerts).",
+            "Platform Improvement: Analysing usage patterns and performance data to identify bugs, improve features, and develop new services.",
+            "Security & Fraud Prevention: Monitoring for suspicious activity and protecting users and the platform from abuse.",
+            "Legal Compliance: Retaining records as required by the GST Act, Income Tax Act, and other applicable Indian laws.",
+            "Customer Support: Responding to your support queries and resolving disputes.",
+            "Portfolio Analytics: Providing you with anonymised statistics about visits to your public portfolio."
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Data Sharing & Disclosure",
+      "blocks": [
+        {
+          "type": "h3",
+          "text": "6.1 Service Providers"
+        },
+        {
+          "type": "p",
+          "text": "We share personal data with carefully selected third-party service providers who are contractually bound to handle it securely and only for the purposes we specify:"
+        },
+        {
+          "type": "ul",
+          "items": [
+            "Razorpay Software Private Limited: Payment processing (PCI-DSS Level 1 certified).",
+            "Cloud Infrastructure Provider (e.g., AWS, Vercel): Server hosting, database storage, and CDN services.",
+            "Email Service Provider (e.g., SendGrid): Transactional email delivery.",
+            "Analytics Provider (e.g., Google Analytics): Anonymised usage analytics.",
+            "Error Monitoring Tool (e.g., Sentry): Platform error tracking."
+          ]
+        },
+        {
+          "type": "h3",
+          "text": "6.2 Legal Disclosures"
+        },
+        {
+          "type": "p",
+          "text": "We may disclose your personal data without your prior consent if required by a valid court order, subpoena, or legal process issued by a competent Indian court or authority, or a lawful request from law enforcement or a regulatory authority (e.g., CERT-In)."
+        },
+        {
+          "type": "h3",
+          "text": "6.3 Business Transfers"
+        },
+        {
+          "type": "p",
+          "text": "In the event of a merger, acquisition, or sale of assets, your personal data may be transferred to the acquiring entity, provided that entity agrees to be bound by a privacy policy substantially equivalent to this one. We will notify you before your data is transferred."
+        },
+        {
+          "type": "h3",
+          "text": "6.4 No Sale of Personal Data"
+        },
+        {
+          "type": "p",
+          "text": "We do not sell, rent, lease, or otherwise trade your personal data to any third party for monetary or other consideration. We do not share your personal data with third-party advertisers."
+        }
+      ]
+    },
+    {
+      "title": "Data Retention",
+      "blocks": [
+        {
+          "type": "ul",
+          "items": [
+            "Account Data: Retained for the duration of your Account's existence. Upon account deletion, personal data is permanently purged within 30 calendar days.",
+            "Financial & Transaction Records: Retained for 6 years from the date of the transaction as required under the GST Act, 2017 and Income Tax Act, 1961, even after account deletion.",
+            "Log & Security Data: Retained for up to 90 days for security monitoring and incident investigation, then automatically purged.",
+            "Support Communications: Retained for up to 2 years after the resolution of the relevant support ticket.",
+            "Backup Data: Encrypted backups may contain personal data for up to 30 days beyond the deletion request, after which they are purged."
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Your Rights & Choices",
+      "blocks": [
+        {
+          "type": "ul",
+          "items": [
+            "Right to Access: You may request a copy of the personal data we hold about you.",
+            "Right to Correction: You may request correction of inaccurate or incomplete personal data.",
+            "Right to Deletion: You may request deletion of your Account and personal data, subject to our legal retention obligations.",
+            "Right to Data Portability: You may request a copy of your portfolio data in a machine-readable format.",
+            "Right to Withdraw Consent: Where processing is based on consent, you may withdraw it at any time without affecting prior processing.",
+            "Right to Object: You may object to processing based on legitimate interests, which we will honour unless we have compelling legitimate grounds to continue.",
+            "Right to Grievance: You may lodge a complaint with our Grievance Officer (Section 13) or the appropriate authority under the DPDPA."
+          ]
+        },
+        {
+          "type": "p",
+          "text": "To exercise any of these rights, write to us at legal@acedigital.cc from your registered email address. We will acknowledge your request within 48 hours and resolve it within 30 calendar days."
+        }
+      ]
+    },
+    {
+      "title": "Data Security",
+      "blocks": [
+        {
+          "type": "h3",
+          "text": "9.1 Technical Measures"
+        },
+        {
+          "type": "ul",
+          "items": [
+            "HTTPS/TLS encryption for all data transmitted between your browser and our servers.",
+            "Bcrypt or equivalent hashing for all stored passwords. We never store passwords in plain text.",
+            "Encryption at rest for database storage using AES-256 or equivalent.",
+            "Role-based access controls ensuring only authorised personnel can access personal data.",
+            "Regular security audits and vulnerability assessments.",
+            "Automated intrusion detection and DDoS protection."
+          ]
+        },
+        {
+          "type": "h3",
+          "text": "9.2 Organisational Measures"
+        },
+        {
+          "type": "p",
+          "text": "We maintain a written Information Security Policy aligned with ISO/IEC 27001 principles. Access to personal data is restricted to employees who need it to perform their job functions, and all employees are trained on data protection obligations."
+        },
+        {
+          "type": "h3",
+          "text": "9.3 Data Breach Notification"
+        },
+        {
+          "type": "p",
+          "text": "In the event of a data breach reasonably likely to result in a risk to your rights, we will notify you and the relevant authority within 72 hours of becoming aware, in compliance with applicable Indian law. Notifications will include the nature of the breach, data affected, likely consequences, and measures taken to address it."
+        }
+      ]
+    },
+    {
+      "title": "Cookies",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "We use cookies and similar technologies to operate the Platform effectively. Please refer to our Cookie Policy for full details on the types of cookies we use, their purpose, and how you can manage them."
+        }
+      ]
+    },
+    {
+      "title": "Children's Privacy",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "The Platform is not directed at children under the age of 13. We do not knowingly collect personal data from children under 13. If we become aware that we have collected personal data from a child under 13 without verified parental consent, we will take immediate steps to delete that data. If you are a parent or guardian and believe your child has provided us with personal data without your consent, please contact us at legal@acedigital.cc."
+        }
+      ]
+    },
+    {
+      "title": "Cross-Border Data Transfers",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Your personal data may be transferred to and processed on servers located outside India in connection with our cloud hosting and third-party service provider operations. We ensure that such transfers are subject to appropriate safeguards, including data processing agreements with providers who maintain security standards equivalent to those required under Indian law."
+        }
+      ]
+    },
+    {
+      "title": "Grievance Officer",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "In accordance with the Information Technology Act, 2000 and SPDI Rules, 2011, we have appointed a Grievance Officer to address privacy-related concerns:"
+        }
+      ]
+    },
+    {
+      "title": "Changes to This Policy",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "We may update this Privacy Policy from time to time to reflect changes in our practices, technology, legal requirements, or other factors. We will notify you of material changes by email and via a prominent notice on the Platform at least 15 days before the changes take effect. Continued use of the Platform after the effective date of the revised Policy constitutes your acceptance."
+        }
+      ]
+    }
+  ]
+}

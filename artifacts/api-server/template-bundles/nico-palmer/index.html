@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="./bexo-logo.png" />
+    <link rel="apple-touch-icon" href="./bexo-logo.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#e3e3db" />
+    <title>Portfolio</title>
+    <style>
+      /* First-paint boot styles — keep logo visible before CSS bundle loads */
+      .boot-loader {
+        position: fixed;
+        inset: 0;
+        z-index: 99999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 1.25rem;
+        background: #e3e3db;
+      }
+      .boot-loader-brand {
+        width: 44px !important;
+        height: 44px !important;
+        object-fit: contain !important;
+        display: block;
+      }
+      .boot-loader-text {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.7rem;
+        letter-spacing: 0.4em;
+        text-transform: uppercase;
+        color: #0f0f0f;
+      }
+    </style>
+    <script type="module" crossorigin src="./assets/index-RhFfdRfi.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-CFVSYLrT.css">
+  </head>
+  <body>
+    <div class="boot-loader" id="boot-loader" role="status" aria-label="Loading portfolio">
+      <img
+        class="boot-loader-brand"
+        src="./bexo-logo.png"
+        alt="BEXO"
+        width="44"
+        height="44"
+        decoding="async"
+      />
+      <div class="boot-loader-text">Portfolio</div>
+    </div>
+    <div id="root"></div>
+  </body>
+</html>

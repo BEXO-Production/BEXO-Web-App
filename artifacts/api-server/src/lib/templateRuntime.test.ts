@@ -17,8 +17,41 @@ test("injects profile and base path without allowing script breakout", () => {
 
   assert.match(result, /window\.__BEXO_PROFILE__/);
   assert.match(result, /window\.__BEXO_BASE_PATH__ = "\/api\/render\/kavin"/);
+  // Non-SPA shell: no <base> tag
+  assert.doesNotMatch(result, /<base href=/);
   assert.doesNotMatch(result, /<\/script><script>alert/);
   assert.match(result, /\\u003c\/script>/);
+});
+
+test("rewrites logo paths to absolute template URLs and bases SPA shells", () => {
+  const html =
+    '<html><head><link rel="icon" href="./bexo-logo.png" /></head><body><div id="root"><img src="/bexo-logo.png" alt="BEXO" /></div></body></html>';
+  const result = injectPortfolioBootstrap(
+    html,
+    { profile: { handle: "kavin" } },
+    "/api/render/kavin/nico-palmer",
+  );
+
+  assert.match(result, /<base href="\/api\/render\/kavin\/nico-palmer\/" \/>/);
+  assert.match(result, /href="\/api\/render\/kavin\/nico-palmer\/bexo-logo\.png"/);
+  assert.match(result, /src="\/api\/render\/kavin\/nico-palmer\/bexo-logo\.png"/);
+  assert.doesNotMatch(result, /src="\/bexo-logo\.png"/);
+});
+
+test("does not inject base href into multi-page shells", () => {
+  const html =
+    '<html><head></head><body><img src="../assets/bexo-logo.png" alt="BEXO" /></body></html>';
+  const result = injectPortfolioBootstrap(
+    html,
+    { profile: { handle: "kavin" } },
+    "/api/render/kavin/sierra-montana",
+  );
+
+  assert.doesNotMatch(result, /<base href=/);
+  assert.match(
+    result,
+    /src="\/api\/render\/kavin\/sierra-montana\/bexo-logo\.png"/,
+  );
 });
 
 test("resolves assets and falls back to index.html for SPA routes", () => {

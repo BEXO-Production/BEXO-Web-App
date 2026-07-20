@@ -1,0 +1,213 @@
+{
+  "title": "Cookie Policy",
+  "lead": "How BEXO uses cookies and similar tracking technologies to deliver a secure and reliable experience",
+  "sections": [
+    {
+      "title": "Introduction",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "This Cookie Policy explains how Ace Digital (\"we\", \"us\", \"our\") uses cookies, web beacons, pixel tags, local storage, and similar tracking technologies (collectively, \"Cookies\") when you visit or use BEXO at www.mybexo.com and its associated subdomains. BEXO is a product of Ace Digital, which is owned and operated by KSKG Private Ltd."
+        },
+        {
+          "type": "p",
+          "text": "This Policy should be read alongside our Privacy Policy, which provides broader information on how we process your personal data. By continuing to use BEXO after being presented with our cookie consent notice, you agree to the use of Cookies as described in this Policy."
+        }
+      ]
+    },
+    {
+      "title": "What Are Cookies?",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Cookies are small text files placed on your device (computer, smartphone, or tablet) when you visit a website. They enable the website to remember your actions and preferences over a period of time, so you do not have to re-enter them each time you return. Cookies also allow us to measure traffic, understand usage patterns, and improve the Platform."
+        },
+        {
+          "type": "h3",
+          "text": "2.1 Session vs. Persistent Cookies"
+        },
+        {
+          "type": "ul",
+          "items": [
+            "Session Cookies: Temporary cookies that are erased when you close your browser. They are used to manage your current session on the Platform (e.g., maintaining your logged-in state as you navigate between pages).",
+            "Persistent Cookies: Cookies that remain on your device for a defined period (or until you delete them). They are used to remember your preferences across multiple sessions."
+          ]
+        },
+        {
+          "type": "h3",
+          "text": "2.2 First-Party vs. Third-Party Cookies"
+        },
+        {
+          "type": "ul",
+          "items": [
+            "First-Party Cookies: Set directly by BEXO on our domain (mybexo.com and its subdomains).",
+            "Third-Party Cookies: Set by external parties (such as Google Analytics or Razorpay) when they provide services integrated into our Platform."
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Cookies We Use",
+      "blocks": [
+        {
+          "type": "h3",
+          "text": "3.1 Strictly Necessary Cookies"
+        },
+        {
+          "type": "p",
+          "text": "These Cookies are essential for the Platform to function and cannot be disabled. They do not require your consent. Without them, you cannot use core features of BEXO."
+        },
+        {
+          "type": "h3",
+          "text": "3.2 Performance & Analytics Cookies"
+        },
+        {
+          "type": "p",
+          "text": "These Cookies collect anonymised information about how visitors use the Platform — for example, which pages are visited most often and how users navigate between pages. The data is aggregated and cannot be used to identify you personally."
+        },
+        {
+          "type": "ul",
+          "items": [
+            "Google Analytics (_ga, _gid, _gat): Tracks page views, session duration, user flow, and engagement metrics. Data is anonymised via IP anonymisation (enabled). Governed by Google's Privacy Policy.",
+            "Hotjar / Microsoft Clarity (if enabled): Session recording and heatmapping to understand user interactions. Personal data is masked by default.",
+            "Error Monitoring (e.g., Sentry): Captures technical error data (stack traces, browser info) to help us fix bugs. Does not capture personal portfolio content."
+          ]
+        },
+        {
+          "type": "p",
+          "text": "You may opt out of Google Analytics using the Google Analytics Opt-out Browser Add-on."
+        },
+        {
+          "type": "h3",
+          "text": "3.3 Functionality Cookies"
+        },
+        {
+          "type": "p",
+          "text": "These Cookies allow the Platform to remember choices you make and provide enhanced, personalised features."
+        },
+        {
+          "type": "ul",
+          "items": [
+            "Login Persistence: Remembers that you are logged in between sessions so you do not have to sign in each time.",
+            "Handle Preview: Remembers your last-viewed portfolio handle for quick access.",
+            "Editor State: Saves unsaved edits in the portfolio builder to prevent data loss on accidental page refresh."
+          ]
+        },
+        {
+          "type": "h3",
+          "text": "3.4 Third-Party Cookies"
+        },
+        {
+          "type": "p",
+          "text": "Certain third-party services integrated into BEXO may set their own cookies on your device, governed by the respective third party's own privacy and cookie policies:"
+        },
+        {
+          "type": "ul",
+          "items": [
+            "Razorpay: Sets cookies necessary for secure payment session management during the checkout process.",
+            "Google OAuth / LinkedIn OAuth: If you use social sign-in, Google or LinkedIn may set cookies associated with your authentication session on those platforms.",
+            "Google Fonts / CDN: May set cookies when serving fonts or static assets. These are anonymised and non-tracking."
+          ]
+        },
+        {
+          "type": "h3",
+          "text": "3.5 Cookies We Do NOT Use"
+        },
+        {
+          "type": "p",
+          "text": "Advertising or targeting cookies that track your behaviour for the purpose of serving personalised advertisements · Cross-site tracking cookies that follow you across unrelated websites · Cookies that share your personal data with third-party advertisers or data brokers."
+        }
+      ]
+    },
+    {
+      "title": "Cookie Consent",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "When you first visit BEXO, you will be presented with a cookie consent banner that allows you to:"
+        },
+        {
+          "type": "ul",
+          "items": [
+            "Accept All Cookies: Consent to all categories of cookies described in this Policy.",
+            "Accept Necessary Only: Consent only to Strictly Necessary Cookies. Analytics, functionality, and third-party cookies will be disabled.",
+            "Manage Preferences: Choose which individual cookie categories you consent to."
+          ]
+        },
+        {
+          "type": "p",
+          "text": "Your consent choice will be saved for 12 months. You may change your preferences at any time by clicking the 'Cookie Settings' link in the footer of any BEXO page. Withdrawing consent does not affect the lawfulness of any processing that occurred before withdrawal."
+        },
+        {
+          "type": "p",
+          "text": "Please note that Strictly Necessary Cookies do not require consent and cannot be disabled through the cookie consent manager."
+        }
+      ]
+    },
+    {
+      "title": "Managing & Disabling Cookies",
+      "blocks": [
+        {
+          "type": "h3",
+          "text": "5.1 Browser Controls"
+        },
+        {
+          "type": "p",
+          "text": "You can control how cookies are set, stored, and deleted via your browser settings. Instructions for major browsers:"
+        },
+        {
+          "type": "ul",
+          "items": [
+            "Google Chrome: Settings › Privacy and Security › Cookies and other site data.",
+            "Mozilla Firefox: Options › Privacy & Security › Cookies and Site Data.",
+            "Apple Safari: Preferences › Privacy › Manage Website Data.",
+            "Microsoft Edge: Settings › Cookies and site permissions › Cookies and site data."
+          ]
+        },
+        {
+          "type": "p",
+          "text": "Blocking or deleting Strictly Necessary Cookies will impair or prevent the functioning of the Platform. Blocking performance or functionality cookies may affect your user experience but will not prevent you from using the Platform."
+        },
+        {
+          "type": "h3",
+          "text": "5.2 Opt-Out Tools"
+        },
+        {
+          "type": "ul",
+          "items": [
+            "Google Analytics: Install the Google Analytics Opt-out Browser Add-on.",
+            "Your Online Choices: Visit youronlinechoices.eu (EU/UK users) or optout.aboutads.info (US users) for industry-wide opt-out tools.",
+            "Do Not Track (DNT): Some browsers support a 'Do Not Track' signal. While we endeavour to respect DNT signals, we cannot guarantee that all third-party services will do the same."
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Local Storage & Similar Technologies",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "In addition to cookies, we may use HTML5 local storage and session storage to save certain application state information on your device (for example, unsaved edits in the portfolio builder). This data is stored locally on your device and is not transmitted to our servers unless you save your work. You can clear this data via your browser's Developer Tools or by clearing your browser's site data."
+        }
+      ]
+    },
+    {
+      "title": "Updates to This Policy",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "We may update this Cookie Policy from time to time, including to reflect changes in the cookies we use, changes in applicable law, or changes in our data practices. We will post the revised Policy on this page with a new effective date and notify you of material changes via the cookie consent banner on your next visit."
+        }
+      ]
+    },
+    {
+      "title": "Contact Us",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "If you have any questions or concerns about our use of cookies, please contact:"
+        }
+      ]
+    }
+  ]
+}

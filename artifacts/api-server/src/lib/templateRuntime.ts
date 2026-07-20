@@ -16,14 +16,29 @@ export function injectPortfolioBootstrap(
   basePath = "/",
 ): string {
   const normalizedBase = basePath === "/" ? "/" : basePath.replace(/\/+$/, "");
-  const injection = `<script>
+  const assetRoot = normalizedBase === "/" ? "" : normalizedBase;
+  const logoUrl = `${assetRoot}/bexo-logo.png`;
+  const siteIconUrl = `${assetRoot}/site-icon.png`;
+
+  // Absolute logo/favicon URLs work on every route (SPA nested paths + multi-page depth).
+  let prepared = html
+    .replace(/(href|src)=["'][^"']*bexo-logo\.png["']/gi, `$1="${logoUrl}"`)
+    .replace(/(href|src)=["'][^"']*site-icon\.png["']/gi, `$1="${siteIconUrl}"`);
+
+  // SPA shells need <base> so ./assets/* still resolve when the URL is /portfolio or /project/:id.
+  // Multi-page templates (Sierra) must NOT get <base> — they rely on ../ depth prefixes.
+  const isSpaShell = /id=["']root["']/i.test(prepared) || /type=["']module["']/i.test(prepared);
+  const baseHref = normalizedBase === "/" ? "/" : `${normalizedBase}/`;
+  const baseTag = isSpaShell ? `<base href=${serializeForInlineScript(baseHref)} />` : "";
+
+  const injection = `${baseTag}<script>
 window.__BEXO_PROFILE__ = ${serializeForInlineScript(profile)};
 window.__BEXO_BASE_PATH__ = ${serializeForInlineScript(normalizedBase)};
 </script>`;
 
-  return html.includes("</head>")
-    ? html.replace("</head>", `${injection}</head>`)
-    : `${injection}${html}`;
+  return prepared.includes("</head>")
+    ? prepared.replace("</head>", `${injection}</head>`)
+    : `${injection}${prepared}`;
 }
 
 export function resolveTemplateFile(bundleRoot: string, requestPath: string): string | null {

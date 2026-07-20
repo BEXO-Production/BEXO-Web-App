@@ -4,6 +4,8 @@ import { Button, Input, Label, Card } from '../design-system/primitives';
 import { ArrowRight, Plus, Pencil, Trash2, GripVertical, CheckCircle2, Upload, FileText, Image as ImageIcon, Link as LinkIcon, AlertCircle, X, ArrowUp, ArrowDown } from 'lucide-react';
 import { cn } from '../design-system/primitives';
 
+import { FREE_STORAGE_BYTES } from '../lib/pricing';
+
 const TABS = [
   { id: 'about', label: 'About' },
   { id: 'education', label: 'Education' },
@@ -15,7 +17,6 @@ const TABS = [
   { id: 'contact', label: 'Contact' }
 ];
 
-const MAX_STORAGE_BYTES = 50 * 1024 * 1024; // 50MB
 const SUMMARY_MAX_LENGTH = 150;
 
 const limitSummary = (value = '') => {
@@ -99,8 +100,9 @@ export default function Step6Review() {
     updateData({ visitedTabs: Array.from(newVisited) });
   }, [activeTab]);
 
-  const storagePercentage = Math.min((usedStorage / MAX_STORAGE_BYTES) * 100, 100);
-  const isStorageFull = usedStorage >= MAX_STORAGE_BYTES;
+  const storageLimit = data.storageQuotaBytes || FREE_STORAGE_BYTES;
+  const storagePercentage = Math.min((usedStorage / storageLimit) * 100, 100);
+  const isStorageFull = usedStorage >= storageLimit;
 
   const handleMove = (index: number, direction: 'up' | 'down') => {
     const list = [...(sections[activeTab as keyof typeof sections] || [])];
@@ -257,8 +259,8 @@ export default function Step6Review() {
       if (!file) return;
 
       const sizeBytes = file.size;
-      if (usedStorage + sizeBytes > MAX_STORAGE_BYTES) {
-        alert("Uploading this file exceeds the 50MB storage quota.");
+      if (usedStorage + sizeBytes > storageLimit) {
+        alert(`Uploading this file exceeds your ${(storageLimit / 1024 / 1024).toFixed(0)}MB storage quota.`);
         return;
       }
 

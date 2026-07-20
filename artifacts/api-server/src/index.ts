@@ -32,7 +32,7 @@ import { logger } from "./lib/logger";
 import { checkDatabaseConnection } from "@workspace/db";
 import { verifyMailer } from "./lib/mailer";
 import { startEmailOutboxWorker, processEmailOutbox } from "./lib/emailOutbox";
-import { scheduleRecoveryEmails } from "./lib/lifecycleEmails";
+import { scheduleLifecycleEmails } from "./lib/lifecycleEmails";
 
 const rawPort = process.env["PORT"];
 
@@ -69,9 +69,9 @@ if (!process.env.JWT_SECRET || process.env.JWT_SECRET === "super_secret_jwt_key"
 await verifyMailer().catch(() => false);
 startEmailOutboxWorker();
 setInterval(() => {
-  scheduleRecoveryEmails().catch((err) => logger.error({ err }, "Recovery email scheduler failed"));
+  scheduleLifecycleEmails().catch((err) => logger.error({ err }, "Lifecycle email scheduler failed"));
 }, 60 * 60 * 1000);
-scheduleRecoveryEmails().catch(() => undefined);
+scheduleLifecycleEmails().catch(() => undefined);
 processEmailOutbox().catch(() => undefined);
 
 app.listen(port, (err) => {

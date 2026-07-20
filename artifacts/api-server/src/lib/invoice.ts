@@ -297,7 +297,7 @@ export const generateInvoicePDF = async (
       doc.fontSize(10).font('Helvetica-Bold').fillColor(darkTxt).text('Terms & Conditions', ml, tmY);
 
       const terms = [
-        'This Tax Invoice is issued by Ace Digital Private\nLimited, the parent company and operator of Bexo.',
+        'This Tax Invoice is issued by Ace Digital.\nBexo is a product of Ace Digital.',
         'All purchases are subject to the standard Bexo\nRefund Policy and Terms of Service.',
         'For payment, billing, or invoices queries, please\nreach out directly to billing@mybexo.com or\ninfo@acedigital.cc.'
       ];

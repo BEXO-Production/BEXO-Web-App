@@ -5,10 +5,12 @@ import { sendEmail } from "./mailer";
 import {
   getActivationEmail,
   getBillingReceiptEmail,
+  getCartRecoveryEmail,
   getContactNotificationEmail,
   getSiteLiveEmail,
   getWelcomeEmail,
   getRecoveryEmail,
+  getRenewalReminderEmail,
 } from "./templates";
 import { generateInvoicePDF } from "./invoice";
 import { uploadToR2 } from "./r2";
@@ -71,6 +73,22 @@ async function renderEmail(row: typeof emailDeliveries.$inferSelect) {
     case "recovery":
       return {
         html: getRecoveryEmail(name, payload.resumeUrl || "https://mybexo.com"),
+        attachments: undefined,
+        replyTo: undefined,
+      };
+    case "cart_recovery":
+      return {
+        html: getCartRecoveryEmail(name, payload.checkoutUrl || "https://mybexo.com/step/9"),
+        attachments: undefined,
+        replyTo: undefined,
+      };
+    case "renewal_reminder":
+      return {
+        html: getRenewalReminderEmail(
+          name,
+          payload.renewUrl || "https://mybexo.com/billing",
+          payload.expiresLabel || "",
+        ),
         attachments: undefined,
         replyTo: undefined,
       };

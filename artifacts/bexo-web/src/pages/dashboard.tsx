@@ -47,6 +47,10 @@ import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popove
 import { Calendar } from '../components/ui/calendar';
 import { format } from 'date-fns';
 import { Calendar as CalendarIcon } from 'lucide-react';
+import {
+  PORTFOLIO_TEMPLATES,
+  getTemplatePreviewUrl,
+} from '../lib/templates';
 
 const TABS = [
   { id: 'about', label: 'About' },
@@ -66,43 +70,7 @@ const THEMES = [
   { id: 'violet', label: 'Violet', hex: 'bg-violet-600', textHex: 'text-violet-600' },
 ];
 
-const TEMPLATES = [
-  {
-    id: 'minimal',
-    name: 'Minimal',
-    description: 'Clean, typography-driven layout perfect for developers.',
-    isPro: false,
-    previewable: true,
-  },
-  {
-    id: 'cura-futuri',
-    name: 'Cura Futuri',
-    description: 'Modern, high-contrast design for interactive experiences.',
-    isPro: true,
-    previewable: true,
-  },
-  {
-    id: 'sierra-montana',
-    name: 'Sierra Montana',
-    description: 'Elegant storytelling with smooth locomotive scrolling.',
-    isPro: true,
-    previewable: true,
-  },
-  {
-    id: 'nico-palmer',
-    name: 'Nico Palmer',
-    description: 'Bold, cinematic typography for motion designers.',
-    isPro: true,
-    previewable: false, // renderer not deployed yet
-  }
-];
-
-// Premium templates render through the API's bundled template engine with the
-// user's live data; Minimal renders through the in-app public portfolio page.
-const getTemplatePreviewUrl = (templateId: string, handle: string) =>
-  templateId === 'minimal'
-    ? `/${encodeURIComponent(handle)}`
-    : `/api/render/${encodeURIComponent(handle)}/${encodeURIComponent(templateId)}/`;
+const TEMPLATES = PORTFOLIO_TEMPLATES;
 
 type BillingStatus = {
   plan: 'annual' | 'lifetime' | null;
@@ -110,6 +78,9 @@ type BillingStatus = {
   isPremium: boolean;
   expiresAt: string | null;
   storageQuotaBytes: number;
+  storageBonusBytes?: number;
+  canBuy?: { annual: boolean; lifetime: boolean };
+  renewalMode?: 'purchase' | 'renew' | 'addon';
   latestPayment?: {
     amount: number;
     status: string;
@@ -265,13 +236,25 @@ export default function Dashboard() {
     }
   }, [data.storageQuotaBytes]);
 
-  // URL management
+  // URL management — local subdomains use *.localhost:5001; production uses mybexo.com
   const handleString = data.handle || (data.name ? data.name.toLowerCase().replace(/[^a-z0-9]/g, '') : 'portfolio');
-  const url = data.isPremium 
-    ? `${handleString}.mybexo.com` 
-    : `mybexo.com/${handleString}`;
+  const isLocalHost =
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname.endsWith('.localhost'));
+  const localApiPort = import.meta.env.VITE_API_PORT || '5001';
+  const url = data.isPremium
+    ? isLocalHost
+      ? `${handleString}.localhost:${localApiPort}`
+      : `${handleString}.mybexo.com`
+    : isLocalHost
+      ? `${window.location.host}/${handleString}`
+      : `mybexo.com/${handleString}`;
   const correctVisitUrl = data.isPremium
-    ? `https://${handleString}.mybexo.com`
+    ? isLocalHost
+      ? `http://${handleString}.localhost:${localApiPort}/`
+      : `https://${handleString}.mybexo.com`
     : `${window.location.protocol}//${window.location.host}/${handleString}`;
   const [copied, setCopied] = useState(false);
 
@@ -323,6 +306,10 @@ export default function Dashboard() {
         plan: result.plan,
         isPremium: result.isPremium,
         storageQuotaBytes: result.storageQuotaBytes,
+        storageBonusBytes: result.storageBonusBytes ?? 0,
+        canBuy: result.canBuy || { annual: true, lifetime: !result.isPremium },
+        renewalMode: result.renewalMode || 'purchase',
+        expiresAt: result.expiresAt,
       });
     } catch (err) {
       console.error('Billing status error:', err);
@@ -381,7 +368,7 @@ export default function Dashboard() {
       : !data.resumeFileName
       ? { label: 'Attach resume', detail: 'A resume improves the downloadable version and future parsing.', action: () => { setCurrentView('updates'); setUpdatesTab('parse'); }, icon: FileText }
       : !data.isPremium
-        ? { label: 'Unlock Pro publishing', detail: 'Move to custom subdomain, premium templates, and 50MB storage.', action: openBilling, icon: Crown }
+        ? { label: 'Unlock Pro publishing', detail: 'Move to custom subdomain, premium templates, and 100MB Yearly storage.', action: openBilling, icon: Crown }
         : { label: 'Review live portfolio', detail: 'Your public page is ready for recruiters and applications.', action: () => window.open(correctVisitUrl, '_blank', 'noopener,noreferrer'), icon: ExternalLink };
   const NextActionIcon = nextAction.icon;
 
@@ -1360,6 +1347,22 @@ export default function Dashboard() {
           <div className="h-1.5 w-5 bg-slate-400 rounded-sm" />
           <div className="h-1 w-8 bg-slate-300 rounded-sm" />
         </div>
+      </div>
+    </div>
+  );
+
+  const renderNicoMockup = (accentBg: string) => (
+    <div className="w-full h-full bg-[#e8e8e0] border border-slate-300/50 rounded-lg p-1.5 flex gap-1.5 relative overflow-hidden select-none">
+      <div className="flex-1 flex flex-col justify-between py-0.5">
+        <div className="h-1 w-8 bg-slate-400/70 rounded-sm" />
+        <div className="space-y-0.5">
+          <div className="h-2 w-14 bg-slate-800 rounded-sm" />
+          <div className="h-1 w-10 bg-slate-400/60 rounded-sm" />
+        </div>
+        <div className={`h-2 w-10 rounded-sm ${accentBg} opacity-80`} />
+      </div>
+      <div className="w-[42%] rounded-md bg-slate-300/80 border border-dashed border-slate-400/60 overflow-hidden relative">
+        <div className="absolute inset-1 rounded-sm bg-gradient-to-b from-slate-200 to-slate-400/50" />
       </div>
     </div>
   );
@@ -3092,7 +3095,7 @@ export default function Dashboard() {
                 {settingsSubTab === 'design' && (
                   <div className="space-y-6 animate-in fade-in duration-200">
                     {/* Theme + background — Minimal (free) and Cura Futuri honor these */}
-                    {['minimal', 'cura-futuri', 'sierra-montana'].includes(data.templateId || '') && (
+                    {PORTFOLIO_TEMPLATES.some((t) => t.id === (data.templateId || 'minimal')) && (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-4">
                           <div>
@@ -3210,7 +3213,7 @@ export default function Dashboard() {
                                     {tpl.id === 'minimal' && renderMinimalMockup(accentBg)}
                                     {tpl.id === 'cura-futuri' && renderCreativeMockup(accentBg)}
                                     {tpl.id === 'sierra-montana' && renderAcademicMockup(accentBg)}
-                                    {tpl.id === 'nico-palmer' && renderCreativeMockup(accentBg)}
+                                    {tpl.id === 'nico-palmer' && renderNicoMockup(accentBg)}
                                   </div>
                                   {isLocked && (
                                     <div className="absolute inset-0 bg-slate-900/25 flex items-center justify-center">
@@ -3369,7 +3372,7 @@ export default function Dashboard() {
                             size="sm" 
                             className="h-10 text-xs px-4 bg-indigo-600 text-white hover:bg-indigo-700 flex-1 border-none shadow-md font-semibold"
                           >
-                            Upgrade to Pro (50MB Limit)
+                            Upgrade to Pro (100MB Yearly)
                           </Button>
                         )}
                       </div>
@@ -3399,7 +3402,7 @@ export default function Dashboard() {
                               <div key={payment.id} className="py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                                 <div>
                                   <p className="text-sm font-semibold text-slate-900 capitalize">
-                                    Bexo Pro {payment.amount === 299900 ? 'Lifetime Membership' : payment.amount === 99900 ? 'Annual Support Plan' : 'Subscription'}
+                                    Bexo Pro {payment.amount === 299900 || payment.amount === 353882 || payment.amount === 353900 ? 'Lifetime Membership' : payment.amount === 149900 || payment.amount === 176882 || payment.amount === 99900 ? 'Annual Support Plan' : 'Subscription'}
                                   </p>
                                   <p className="text-xs text-slate-555 mt-0.5">
                                     Paid on {dateStr}  |  Order ID: <span className="font-mono text-slate-400">{payment.razorpayOrderId}</span>

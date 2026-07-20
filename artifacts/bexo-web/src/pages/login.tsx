@@ -175,6 +175,11 @@ export default function Login() {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center p-4">
       <div className="w-full max-w-md space-y-8 animate-in fade-in slide-in-from-bottom duration-300">
+        <div className="text-center">
+          <a href="/" className="text-xs font-semibold text-slate-400 hover:text-slate-700 transition-colors">
+            ← Back to BEXO
+          </a>
+        </div>
         {/* Logo area */}
         <div className="flex flex-col items-center gap-3">
           <img src={logo} alt="BEXO" className="h-10 object-contain select-none" />

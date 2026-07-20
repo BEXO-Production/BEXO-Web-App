@@ -22,6 +22,9 @@ import Login from './pages/login';
 import Dashboard from './pages/dashboard';
 import PublicPortfolio from './pages/public-portfolio';
 import HireMePage from './pages/hire-me';
+import WelcomeSuccess from './pages/welcome';
+import LandingPage from './pages/landing/LandingPage';
+import { TermsPage, PrivacyPage, RefundPage, CookiesPage } from './pages/legal';
 import { useToast } from './hooks/use-toast';
 
 const queryClient = new QueryClient();
@@ -94,14 +97,26 @@ function Router() {
   }
 
   if (isLoading || sessionLoading) {
-    return (
-      <div className="flex h-screen w-screen items-center justify-center bg-slate-50">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-sm font-medium text-slate-500">Loading your profile...</p>
+    // Guests hitting marketing/legal pages shouldn't wait on profile hydrate
+    const path = typeof window !== 'undefined' ? window.location.pathname : '';
+    const isPublicMarketing =
+      !localStorage.getItem('token') &&
+      (path === '/' ||
+        path === '/login' ||
+        path === '/terms' ||
+        path === '/privacy' ||
+        path === '/refund' ||
+        path === '/cookies');
+    if (!isPublicMarketing) {
+      return (
+        <div className="flex h-screen w-screen items-center justify-center bg-slate-50">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-sm font-medium text-slate-500">Loading your profile...</p>
+          </div>
         </div>
-      </div>
-    );
+      );
+    }
   }
 
   const token = localStorage.getItem('token');
@@ -147,14 +162,36 @@ function Router() {
         {hasToken ? (
           data.hasCompletedOnboarding ? <Redirect to="/dashboard" /> : <Redirect to={`/step/${maxAllowedStep}`} />
         ) : (
+          <LandingPage />
+        )}
+      </Route>
+      <Route path="/login">
+        {hasToken ? (
+          data.hasCompletedOnboarding ? <Redirect to="/dashboard" /> : <Redirect to={`/step/${maxAllowedStep}`} />
+        ) : (
           <Login />
         )}
       </Route>
+      <Route path="/terms" component={TermsPage} />
+      <Route path="/privacy" component={PrivacyPage} />
+      <Route path="/refund" component={RefundPage} />
+      <Route path="/cookies" component={CookiesPage} />
       <Route path="/dashboard">
         {hasToken ? (
           data.hasCompletedOnboarding ? <Dashboard /> : <Redirect to={`/step/${maxAllowedStep}`} />
         ) : (
-          <Redirect to="/" />
+          <Redirect to="/login" />
+        )}
+      </Route>
+      <Route path="/welcome">
+        {hasToken ? (
+          data.hasCompletedOnboarding || data.isPremium ? (
+            <WelcomeSuccess />
+          ) : (
+            <Redirect to={`/step/${maxAllowedStep}`} />
+          )
+        ) : (
+          <Redirect to="/login" />
         )}
       </Route>
       <Route path="/billing">
@@ -172,19 +209,23 @@ function Router() {
             </div>
             <Step9Plan />
           </div>
-        ) : <Redirect to="/" />}
+        ) : <Redirect to="/login" />}
       </Route>
       <Route path="/step/:id">
         {params => {
           const stepId = parseInt(params.id, 10);
           
           if (stepId < 1 || stepId > 9) {
-            return <Redirect to="/" />;
+            return <Redirect to={hasToken ? `/step/${maxAllowedStep}` : "/login"} />;
           }
 
           // If the user has already completed onboarding, block access to onboarding steps
           if (hasToken && data.hasCompletedOnboarding) {
             return <Redirect to="/dashboard" />;
+          }
+
+          if (!hasToken) {
+            return <Redirect to="/login" />;
           }
 
           // Phone OTP is already verified once a token exists, so do not send

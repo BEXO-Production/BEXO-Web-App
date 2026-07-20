@@ -4,6 +4,7 @@ import { Loader2, Mail, Phone, Globe, Linkedin, Github, GraduationCap, Briefcase
 import { Card } from '../design-system/primitives';
 import { cn } from '@/lib/utils';
 import logo from '../assets/bexo-logo.png';
+import { BUNDLED_PREMIUM_TEMPLATES } from '../lib/templates';
 
 interface PublicPortfolioProps {
   handleOverride?: string;
@@ -160,8 +161,24 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
   // Premium templates are rendered by the API's bundled template engine.
   // The public URL remains the user's handle URL; no separate template host
   // is exposed or required.
-  const BUNDLED_PREMIUM_TEMPLATES = new Set(['cura-futuri', 'sierra-montana']);
   if (isPremium && BUNDLED_PREMIUM_TEMPLATES.has(user.templateId || '')) {
+    // Local: *.localhost:5173 → hand off to the API subdomain router on :5001
+    // so assets + routing match production (kavin.localhost → template bundle).
+    const host = window.location.hostname;
+    const port = window.location.port;
+    if (host.endsWith('.localhost') && (port === '5173' || port === '')) {
+      const apiPort = import.meta.env.VITE_API_PORT || '5001';
+      const target = `${window.location.protocol}//${host}:${apiPort}/`;
+      if (window.location.href !== target) {
+        window.location.replace(target);
+        return (
+          <div className="flex h-screen w-screen items-center justify-center bg-slate-50">
+            <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
+          </div>
+        );
+      }
+    }
+
     return (
       <iframe
         title={`${user.name || handle} portfolio`}
@@ -1188,14 +1205,14 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
       <div className="max-w-4xl mx-auto px-4 pt-16 border-t border-slate-200/80 text-center space-y-2 relative z-10">
         <p className="text-xs font-bold uppercase tracking-wider" style={{ color: accentHex }}>Student Portfolio Network</p>
         <p className="text-xs text-slate-450">
-          &copy; 2026 Ace Digital. ALL RIGHTS RESERVED.
+          &copy; {new Date().getFullYear()} BEXO FROM Ace Digital. All rights reserved.
         </p>
         <div className="flex justify-center gap-4 pt-2 text-[11px] font-bold text-slate-400">
-          <a href="https://mybexo.com" className="hover:opacity-80 transition-colors" style={{ color: 'inherit' }}>About Bexo</a>
+          <a href="/" className="hover:opacity-80 transition-colors" style={{ color: 'inherit' }}>About Bexo</a>
           <span>•</span>
-          <a href="https://mybexo.com" className="hover:opacity-80 transition-colors" style={{ color: 'inherit' }}>Privacy Policy</a>
+          <a href="/privacy" className="hover:opacity-80 transition-colors" style={{ color: 'inherit' }}>Privacy Policy</a>
           <span>•</span>
-          <a href="https://mybexo.com" className="hover:opacity-80 transition-colors" style={{ color: 'inherit' }}>Terms of Service</a>
+          <a href="/terms" className="hover:opacity-80 transition-colors" style={{ color: 'inherit' }}>Terms of Service</a>
         </div>
       </div>
 

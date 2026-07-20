@@ -303,6 +303,10 @@
     return normalizeProfile(raw);
   }
 
+  function getFooterCopyright() {
+    return `© ${new Date().getFullYear()} BEXO FROM Ace Digital. All rights reserved.`;
+  }
+
   global.BexoProfile = {
     TEXT_LIMITS,
     clampText,
@@ -313,5 +317,6 @@
     getDepthPrefix,
     getProfile,
     applyProfilePayload,
+    getFooterCopyright,
   };
 })(typeof window !== "undefined" ? window : globalThis);

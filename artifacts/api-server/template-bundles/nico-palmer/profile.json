@@ -1,0 +1,269 @@
+{
+  "user": {
+    "name": "Nico Palmer",
+    "email": "nico@palmer.com",
+    "phone": "+1 416 555 1234",
+    "dob": "1997-05-15",
+    "photoUrl": "/assets/images/home/portrait.jpg",
+    "openToHire": true
+  },
+  "profile": {
+    "handle": "nicopalmer",
+    "headline": "Interaction & Motion Designer",
+    "careerGoal": "Crafting immersive digital experiences that tell human stories through design.",
+    "bio": "Nico Palmer is an innovative Interaction and Motion Designer, based in the vibrant city of Toronto, specializing in bringing digital experiences to life. With a keen eye for detail and a passion for pushing the boundaries of web animation."
+  },
+  "sections": {
+    "about": {
+      "reviewed": true,
+      "entries": [
+        {
+          "bio": "Nico Palmer partners with a broad spectrum of clients in Tech, Education, Entertainment, and eCommerce, crafting immersive web animations and interactive designs for brands of all shapes and sizes. With a focus on Branding, User Interface (UI) Design, and Motion Graphics, Nico brings a unique blend of creativity and technical precision to every project. Renowned for pioneering in the field of web interaction design, Nico has been nominated for several industry awards, including the prestigious Webby Awards for innovative web animation.",
+          "estYear": "1997",
+          "address": "789 Town Way, Toronto M1A 2B3",
+          "email": "hello@curafuturi.com",
+          "phone": "+1 416 555 1234"
+        }
+      ]
+    },
+    "education": {
+      "reviewed": true,
+      "entries": [
+        {
+          "degree": "Bachelor of Design in Interaction Design",
+          "institution": "University of Toronto",
+          "startYear": "2015",
+          "endYear": "2019",
+          "grade": "3.8 CGPA"
+        }
+      ]
+    },
+    "projects": {
+      "reviewed": true,
+      "entries": [
+        {
+          "id": "proj-1",
+          "title": "Fragments of Light",
+          "category": "Short Film",
+          "description": "A visual meditation on identity, Fragments of Light explores the quiet journey of self-discovery through minimalism, mood, and motion.",
+          "techStack": "GSAP, React, Framer Motion",
+          "link": "https://github.com/nicopalmer/fragments-of-light",
+          "images": [
+            "/assets/images/projects/project-1.jpg",
+            "/assets/images/projects/project-2.jpg",
+            "/assets/images/projects/project-3.jpg",
+            "/assets/images/projects/project-4.jpg",
+            "/assets/images/projects/project-5.jpg"
+          ],
+          "pdfs": [],
+          "role": "Director & Lead Animator",
+          "year": "2024",
+          "duration": "6:30",
+          "credits": {
+            "client": "Fragments Co",
+            "creativeDirection": "Elena Brooks",
+            "artDirector": "Milo Vance",
+            "producer": "Asha Lennox"
+          }
+        },
+        {
+          "id": "proj-2",
+          "title": "Market Pulse",
+          "category": "Documentary",
+          "description": "Street life, raw and real. Rebranding and digital transformation for a cutting-edge biotech firm specializing in agricultural solutions.",
+          "techStack": "React, Lenis, WebGL",
+          "link": "https://github.com/nicopalmer/market-pulse",
+          "images": [
+            "/assets/images/projects/project-2.jpg",
+            "/assets/images/projects/project-1.jpg",
+            "/assets/images/projects/project-3.jpg",
+            "/assets/images/projects/project-4.jpg"
+          ],
+          "pdfs": [],
+          "role": "Director & Editor",
+          "year": "2023",
+          "duration": "12:15",
+          "credits": {
+            "client": "MarketPulse Ltd",
+            "creativeDirection": "Elena Brooks",
+            "artDirector": "Milo Vance",
+            "producer": "Asha Lennox"
+          }
+        },
+        {
+          "id": "proj-3",
+          "title": "The Stillness Project",
+          "category": "Experimental",
+          "description": "Visual ode to silence. Capturing the peaceful intersection of nature and industrial design in metropolitan structures.",
+          "techStack": "WebGL, Custom Shaders, Three.js",
+          "link": "https://github.com/nicopalmer/stillness",
+          "images": [
+            "/assets/images/projects/project-3.jpg",
+            "/assets/images/projects/project-1.jpg",
+            "/assets/images/projects/project-2.jpg"
+          ],
+          "pdfs": [],
+          "role": "Lead Visual Designer",
+          "year": "2023",
+          "duration": "4:45",
+          "credits": {
+            "client": "Art Institute",
+            "creativeDirection": "Elena Brooks",
+            "artDirector": "Milo Vance",
+            "producer": "Asha Lennox"
+          }
+        },
+        {
+          "id": "proj-4",
+          "title": "Chroma/City",
+          "category": "Branded Content",
+          "description": "Urban color in motion. A fast-paced interactive advertisement showcasing new streetwear design elements.",
+          "techStack": "React Native, GSAP, CSS Grid",
+          "link": "https://github.com/nicopalmer/chroma-city",
+          "images": [
+            "/assets/images/projects/project-4.jpg",
+            "/assets/images/projects/project-5.jpg"
+          ],
+          "pdfs": [],
+          "role": "Motion Graphics Designer",
+          "year": "2022",
+          "duration": "1:30",
+          "credits": {
+            "client": "Urban Wear LLC",
+            "creativeDirection": "Elena Brooks",
+            "artDirector": "Milo Vance",
+            "producer": "Asha Lennox"
+          }
+        },
+        {
+          "id": "proj-5",
+          "title": "Echoes of Silence",
+          "category": "Narrative Drama",
+          "description": "Grief told through memory. An immersive storytelling experience blending interactive elements with cinematic visual arcs.",
+          "techStack": "Svelte, Framer Motion, GSAP",
+          "link": "https://github.com/nicopalmer/echoes",
+          "images": [
+            "/assets/images/projects/project-5.jpg",
+            "/assets/images/projects/project-1.jpg"
+          ],
+          "pdfs": [],
+          "role": "Director & Writer",
+          "year": "2021",
+          "duration": "18:00",
+          "credits": {
+            "client": "Film Fund",
+            "creativeDirection": "Elena Brooks",
+            "artDirector": "Milo Vance",
+            "producer": "Asha Lennox"
+          }
+        }
+      ]
+    },
+    "experience": {
+      "reviewed": true,
+      "entries": [
+        {
+          "role": "Lead Interaction Designer",
+          "company": "Design Matters Studio",
+          "startDate": "2022-01",
+          "endDate": "Present",
+          "responsibilities": [
+            "Lead animation architecture and interaction design for Fortune 500 client campaigns.",
+            "Collaborate closely with developers to implement complex GSAP timelines and responsive designs.",
+            "Established internal guidelines for motion accessibility, reducing INP by 30% on primary properties."
+          ]
+        },
+        {
+          "role": "Motion Graphic Designer",
+          "company": "Smashing Agency",
+          "startDate": "2019-06",
+          "endDate": "2021-12",
+          "responsibilities": [
+            "Designed and shipped high-performance web animations, interactive web assets, and motion graphics.",
+            "Coordinated with branding teams to ensure consistent storytelling across physical and digital mediums."
+          ]
+        }
+      ]
+    },
+    "certificates": {
+      "reviewed": true,
+      "entries": [
+        {
+          "name": "Advanced Web Animation & Interaction",
+          "issuer": "Awwwards Academy",
+          "date": "2023-04-10",
+          "credentialLink": "https://awwwards.com/certificates/nico-palmer"
+        },
+        {
+          "name": "Modern Frontend Architecture",
+          "issuer": "Frontend Masters",
+          "date": "2020-11-05",
+          "credentialLink": "https://frontendmasters.com"
+        }
+      ]
+    },
+    "achievements": {
+      "reviewed": true,
+      "entries": [
+        {
+          "title": "Best Interactive Design",
+          "awarder": "Webby Awards",
+          "year": "2024",
+          "project": "Fragments of Light"
+        },
+        {
+          "title": "Innovative UI/UX Design",
+          "awarder": "UX Design Awards",
+          "year": "2023",
+          "project": "Market Pulse"
+        },
+        {
+          "title": "Outstanding Animation",
+          "awarder": "AIGA Design Competition",
+          "year": "2022",
+          "project": "The Stillness Project"
+        },
+        {
+          "title": "Interactive Designer Honors",
+          "awarder": "Communication Arts",
+          "year": "2021",
+          "project": "Chroma/City"
+        }
+      ]
+    },
+    "research": {
+      "reviewed": true,
+      "entries": [
+        {
+          "title": "Exploring the Future of Web Animation and Performance",
+          "authors": "Nico Palmer",
+          "publication": "Smashing Magazine",
+          "year": "2023",
+          "link": "https://smashingmagazine.com"
+        },
+        {
+          "title": "Next-Gen User Interactions in Modern Web Frameworks",
+          "authors": "Nico Palmer",
+          "publication": "Web Designer Depot",
+          "year": "2022",
+          "link": "https://webdesignerdepot.com"
+        }
+      ]
+    },
+    "contact": {
+      "reviewed": true,
+      "entries": [
+        {
+          "email": "hello@curafuturi.com",
+          "phone": "+1 416 555 1234",
+          "address": "789 Town Way, Toronto M1A 2B3",
+          "socials": [
+            { "label": "Instagram", "url": "https://instagram.com/nicopalmer" },
+            { "label": "Twitter", "url": "https://twitter.com/nicopalmer" },
+            { "label": "LinkedIn", "url": "https://linkedin.com/in/nicopalmer" }
+          ]
+        }
+      ]
+    }
+  }
+}

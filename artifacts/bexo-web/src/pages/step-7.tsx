@@ -4,49 +4,16 @@ import { useOnboarding } from '../context/OnboardingContext';
 import { Button, Card } from '../design-system/primitives';
 import { ArrowRight, CheckCircle2, Eye, X } from 'lucide-react';
 import { cn } from '../design-system/primitives';
+import {
+  PORTFOLIO_TEMPLATES,
+  THEMEABLE_TEMPLATE_IDS,
+  getTemplatePreviewUrl,
+} from '../lib/templates';
 
-const TEMPLATES = [
-  {
-    id: 'minimal',
-    name: 'Minimal',
-    description: 'Clean, typography-driven layout perfect for developers.',
-    layoutClass: 'flex-col',
-    isPro: false,
-    previewable: true
-  },
-  {
-    id: 'cura-futuri',
-    name: 'Cura Futuri',
-    description: 'Modern, high-contrast design for interactive experiences.',
-    layoutClass: 'flex-col',
-    isPro: true,
-    previewable: true
-  },
-  {
-    id: 'sierra-montana',
-    name: 'Sierra Montana',
-    description: 'Elegant storytelling with smooth locomotive scrolling.',
-    layoutClass: 'flex-col',
-    isPro: true,
-    previewable: true
-  },
-  {
-    id: 'nico-palmer',
-    name: 'Nico Palmer',
-    description: 'Bold, cinematic typography for motion designers.',
-    layoutClass: 'flex-col',
-    isPro: true,
-    previewable: false // renderer not deployed yet
-  }
-];
+const TEMPLATES = PORTFOLIO_TEMPLATES;
 
 /** Premium template chosen before payment — applied automatically after the plan step. */
 export const PENDING_TEMPLATE_KEY = 'bexo_pending_template';
-
-const getTemplatePreviewUrl = (templateId: string, handle: string) =>
-  templateId === 'minimal'
-    ? 'https://resilient-hummingbird-87fc89.netlify.app/'
-    : `/api/render/${encodeURIComponent(handle || 'portfolio')}/${encodeURIComponent(templateId)}/`;
 
 const isTemplatePreviewable = (templateId: string) =>
   TEMPLATES.find(t => t.id === templateId)?.previewable ?? false;
@@ -65,9 +32,6 @@ const THEME_BGS = [
   { id: 'solid', label: 'Accent Gradient', desc: 'Vibrant color blend' },
 ];
 
-/** Templates that honor themeColor + themeBg from the portal */
-const THEMEABLE_TEMPLATES = new Set(['minimal', 'cura-futuri', 'sierra-montana']);
-
 export default function Step7Theme() {
   const { data, updateData, nextStep } = useOnboarding();
   const [selectedTemplate, setSelectedTemplate] = useState(data.templateId || 'minimal');
@@ -75,7 +39,7 @@ export default function Step7Theme() {
   const [selectedThemeBg, setSelectedThemeBg] = useState(data.themeBg || 'grid');
   const [previewTemplate, setPreviewTemplate] = useState<string | null>(null);
   const [isSwooshing, setIsSwooshing] = useState(false);
-  const showThemeOptions = THEMEABLE_TEMPLATES.has(selectedTemplate);
+  const showThemeOptions = THEMEABLE_TEMPLATE_IDS.has(selectedTemplate);
   const previewHandle = data.handle || 'portfolio';
 
   const handleContinue = () => {
@@ -166,18 +130,18 @@ export default function Step7Theme() {
         ) : (
           <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/60 flex items-center justify-center min-h-[74px] shrink-0 px-4">
             <span className="text-xs font-medium text-slate-400 text-center">
-              Theme customization unlocks for Minimal &amp; Cura Futuri
+              Theme customization applies to all layouts
             </span>
           </div>
         )}
       </div>
 
-      <div className="grid md:grid-cols-3 gap-6 flex-1">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-6 flex-1">
         {TEMPLATES.map((tpl) => (
           <Card 
             key={tpl.id}
             className={cn(
-              "cursor-pointer transition-all duration-300 border-2 overflow-hidden flex flex-col group",
+              "cursor-pointer transition-all duration-300 border-2 overflow-hidden flex flex-col group min-h-0",
               selectedTemplate === tpl.id 
                 ? "border-slate-900 ring-4 ring-slate-100 shadow-md" 
                 : "border-slate-200 hover:border-slate-300 hover:shadow-md"
@@ -185,7 +149,7 @@ export default function Step7Theme() {
             onClick={() => setSelectedTemplate(tpl.id)}
           >
             {/* Mock Thumbnail Preview */}
-            <div className="h-48 bg-slate-50 border-b border-slate-100 relative overflow-hidden flex flex-col pointer-events-none select-none">
+            <div className="h-40 sm:h-44 md:h-48 bg-slate-50 border-b border-slate-100 relative overflow-hidden flex flex-col pointer-events-none select-none">
               {/* Fake browser header */}
               <div className="h-6 bg-white border-b border-slate-200 flex items-center px-2 gap-1.5 shrink-0 z-10">
                 <div className="w-2 h-2 rounded-full bg-red-400" />

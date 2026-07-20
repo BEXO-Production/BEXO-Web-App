@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation } from 'wouter';
 import { useOnboarding } from '../context/OnboardingContext';
@@ -8,6 +8,13 @@ import { cn } from '../design-system/primitives';
 import { useToast } from '../hooks/use-toast';
 import { buildMinimalPortfolioHTML } from '../lib/buildMinimalHTML';
 import { PENDING_TEMPLATE_KEY } from './step-7';
+import { JUST_ACTIVATED_KEY } from './welcome';
+import { PORTFOLIO_TEMPLATES } from '../lib/templates';
+import {
+  ANNUAL_STORAGE_BYTES,
+  LIFETIME_STORAGE_BYTES,
+  PLAN_PRICES_INR,
+} from '../lib/pricing';
 
 declare global {
   interface Window {
@@ -22,15 +29,26 @@ const THEMES = [
   { id: 'violet',  label: 'Violet',  bg: 'bg-violet-600',  ring: 'ring-violet-600',  hex: '#7c3aed' },
 ];
 
-// Removed static FREE_PREVIEW_URL — now using live user data via srcdoc
+const formatMb = (bytes: number) => `${Math.round((Number(bytes) || 0) / (1024 * 1024))}MB`;
 
 export default function Step9Plan() {
   const { data, updateData } = useOnboarding();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  
+
+  const canBuyLifetime = data.canBuy?.lifetime !== false && !data.isPremium;
+  const canBuyAnnual = data.canBuy?.annual !== false;
+  const renewalMode =
+    data.renewalMode ||
+    (data.isPremium && data.plan === 'lifetime'
+      ? 'addon'
+      : data.isPremium && data.plan === 'annual'
+        ? 'renew'
+        : 'purchase');
+  const yearlyOnly = data.isPremium || !canBuyLifetime;
+
   const [tab, setTab] = useState<'pay' | 'code'>('pay');
-  const [plan, setPlan] = useState<'annual' | 'lifetime'>('lifetime');
+  const [plan, setPlan] = useState<'annual' | 'lifetime'>('annual');
   const [isProcessing, setIsProcessing] = useState(false);
   const [code, setCode] = useState('');
   const [codeError, setCodeError] = useState('');
@@ -53,21 +71,22 @@ export default function Step9Plan() {
   const [handleError, setHandleError] = useState('');
   const [showFreePreview, setShowFreePreview] = useState(false);
 
-  // Build the full portfolio HTML from the user's real onboarding data.
-  // This re-builds whenever theme or handle changes — no API call needed.
-  // Defined at the top level to adhere to the Rules of Hooks.
+  useEffect(() => {
+    if (yearlyOnly && plan === 'lifetime') setPlan('annual');
+  }, [yearlyOnly, plan]);
+
   const portfolioHTML = useMemo(
     () => buildMinimalPortfolioHTML(data, freeTheme, freeHandle || 'yourhandle', freeThemeBg),
     [data, freeTheme, freeHandle, freeThemeBg]
   );
 
-  const basePrice = plan === 'annual' ? 999 : 2999;
+  const basePrice = plan === 'annual' ? PLAN_PRICES_INR.annual : PLAN_PRICES_INR.lifetime;
   
   const getDiscount = () => {
     if (appliedCoupon === 'BEXO50') return basePrice * 0.5;
     if (appliedCoupon === 'STUDENT') return 200;
     if (appliedCoupon === 'BEXO2026' || appliedCoupon === 'PROMO2026') {
-      if (plan === 'annual') return basePrice - 799;
+      if (plan === 'annual') return basePrice - 999;
       if (plan === 'lifetime') return basePrice - 1999;
     }
     return 0;
@@ -79,20 +98,77 @@ export default function Step9Plan() {
   const total = Math.round(subtotal + gst);
   const isBillingManagement = data.hasCompletedOnboarding;
 
-  // Compute the user's portfolio URL for display
   const handleStr = data.handle || (data.name ? data.name.toLowerCase().replace(/[^a-z0-9]/g, '') : '');
   const portfolioUrl = handleStr ? `${handleStr}.mybexo.com` : null;
 
-  /**
-   * If the user picked a premium template at the theme step (before paying),
-   * apply it now that their account is Pro. The earlier PATCH was rejected by
-   * the server's premium gate, so the choice was parked in localStorage.
-   */
-  const applyPendingTemplate = () => {
+  const expiryLabel = data.expiresAt
+    ? new Date(data.expiresAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+    : null;
+
+  const planWarning =
+    renewalMode === 'renew' && data.plan === 'annual'
+      ? expiryLabel
+        ? `You're on Annual until ${expiryLabel}. Renewing extends that date by 1 year — storage stays the same.`
+        : `You're on an active Annual plan. Renewing extends your access by 1 year.`
+      : renewalMode === 'addon' && data.plan === 'lifetime'
+        ? `Lifetime stays forever. Buying Yearly adds +100MB on top of your current ${formatMb(data.storageQuotaBytes || 0)} quota.`
+        : null;
+
+  const finishPremiumActivation = async (
+    activatedPlan: 'annual' | 'lifetime',
+    extras?: {
+      storageQuotaBytes?: number;
+      storageBonusBytes?: number;
+      stacked?: boolean;
+      expiresAt?: string | Date | null;
+    },
+  ) => {
     const pending = localStorage.getItem(PENDING_TEMPLATE_KEY);
-    if (!pending) return;
     localStorage.removeItem(PENDING_TEMPLATE_KEY);
-    updateData({ templateId: pending });
+    const token = localStorage.getItem('token');
+
+    const quota =
+      extras?.storageQuotaBytes ??
+      (activatedPlan === 'annual' ? ANNUAL_STORAGE_BYTES : LIFETIME_STORAGE_BYTES);
+
+    const patchBody: Record<string, unknown> = {
+      plan: activatedPlan,
+      isPremium: true,
+      hasCompletedOnboarding: true,
+      storageQuotaBytes: quota,
+      storageBonusBytes: extras?.storageBonusBytes ?? data.storageBonusBytes ?? 0,
+      canBuy: { annual: true, lifetime: false },
+      renewalMode: activatedPlan === 'lifetime' ? 'addon' : 'renew',
+      expiresAt: extras?.expiresAt ?? data.expiresAt,
+    };
+    if (pending) patchBody.templateId = pending;
+
+    updateData(patchBody);
+
+    if (token && pending) {
+      try {
+        await fetch('/api/profile', {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ templateId: pending }),
+        });
+      } catch (err) {
+        console.error('Failed to persist premium template:', err);
+      }
+    }
+
+    if (extras?.stacked) {
+      toast({
+        title: 'Storage stacked',
+        description: `Your total quota is now ${formatMb(quota)} (+100MB Yearly add-on).`,
+      });
+    }
+
+    sessionStorage.setItem(JUST_ACTIVATED_KEY, '1');
+    setLocation('/welcome');
   };
 
   const verifyPayment = async (token: string | null, payload: any) => {
@@ -113,14 +189,15 @@ export default function Step9Plan() {
       throw new Error(verifyData.error || "Payment verification failed");
     }
 
-    updateData({
-      plan,
-      isPremium: true,
-      storageQuotaBytes: plan === 'annual' ? 100 * 1024 * 1024 : 500 * 1024 * 1024,
-    });
-    applyPendingTemplate();
-    toast({ title: 'Payment Successful', description: 'Your BEXO Pro access is active.' });
-    setLocation('/dashboard');
+    await finishPremiumActivation(
+      (verifyData.plan === 'lifetime' ? 'lifetime' : 'annual') as 'annual' | 'lifetime',
+      {
+        storageQuotaBytes: verifyData.storageQuotaBytes,
+        storageBonusBytes: verifyData.storageBonusBytes,
+        stacked: verifyData.stacked,
+        expiresAt: verifyData.expiresAt,
+      },
+    );
   };
 
   const validateCode = () => {
@@ -184,15 +261,20 @@ export default function Step9Plan() {
         description: plan === 'annual' ? "Annual Support Plan" : "Lifetime Access",
         order_id: orderData.orderId,
         handler: async function (response: any) {
+          setIsProcessing(true);
           try {
             toast({ title: 'Processing Payment', description: 'Please wait while we verify your payment...' });
             await verifyPayment(token, response);
           } catch (err: any) {
             console.error("Verification error:", err);
             toast({ title: 'Verification Failed', description: err.message, variant: 'destructive' });
-          } finally {
             setIsProcessing(false);
           }
+        },
+        modal: {
+          ondismiss: function () {
+            setIsProcessing(false);
+          },
         },
         prefill: {
           name: data.name,
@@ -205,17 +287,19 @@ export default function Step9Plan() {
       if (window.Razorpay) {
         const rzp = new window.Razorpay(options);
         rzp.on('payment.failed', function (response: any){
-           toast({ title: 'Payment Failed', description: response.error.description, variant: 'destructive' });
+           toast({ title: 'Payment Failed', description: response.error?.description || 'Payment failed', variant: 'destructive' });
+           setIsProcessing(false);
         });
         rzp.open();
+        // Keep processing=true while the checkout modal is open (cleared on dismiss / fail / success)
       } else {
-        toast({ title: 'Error', description: 'Razorpay SDK failed to load.', variant: 'destructive' });
+        toast({ title: 'Error', description: 'Razorpay SDK failed to load. Refresh and try again.', variant: 'destructive' });
+        setIsProcessing(false);
       }
 
     } catch (err: any) {
       console.error("Checkout error:", err);
       toast({ title: 'Checkout Error', description: err.message, variant: 'destructive' });
-    } finally {
       setIsProcessing(false);
     }
   };
@@ -238,14 +322,13 @@ export default function Step9Plan() {
       const result = await res.json();
       
       if (res.ok) {
-        updateData({
-          plan: result.plan || 'annual',
-          isPremium: true,
-          storageQuotaBytes: (result.plan || 'annual') === 'annual' ? 100 * 1024 * 1024 : 500 * 1024 * 1024,
+        const activatedPlan = (result.plan === 'lifetime' ? 'lifetime' : 'annual') as 'annual' | 'lifetime';
+        await finishPremiumActivation(activatedPlan, {
+          storageQuotaBytes: result.storageQuotaBytes,
+          storageBonusBytes: result.storageBonusBytes,
+          stacked: result.stacked,
+          expiresAt: result.expiresAt,
         });
-        applyPendingTemplate();
-        toast({ title: 'Account Activated', description: 'Your activation code was successfully redeemed.' });
-        setLocation('/dashboard');
       } else {
         throw new Error(result.error || "Failed to activate code");
       }
@@ -367,8 +450,8 @@ export default function Step9Plan() {
         hasCompletedOnboarding: true
       });
 
-      toast({ title: 'Welcome to Bexo!', description: 'Your free account is activated.' });
-      setLocation('/dashboard');
+      sessionStorage.setItem(JUST_ACTIVATED_KEY, '1');
+      setLocation('/welcome');
     } catch (err: any) {
       console.error(err);
       toast({ title: 'Setup Failed', description: err.message || "Failed to complete free plan setup", variant: 'destructive' });
@@ -510,13 +593,13 @@ export default function Step9Plan() {
             },
             {
               icon: <X className="w-4 h-4 text-red-600" />,
-              title: 'Locked Layout Templates',
-              desc: 'Only the Minimal template available. Creative & Academic designs are Pro-only.',
+              title: 'Locked Premium Templates',
+              desc: `Only Minimal is free. ${PORTFOLIO_TEMPLATES.filter((t) => t.isPro).map((t) => t.name).join(', ')} need Pro.`,
             },
             {
               icon: <X className="w-4 h-4 text-red-600" />,
               title: 'No Custom Subdomains',
-              desc: 'Portfolio at handle.mybexo.com only — no yourname.mybexo.com custom domain setup.',
+              desc: 'Portfolio at mybexo.com/handle only — no yourname.mybexo.com custom domain.',
             },
           ].map((item, idx) => (
             <div key={idx} className={cn("flex items-start gap-3", idx < 3 && "pb-3 border-b border-slate-100")}>
@@ -827,7 +910,11 @@ export default function Step9Plan() {
                   {data.plan === 'lifetime' ? 'Lifetime Pro' : data.plan === 'annual' ? 'Annual Support Plan' : 'Pro Plan'}
                 </h3>
                 <p className="text-sm text-slate-500 mt-0.5">
-                  You are currently on the {data.plan === 'lifetime' ? 'lifetime' : 'annual'} premium tier.
+                  {data.plan === 'lifetime'
+                    ? 'Lifetime premium access — forever.'
+                    : expiryLabel
+                      ? `Active until ${expiryLabel}.`
+                      : 'You are currently on the annual premium tier.'}
                 </p>
               </div>
             </div>
@@ -836,7 +923,12 @@ export default function Step9Plan() {
               <div>
                 <p className="text-xs font-bold text-slate-400 uppercase mb-1">Storage Quota</p>
                 <p className="text-sm font-semibold text-slate-800">
-                  {data.plan === 'lifetime' ? '500MB' : '100MB'} Limit
+                  {formatMb(data.storageQuotaBytes || 0)} Limit
+                  {(data.storageBonusBytes || 0) > 0 && (
+                    <span className="block text-xs font-medium text-indigo-600 mt-0.5">
+                      includes +{formatMb(data.storageBonusBytes)} stacked
+                    </span>
+                  )}
                 </p>
               </div>
               <div>
@@ -848,16 +940,42 @@ export default function Step9Plan() {
             </div>
           </Card>
 
-          {data.plan === 'annual' && (
+          {data.plan === 'annual' && canBuyAnnual && (
             <Card className="p-6 bg-indigo-600 border border-indigo-700 shadow-md text-white text-center">
-              <h3 className="font-bold text-xl mb-2">Upgrade to Lifetime</h3>
-              <p className="text-indigo-100 text-sm mb-6">Pay once and enjoy premium access forever. No more annual renewals.</p>
-              <Button 
-                onClick={() => setShowUpgradeOptions(true)} 
-                variant="secondary" 
+              <h3 className="font-bold text-xl mb-2">Renew Yearly</h3>
+              <p className="text-indigo-100 text-sm mb-6">
+                {expiryLabel
+                  ? `Extend your Annual plan past ${expiryLabel} by another year.`
+                  : 'Extend your Annual plan by another year.'}
+              </p>
+              <Button
+                onClick={() => {
+                  setPlan('annual');
+                  setShowUpgradeOptions(true);
+                }}
+                variant="secondary"
                 className="w-full bg-white text-indigo-600 hover:bg-indigo-50 border-none"
               >
-                View Lifetime Plan
+                Renew Yearly Plan
+              </Button>
+            </Card>
+          )}
+
+          {data.plan === 'lifetime' && canBuyAnnual && (
+            <Card className="p-6 bg-indigo-600 border border-indigo-700 shadow-md text-white text-center">
+              <h3 className="font-bold text-xl mb-2">Add Yearly Storage</h3>
+              <p className="text-indigo-100 text-sm mb-6">
+                Keep Lifetime forever and stack +100MB cloud storage on top.
+              </p>
+              <Button
+                onClick={() => {
+                  setPlan('annual');
+                  setShowUpgradeOptions(true);
+                }}
+                variant="secondary"
+                className="w-full bg-white text-indigo-600 hover:bg-indigo-50 border-none"
+              >
+                Add +100MB Yearly
               </Button>
             </Card>
           )}
@@ -873,14 +991,23 @@ export default function Step9Plan() {
     <div className="flex flex-col h-full max-w-lg w-full mx-auto justify-center pb-10">
       <div className="mb-8 text-center">
         <h1 className="font-serif text-3xl md:text-4xl font-bold text-slate-900 mb-3 tracking-tight">
-          {isBillingManagement ? 'Manage Your Plan' : 'Activate Your Account'}
+          {isBillingManagement
+            ? renewalMode === 'renew'
+              ? 'Renew Your Plan'
+              : renewalMode === 'addon'
+                ? 'Add Yearly Storage'
+                : 'Manage Your Plan'
+            : 'Activate Your Account'}
         </h1>
         <p className="text-slate-500 text-base md:text-lg">
           {isBillingManagement
-            ? 'Upgrade, renew, or redeem a campus activation code for your portfolio.'
+            ? renewalMode === 'renew'
+              ? 'Extend your Yearly plan — Lifetime is hidden while Annual is active.'
+              : renewalMode === 'addon'
+                ? 'Stack +100MB storage on top of Lifetime with a Yearly add-on.'
+                : 'Upgrade, renew, or redeem a campus activation code for your portfolio.'
             : 'Complete your setup to unlock dashboard access and premium features.'}
         </p>
-        {/* Show portfolio URL if handle already set */}
         {portfolioUrl && (
           <div className="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-full">
             <Globe className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
@@ -888,6 +1015,13 @@ export default function Step9Plan() {
           </div>
         )}
       </div>
+
+      {planWarning && (
+        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left">
+          <p className="text-sm font-semibold text-amber-900">Current plan notice</p>
+          <p className="text-sm text-amber-800 mt-1">{planWarning}</p>
+        </div>
+      )}
 
       <div className="bg-slate-200/50 p-1.5 rounded-xl flex mb-8">
         <button
@@ -897,7 +1031,7 @@ export default function Step9Plan() {
           )}
           onClick={() => { setTab('pay'); setCodeError(''); }}
         >
-          Choose Plan
+          {yearlyOnly ? (renewalMode === 'addon' ? 'Add Storage' : 'Renew Plan') : 'Choose Plan'}
         </button>
         <button
           className={cn(
@@ -912,78 +1046,108 @@ export default function Step9Plan() {
 
       {tab === 'pay' ? (
         <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
-          {/* Lifetime Card (Popular / Promoted) */}
-          <Card 
-            className={cn(
-              "p-6 cursor-pointer border-2 transition-all relative overflow-hidden",
-              plan === 'lifetime' ? "border-indigo-600 bg-indigo-50/10" : "border-slate-200 hover:border-indigo-300"
-            )}
-            onClick={() => setPlan('lifetime')}
-          >
-            <div className="absolute top-0 right-0 bg-gradient-to-l from-emerald-600 to-indigo-600 text-white text-[9px] font-extrabold px-3 py-1 rounded-bl-lg tracking-wider uppercase">
-              STUDENT PROMO
-            </div>
-            
-            <div className="flex justify-between items-start mb-2">
-              <div>
-                <h3 className="text-xl font-bold text-slate-900 flex items-center gap-1.5">
-                  Lifetime Pro
-                </h3>
-                <p className="text-xs text-indigo-600 font-bold mt-0.5">Expose your skills & profile forever</p>
+          {/* Annual — promoted / only option for existing subscribers */}
+          {canBuyAnnual && (
+            <Card 
+              className={cn(
+                "p-6 cursor-pointer border-2 transition-all relative overflow-hidden",
+                plan === 'annual' ? "border-indigo-600 bg-indigo-50/10" : "border-slate-200 hover:border-indigo-300"
+              )}
+              onClick={() => setPlan('annual')}
+            >
+              <div className="absolute top-0 right-0 bg-indigo-600 text-white text-[9px] font-extrabold px-3 py-1 rounded-bl-lg tracking-wider uppercase">
+                {renewalMode === 'renew' ? 'RENEW' : renewalMode === 'addon' ? 'ADD-ON' : 'RECOMMENDED'}
               </div>
-              <div className="text-right">
-                <span className="text-2xl font-bold text-slate-900">₹2,999</span>
-                <span className="text-[10px] text-slate-400 block">excl. GST</span>
+              <div className="flex justify-between items-start mb-2">
+                <div>
+                  <h3 className="text-xl font-bold text-slate-900">
+                    {renewalMode === 'addon' ? 'Yearly Storage Add-on' : 'Annual Support Plan'}
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5 font-medium">
+                    {renewalMode === 'renew'
+                      ? 'Extends your current Yearly access by 1 year.'
+                      : renewalMode === 'addon'
+                        ? 'Adds +100MB on top of Lifetime storage.'
+                        : 'Billed annually. Help Bexo run & grow.'}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <span className="text-2xl font-bold text-slate-900">₹{PLAN_PRICES_INR.annual.toLocaleString('en-IN')}</span>
+                  <span className="text-xs text-slate-500">/year</span>
+                  <span className="text-[10px] text-slate-400 block">excl. GST</span>
+                </div>
               </div>
-            </div>
-            <p className="text-xs text-slate-500 mb-4">Pay once, hosting & live portfolio is yours for life.</p>
-            <ul className="space-y-2">
-              {[
-                '500MB Premium Cloud Storage (photos & assets)',
-                '1 AI Resume Parse per month (resets every 30 days)',
-                'Personalized subdomain (yourname.mybexo.com)',
-                'Full access to Academic & Creative layouts',
-                'Portfolio visibility to placement cells'
-              ].map((feat, i) => (
-                <li key={i} className="flex items-center text-xs text-slate-600">
-                  <Check className="w-4 h-4 text-emerald-500 mr-2 shrink-0" /> {feat}
-                </li>
-              ))}
-            </ul>
-          </Card>
+              <ul className="space-y-2 mt-4">
+                {(renewalMode === 'addon'
+                  ? [
+                      '+100MB stacked cloud storage',
+                      'Lifetime access unchanged',
+                      'Cura Futuri, Sierra Montana & Nico Palmer templates',
+                    ]
+                  : renewalMode === 'renew'
+                    ? [
+                        'Extend access by 1 year from current expiry',
+                        'Keep your current storage quota',
+                        'Personalized subdomain (yourname.mybexo.com)',
+                        'Cura Futuri, Sierra Montana & Nico Palmer templates',
+                      ]
+                    : [
+                        '100MB Cloud Storage space capacity',
+                        '3 AI Resume Parses per month (resets every 30 days)',
+                        'Personalized subdomain (yourname.mybexo.com)',
+                        'Cura Futuri, Sierra Montana & Nico Palmer templates',
+                      ]
+                ).map((feat, i) => (
+                  <li key={i} className="flex items-center text-xs text-slate-600">
+                    <Check className="w-4 h-4 text-indigo-500 mr-2 shrink-0" /> {feat}
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
 
-          {/* Annual Support Plan */}
-          <Card 
-            className={cn(
-              "p-6 cursor-pointer border-2 transition-all relative overflow-hidden",
-              plan === 'annual' ? "border-indigo-600 bg-indigo-50/10" : "border-slate-200 hover:border-indigo-300"
-            )}
-            onClick={() => setPlan('annual')}
-          >
-            <div className="flex justify-between items-start mb-2">
-              <div>
-                <h3 className="text-xl font-bold text-slate-900">Annual Support Plan</h3>
-                <p className="text-xs text-slate-500 mt-0.5 font-medium">Billed annually. Help Bexo run & grow.</p>
+          {/* Lifetime — only for free / expired users */}
+          {canBuyLifetime && (
+            <Card 
+              className={cn(
+                "p-6 cursor-pointer border-2 transition-all relative overflow-hidden",
+                plan === 'lifetime' ? "border-indigo-600 bg-indigo-50/10" : "border-slate-200 hover:border-indigo-300"
+              )}
+              onClick={() => setPlan('lifetime')}
+            >
+              <div className="absolute top-0 right-0 bg-gradient-to-l from-emerald-600 to-indigo-600 text-white text-[9px] font-extrabold px-3 py-1 rounded-bl-lg tracking-wider uppercase">
+                STUDENT PROMO
               </div>
-              <div className="text-right">
-                <span className="text-2xl font-bold text-slate-900">₹999</span>
-                <span className="text-xs text-slate-500">/year</span>
-                <span className="text-[10px] text-slate-400 block">excl. GST</span>
+              
+              <div className="flex justify-between items-start mb-2">
+                <div>
+                  <h3 className="text-xl font-bold text-slate-900 flex items-center gap-1.5">
+                    Lifetime Pro
+                  </h3>
+                  <p className="text-xs text-indigo-600 font-bold mt-0.5">Expose your skills & profile forever</p>
+                </div>
+                <div className="text-right">
+                  <span className="text-2xl font-bold text-slate-900">₹{PLAN_PRICES_INR.lifetime.toLocaleString('en-IN')}</span>
+                  <span className="text-[10px] text-slate-400 block">excl. GST</span>
+                </div>
               </div>
-            </div>
-            <ul className="space-y-2 mt-4">
-              {[
-                '100MB Cloud Storage space capacity',
-                '3 AI Resume Parses per month (resets every 30 days)',
-                'Personalized subdomain (yourname.mybexo.com)',
-                'Full access to Academic & Creative layouts'
-              ].map((feat, i) => (
-                <li key={i} className="flex items-center text-xs text-slate-600">
-                  <Check className="w-4 h-4 text-indigo-500 mr-2 shrink-0" /> {feat}
-                </li>
-              ))}
-            </ul>
-          </Card>
+              <p className="text-xs text-slate-500 mb-4">Pay once, hosting & live portfolio is yours for life.</p>
+              <ul className="space-y-2">
+                {[
+                  '500MB Premium Cloud Storage (photos & assets)',
+                  'Stack +100MB anytime with a Yearly add-on',
+                  '1 AI Resume Parse per month (resets every 30 days)',
+                  'Personalized subdomain (yourname.mybexo.com)',
+                  'Cura Futuri, Sierra Montana & Nico Palmer templates',
+                  'Portfolio visibility to placement cells'
+                ].map((feat, i) => (
+                  <li key={i} className="flex items-center text-xs text-slate-600">
+                    <Check className="w-4 h-4 text-emerald-500 mr-2 shrink-0" /> {feat}
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
         </div>
       ) : (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 bg-white p-8 rounded-2xl border border-slate-200 shadow-sm">
@@ -1027,7 +1191,15 @@ export default function Step9Plan() {
               <div className="w-9 h-9 bg-indigo-500 rounded-xl flex items-center justify-center arrow-box shrink-0">
                 <ArrowRight className="w-5 h-5 text-white" />
               </div>
-              <span className="btn-label">{tab === 'pay' ? 'Continue to Checkout' : 'Finish Setup'}</span>
+              <span className="btn-label">
+                {tab === 'pay'
+                  ? renewalMode === 'renew'
+                    ? 'Continue to Renew'
+                    : renewalMode === 'addon'
+                      ? 'Continue to Add Storage'
+                      : 'Continue to Checkout'
+                  : 'Finish Setup'}
+              </span>
             </>
           )}
         </button>
@@ -1037,16 +1209,17 @@ export default function Step9Plan() {
             <p className="text-center text-xs text-slate-400 mt-4 flex items-center justify-center gap-1">
               <ShieldCheck className="w-3.5 h-3.5" /> Secure encrypted checkout
             </p>
-            {/* Plain text link — not a button */}
-            <p className="text-center text-xs text-slate-400 mt-3 select-none">
-              or{" "}
-              <span
-                onClick={() => setFreeFlowStep('warning')}
-                className="text-slate-600 hover:text-slate-900 underline cursor-pointer transition-colors"
-              >
-                Continue for free
-              </span>
-            </p>
+            {!data.isPremium && (
+              <p className="text-center text-xs text-slate-400 mt-3 select-none">
+                or{" "}
+                <span
+                  onClick={() => setFreeFlowStep('warning')}
+                  className="text-slate-600 hover:text-slate-900 underline cursor-pointer transition-colors"
+                >
+                  Continue for free
+                </span>
+              </p>
+            )}
           </>
         ) : (
           <p className="text-center text-xs text-slate-400 mt-4 flex items-center justify-center gap-1">
