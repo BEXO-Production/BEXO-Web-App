@@ -6,33 +6,33 @@ Use this after deploying the public landing fixes on `https://mybexo.cyou/`.
 
 | Issue | Fix |
 |--------|-----|
-| Home page behind login | `/` always shows the **public marketing page** (no redirect to dashboard). Sign-in is only on `/login` and `/dashboard`. |
-| Home page purpose unclear | **`#about`** section + meta description + `<noscript>` block explain BEXO. |
-| App name mismatch | Hero, nav, and `<title>` use **BEXO** (matches OAuth app name). |
+| Home page behind login | `/` always shows the **public marketing page** (no redirect when signed in). Badge: “No login required to explore.” Sign-in only on `/login` and `/dashboard`. |
+| Home page purpose unclear | Hero + **`#about`** + **static HTML block** (before React) explain purpose for Google’s crawler. |
+| App name mismatch | Homepage H1, `<title>`, and `application-name` use **`BEXO From Ace Digital`** — must match Google Auth Platform → Branding → App name **exactly**. |
 | Domain not registered to owner | **You** must verify `mybexo.cyou` in [Google Search Console](https://search.google.com/search-console) with the same Google account that owns GCP project `mybexo`. |
 
 ## Search Console (required for “domain registered to you”)
 
 1. Open [Google Search Console](https://search.google.com/search-console/welcome).
-2. Add property: **URL prefix** `https://mybexo.cyou/` (or **Domain** `mybexo.cyou` if you can set a DNS TXT record at Cloudflare).
-3. Complete verification (HTML file upload to Firebase Hosting, DNS TXT, or Google Analytics — DNS is most reliable for apex + www).
-4. Ensure the verifying Google account is **Owner** on GCP project `mybexo` (IAM).
+2. Add property: **URL prefix** `https://mybexo.cyou/` (or **Domain** `mybexo.cyou` via DNS TXT).
+3. Complete verification with the **same Google account** that owns GCP `mybexo`.
 
 ## OAuth consent screen (GCP → Google Auth Platform → Branding)
 
-Confirm:
+Confirm **exactly**:
 
-- **App name:** `BEXO`
+- **App name:** `BEXO From Ace Digital` (must match homepage H1)
 - **User support email:** your support address
 - **Application home page:** `https://mybexo.cyou`
 - **Privacy policy:** `https://mybexo.cyou/privacy`
 - **Terms:** `https://mybexo.cyou/terms`
 - **Authorized domains:** `mybexo.cyou`, `mybexo.firebaseapp.com`, `qovrjyfhtaytaiwjbiqu.supabase.co`
 
-Before resubmitting verification, manually open an **incognito** window and confirm:
+Before resubmitting verification, open an **incognito** window and confirm:
 
-1. `https://mybexo.cyou/` — full marketing page, word **BEXO** visible, no login wall.
+1. `https://mybexo.cyou/` — shows **BEXO From Ace Digital**, purpose text, **no login wall**.
 2. `https://mybexo.cyou/privacy` and `/terms` — load without auth.
+3. View page source (or curl) — static block / meta include the full app name even before JS.
 
 Then click **Verify** / resubmit on the Branding page.
 
@@ -42,4 +42,4 @@ See [supabase-auth-redirects.md](./supabase-auth-redirects.md).
 
 ## Testing mode vs Production
 
-Until verified, only **Test users** added under OAuth **Audience** can sign in without the “unverified app” warning. After verification, publish the app to **Production** when you are ready for all users.
+Until verified, only **Test users** under OAuth **Audience** can sign in without the “unverified app” warning. After verification, publish to **Production** when ready.

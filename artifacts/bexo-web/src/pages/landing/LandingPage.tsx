@@ -19,7 +19,12 @@ import { TemplatePreviewModal } from "@/components/marketing/TemplatePreviewModa
 import { LandingCursor, LandingScrollProgress, HeroPublishStage } from "@/components/marketing/LandingMotion";
 import { PORTFOLIO_TEMPLATES, type PortfolioTemplate } from "@/lib/templates";
 import { usePricing } from "@/hooks/use-pricing";
-import { BEXO_APP_TAGLINE, BEXO_FOOTER_COPYRIGHT } from "@/lib/brand";
+import {
+  BEXO_APP_PURPOSE,
+  BEXO_APP_TAGLINE,
+  BEXO_FOOTER_COPYRIGHT,
+  BEXO_OAUTH_APP_NAME,
+} from "@/lib/brand";
 import { buildMarketingJsonLd } from "@/lib/seo";
 import { usePageSeo } from "@/hooks/use-page-seo";
 import logo from "@/assets/bexo-logo.png";
@@ -191,9 +196,9 @@ export default function LandingPage({
   const [previewTemplate, setPreviewTemplate] = useState<PortfolioTemplate | null>(null);
 
   usePageSeo({
-    title: "BEXO — Professional portfolios for students",
+    title: `${BEXO_OAUTH_APP_NAME} — Professional portfolios for students`,
     description:
-      "Upload your resume, pick a premium template, and publish on mybexo.cyou. Built by Ace Digital for placements and hiring.",
+      "BEXO From Ace Digital helps students and professionals publish placement-ready portfolios on mybexo.cyou. This home page is public — sign-in is only required to edit your portfolio.",
     canonical: "https://mybexo.cyou/",
     ogImage: "https://mybexo.cyou/og-default.jpg",
     jsonLd: buildMarketingJsonLd(),
@@ -249,16 +254,16 @@ export default function LandingPage({
             className="mb-7 inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/[0.06] px-3.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/75"
           >
             <img src={logo} alt="" className="h-3.5 w-3.5" />
-            Ace Digital · Built for placements
+            Public homepage · No login required to explore
           </motion.div>
 
           <motion.h1
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.05 }}
-            className="font-serif text-5xl font-bold leading-[0.95] tracking-tight text-white sm:text-7xl md:text-[5.5rem]"
+            className="font-serif text-4xl font-bold leading-[1.05] tracking-tight text-white sm:text-6xl md:text-[4.25rem]"
           >
-            BEXO
+            {BEXO_OAUTH_APP_NAME}
           </motion.h1>
 
           <motion.p
@@ -274,10 +279,9 @@ export default function LandingPage({
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.2 }}
-            className="landing-muted mx-auto mt-4 max-w-lg text-[15px] leading-relaxed sm:text-base"
+            className="landing-muted mx-auto mt-4 max-w-2xl text-[15px] leading-relaxed sm:text-base"
           >
-            Upload a resume, polish every section, and publish on your personal subdomain —
-            designs that feel like agency work, not a template pack.
+            {BEXO_APP_TAGLINE} Explore this page freely — you only need to sign in when you create or edit your own portfolio.
           </motion.p>
 
           <motion.div
@@ -321,13 +325,27 @@ export default function LandingPage({
             id="about-bexo-heading"
             className="mt-3 font-serif text-3xl font-bold text-white sm:text-4xl"
           >
-            BEXO — professional portfolio builder
+            What {BEXO_OAUTH_APP_NAME} does
           </h2>
           <p className="landing-muted mx-auto mt-5 text-[15px] leading-relaxed sm:text-base">
-            {BEXO_APP_TAGLINE} Creating or editing a portfolio requires sign-in; this marketing home page,
-            pricing, and legal policies are always public at{" "}
-            <a href="https://mybexo.cyou" className="text-[#7BA0FF] hover:underline">
-              mybexo.cyou
+            {BEXO_APP_TAGLINE}
+          </p>
+          <p className="landing-muted mx-auto mt-4 text-[15px] leading-relaxed sm:text-base">
+            {BEXO_APP_PURPOSE} Public pages:{" "}
+            <a href="https://mybexo.cyou/" className="text-[#7BA0FF] hover:underline">
+              home
+            </a>
+            ,{" "}
+            <a href="https://mybexo.cyou/#pricing" className="text-[#7BA0FF] hover:underline">
+              pricing
+            </a>
+            ,{" "}
+            <a href="https://mybexo.cyou/privacy" className="text-[#7BA0FF] hover:underline">
+              privacy
+            </a>
+            , and{" "}
+            <a href="https://mybexo.cyou/terms" className="text-[#7BA0FF] hover:underline">
+              terms
             </a>
             .
           </p>

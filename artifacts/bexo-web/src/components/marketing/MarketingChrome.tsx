@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "wouter";
-import { BEXO_FOOTER_COPYRIGHT } from "@/lib/brand";
+import { BEXO_FOOTER_COPYRIGHT, BEXO_OAUTH_APP_NAME } from "@/lib/brand";
 import logo from "@/assets/bexo-logo.png";
 import type { LegalDoc } from "@/content/legal/types";
 import { usePageSeo } from "@/hooks/use-page-seo";
@@ -68,7 +68,7 @@ export function MarketingNav({
         <Link href="/" className="group flex items-center gap-2.5">
           <img
             src={logo}
-            alt="BEXO"
+            alt={BEXO_OAUTH_APP_NAME}
             className="h-8 w-8 object-contain transition group-hover:scale-105"
           />
           <span
@@ -77,6 +77,13 @@ export function MarketingNav({
             }`}
           >
             BEXO
+          </span>
+          <span
+            className={`hidden text-[10px] font-semibold uppercase tracking-[0.12em] sm:inline ${
+              solid ? "text-slate-500" : "text-white/45"
+            }`}
+          >
+            From Ace Digital
           </span>
         </Link>
 
@@ -153,8 +160,8 @@ export function MarketingFooter({ light = false }: { light?: boolean }) {
             </span>
           </div>
           <p className="text-sm leading-relaxed">
-            Professional portfolios for students — resume to live site in minutes.
-            A product of Ace Digital.
+            {BEXO_OAUTH_APP_NAME} — professional portfolios for students and professionals.
+            Resume to live site in minutes. A product of Ace Digital.
           </p>
         </div>
         <div className="grid grid-cols-2 gap-8 sm:grid-cols-3">

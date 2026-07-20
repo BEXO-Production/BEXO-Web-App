@@ -92,7 +92,8 @@ export function buildMarketingJsonLd() {
       {
         "@type": "Organization",
         "@id": `${origin}/#organization`,
-        name: "BEXO",
+        name: "BEXO From Ace Digital",
+        alternateName: "BEXO",
         url: origin,
         logo: `${origin}/og-default.jpg`,
         parentOrganization: {
@@ -104,15 +105,17 @@ export function buildMarketingJsonLd() {
         "@type": "WebSite",
         "@id": `${origin}/#website`,
         url: origin,
-        name: "BEXO",
+        name: "BEXO From Ace Digital",
+        alternateName: "BEXO",
         description:
-          "Professional portfolio builder for students and professionals — resume to live site on mybexo.cyou.",
+          "BEXO From Ace Digital is a professional portfolio builder for students and professionals — resume to live site on mybexo.cyou. Public homepage; sign-in only to edit your portfolio.",
         publisher: { "@id": `${origin}/#organization` },
         inLanguage: "en-IN",
       },
       {
         "@type": "SoftwareApplication",
-        name: "BEXO",
+        name: "BEXO From Ace Digital",
+        alternateName: "BEXO",
         applicationCategory: "BusinessApplication",
         operatingSystem: "Web",
         offers: {
