@@ -1,16 +1,10 @@
-# BEXO — https://mybexo.cyou
+Sitemap: https://mybexo.cyou/sitemap.xml
+
 User-agent: *
 Allow: /
-Allow: /sitemap.xml
-Allow: /sitemap-static.xml
-Allow: /sitemap-portfolios.xml
-Allow: /sitemap-all.xml
 Disallow: /dashboard
 Disallow: /billing
 Disallow: /welcome
 Disallow: /login
 Disallow: /step/
 Disallow: /api/
-
-Sitemap: https://mybexo.cyou/sitemap.xml
-Sitemap: https://mybexo.cyou/sitemap-all.xml

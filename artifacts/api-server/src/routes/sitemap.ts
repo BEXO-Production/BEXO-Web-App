@@ -3,7 +3,6 @@ import { appOrigin } from "../lib/platform";
 import {
   getPortfolioSitemapEntries,
   getStaticSitemapEntries,
-  renderSitemapIndexXml,
   renderSitemapXml,
 } from "../lib/sitemap";
 
@@ -12,16 +11,37 @@ const CACHE = "public, max-age=3600, s-maxage=3600";
 export function registerSitemapRoutes(app: Express) {
   const origin = appOrigin().replace(/\/$/, "");
 
-  app.get("/sitemap.xml", (_req, res) => {
-    const xml = renderSitemapIndexXml([
-      `${origin}/sitemap-static.xml`,
-      `${origin}/sitemap-portfolios.xml`,
-    ]);
-    res
-      .status(200)
-      .set("Content-Type", "application/xml; charset=utf-8")
-      .set("Cache-Control", CACHE)
-      .send(xml);
+  app.get("/api/public/sitemap-urls.json", async (_req, res) => {
+    try {
+      const entries = [
+        ...getStaticSitemapEntries(origin),
+        ...(await getPortfolioSitemapEntries()),
+      ];
+      res
+        .status(200)
+        .set("Content-Type", "application/json; charset=utf-8")
+        .set("Cache-Control", CACHE)
+        .json({ entries });
+    } catch {
+      res.status(500).json({ error: "Sitemap URL list failed" });
+    }
+  });
+
+  app.get("/sitemap.xml", async (_req, res) => {
+    try {
+      const entries = [
+        ...getStaticSitemapEntries(origin),
+        ...(await getPortfolioSitemapEntries()),
+      ];
+      const xml = renderSitemapXml(entries);
+      res
+        .status(200)
+        .set("Content-Type", "application/xml; charset=utf-8")
+        .set("Cache-Control", CACHE)
+        .send(xml);
+    } catch {
+      res.status(500).type("text/plain").send("Sitemap generation failed.");
+    }
   });
 
   app.get("/sitemap-static.xml", (_req, res) => {
@@ -48,22 +68,16 @@ export function registerSitemapRoutes(app: Express) {
   });
 
   app.get("/robots.txt", (_req, res) => {
-    const body = `# BEXO — ${origin}
+    const body = `Sitemap: ${origin}/sitemap.xml
+
 User-agent: *
 Allow: /
-Allow: /sitemap.xml
-Allow: /sitemap-static.xml
-Allow: /sitemap-portfolios.xml
-Allow: /sitemap-all.xml
 Disallow: /dashboard
 Disallow: /billing
 Disallow: /welcome
 Disallow: /login
 Disallow: /step/
 Disallow: /api/
-
-Sitemap: ${origin}/sitemap.xml
-Sitemap: ${origin}/sitemap-all.xml
 `;
     res
       .status(200)

@@ -4,40 +4,46 @@ Production domain: **https://mybexo.cyou**
 
 ## 1. Submit sitemap
 
-In [Google Search Console](https://search.google.com/search-console) → **Sitemaps**, submit **only**:
+In [Google Search Console](https://search.google.com/search-console) → **Sitemaps**:
+
+1. Remove any failed rows (`sitemap-all.xml`, `sitemap-static.xml`, `sitemap-portfolios.xml`, old index-only `sitemap.xml`).
+2. Submit **only**:
 
 ```text
-https://mybexo.cyou/sitemap.xml
+sitemap.xml
 ```
 
-If child sitemaps show **Couldn't fetch**, delete those rows and use the index (or submit `sitemap-all.xml` instead). Sitemaps are **static files on Firebase Hosting** (not Cloud Run), which Googlebot can fetch reliably.
+(or full URL `https://mybexo.cyou/sitemap.xml`)
 
-| URL | Contents |
-|-----|----------|
-| `https://mybexo.cyou/sitemap.xml` | Index → static + portfolios |
-| `https://mybexo.cyou/sitemap-static.xml` | Home, legal, demo |
-| `https://mybexo.cyou/sitemap-portfolios.xml` | Public portfolios + Hire Me |
-| `https://mybexo.cyou/sitemap-all.xml` | Everything in one urlset |
+`sitemap.xml` is a **single urlset** (Google’s recommended format for small/medium sites): home, legal pages, demo, and all public portfolio + Hire Me URLs in one file. No sitemap index — Google fetches one URL.
 
-Regenerate before hosting deploys (`node scripts/generate-sitemaps.mjs` — also runs in `bexo-web` build).
+Regenerate before hosting deploys (`node scripts/generate-sitemaps.mjs` — also runs in `bexo-web` build). Portfolio URLs are loaded from `GET /api/public/sitemap-urls.json` when the generator runs.
 
 Verify:
 
-- https://mybexo.cyou/sitemap.xml  
-- https://mybexo.cyou/sitemap-all.xml  
-- https://mybexo.cyou/robots.txt  
+- https://mybexo.cyou/sitemap.xml (must start with `<urlset`, not `<sitemapindex`)
+- https://mybexo.cyou/robots.txt
 
-If Cloudflare Managed robots.txt is on, keep:
+## 2. Cloudflare robots.txt (important)
+
+If **Cloudflare Managed robots.txt** (Content Signals) is enabled, it **replaces** Firebase `robots.txt` and may omit `Sitemap:` lines — fix one of:
+
+- **Dashboard → Scrape Shield / Bots** — turn off managed robots.txt and use the site file, **or**
+- **Dashboard → Rules → robots.txt** — append:
 
 ```text
 Sitemap: https://mybexo.cyou/sitemap.xml
 ```
 
-## 2. robots.txt
+Also ensure **Bot Fight Mode** / WAF does not block Googlebot on `/sitemap.xml`.
 
-Static file in Firebase Hosting (`public/robots.txt`). Blocks `/dashboard`, `/login`, `/step/`, `/api/` and points to the sitemap.
+The home page includes `<link rel="sitemap" href="https://mybexo.cyou/sitemap.xml" />` as a fallback discovery hint.
 
-## 3. Meta tags by page type
+## 3. robots.txt (Firebase)
+
+Static file in `artifacts/bexo-web/public/robots.txt`. `Sitemap:` is listed first, then `Allow: /`, and disallows for `/dashboard`, `/login`, `/step/`, `/api/`.
+
+## 4. Meta tags by page type
 
 | Page type | How SEO works |
 |-----------|----------------|
@@ -47,28 +53,28 @@ Static file in Firebase Hosting (`public/robots.txt`). Blocks `/dashboard`, `/lo
 | **Hire Me** (`/hire-me/:handle`) | Client SEO when profile loads |
 | **Login / dashboard / onboarding** | `noindex` + `robots.txt` disallow |
 
-## 4. Open Graph images
+## 5. Open Graph images
 
 - Platform default: `https://mybexo.cyou/og-default.jpg`  
 - Portfolio fallback: `https://mybexo.cyou/og-portfolio.jpg`  
 - User photo used when URL is absolute HTTPS  
 
-## 5. Recommended Search Console checks
+## 6. Recommended Search Console checks
 
 1. **URL inspection** — test `https://mybexo.cyou/` and one live portfolio subdomain.  
 2. **Page indexing** — confirm legal URLs and portfolios move to “Indexed”.  
 3. **Core Web Vitals** — monitor after traffic grows.  
 4. **Removals** — unclaimed handles use `noindex` on the claim page (not in sitemap).  
 
-## 6. Re-index after deploy
+## 7. Re-index after deploy
 
 After each production deploy, optionally request indexing for:
 
 - `https://mybexo.cyou/`  
 - `https://mybexo.cyou/sitemap.xml`  
 
-Portfolio URLs are refreshed in `sitemap-portfolios.xml` within about an hour (cache) or on the next crawl.
+Re-run the generator (or full `bexo-web` build) after portfolio launches so new handles appear in `sitemap.xml`.
 
-## 7. OAuth verification (related)
+## 8. OAuth verification (related)
 
 Public home + About section support OAuth branding. See [google-oauth-verification.md](./google-oauth-verification.md).

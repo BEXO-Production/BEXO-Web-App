@@ -281,7 +281,7 @@ export default function LandingPage({
             transition={{ duration: 0.5, delay: 0.2 }}
             className="landing-muted mx-auto mt-4 max-w-2xl text-[15px] leading-relaxed sm:text-base"
           >
-            {BEXO_APP_TAGLINE} Explore this page freely — you only need to sign in when you create or edit your own portfolio.
+            {BEXO_APP_TAGLINE}
           </motion.p>
 
           <motion.div

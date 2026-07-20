@@ -1,12 +1,11 @@
 #!/usr/bin/env node
 /**
- * Generates static sitemap XML files into bexo-web/public for Firebase Hosting.
- * Googlebot fetches Firebase Hosting reliably; Cloud Run rewrites often show
- * "Couldn't fetch" in Search Console when Cloudflare/WAF sits in front.
+ * Generates Google-standard sitemap.xml (single urlset) + robots.txt for Firebase Hosting.
+ * https://developers.google.com/search/docs/crawling-indexing/sitemaps/build-sitemap
  *
  * Usage: node scripts/generate-sitemaps.mjs
  */
-import { writeFileSync, mkdirSync } from "node:fs";
+import { writeFileSync, mkdirSync, readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -24,6 +23,7 @@ function escapeXml(value) {
     .replace(/'/g, "&apos;");
 }
 
+/** Google-recommended: UTF-8, LF endings, xmlns on urlset, loc required */
 function renderUrlset(entries) {
   const urls = entries
     .map((e) => {
@@ -31,66 +31,61 @@ function renderUrlset(entries) {
         "  <url>",
         `    <loc>${escapeXml(e.loc)}</loc>`,
         e.lastmod ? `    <lastmod>${escapeXml(e.lastmod)}</lastmod>` : null,
-        e.changefreq ? `    <changefreq>${e.changefreq}</changefreq>` : null,
-        e.priority != null ? `    <priority>${Number(e.priority).toFixed(2)}</priority>` : null,
         "  </url>",
       ].filter(Boolean);
       return lines.join("\n");
     })
     .join("\n");
 
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${urls}
-</urlset>
-`;
-}
-
-function renderIndex(locs) {
-  const body = locs
-    .map(
-      (loc) => `  <sitemap>
-    <loc>${escapeXml(loc)}</loc>
-    <lastmod>${TODAY}</lastmod>
-  </sitemap>`,
-    )
-    .join("\n");
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${body}
-</sitemapindex>
-`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
 }
 
 const staticEntries = [
-  { loc: `${ORIGIN}/`, lastmod: TODAY, changefreq: "weekly", priority: 1 },
-  { loc: `${ORIGIN}/terms`, lastmod: TODAY, changefreq: "monthly", priority: 0.4 },
-  { loc: `${ORIGIN}/privacy`, lastmod: TODAY, changefreq: "monthly", priority: 0.4 },
-  { loc: `${ORIGIN}/refund`, lastmod: TODAY, changefreq: "monthly", priority: 0.3 },
-  { loc: `${ORIGIN}/cookies`, lastmod: TODAY, changefreq: "monthly", priority: 0.3 },
-  { loc: `https://bexo-demo.mybexo.cyou/`, lastmod: TODAY, changefreq: "weekly", priority: 0.7 },
+  { loc: `${ORIGIN}/`, lastmod: TODAY },
+  { loc: `${ORIGIN}/terms`, lastmod: TODAY },
+  { loc: `${ORIGIN}/privacy`, lastmod: TODAY },
+  { loc: `${ORIGIN}/refund`, lastmod: TODAY },
+  { loc: `${ORIGIN}/cookies`, lastmod: TODAY },
+  { loc: `https://bexo-demo.mybexo.cyou/`, lastmod: TODAY },
 ];
+
+function parseUrlsetXml(xml) {
+  const locs = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
+  const lastmods = [...xml.matchAll(/<lastmod>([^<]+)<\/lastmod>/g)].map((m) => m[1]);
+  return locs.map((loc, i) => ({ loc, lastmod: lastmods[i] || TODAY }));
+}
 
 async function fetchPortfolioEntries() {
   try {
+    const res = await fetch(`${ORIGIN}/api/public/sitemap-urls.json`, {
+      headers: { Accept: "application/json", "User-Agent": "BEXO-sitemap-generator/2.0" },
+      signal: AbortSignal.timeout(20000),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const entries = Array.isArray(data.entries) ? data.entries : [];
+      const staticLocs = new Set(staticEntries.map((e) => e.loc));
+      return entries.filter((e) => e?.loc && !staticLocs.has(e.loc));
+    }
+  } catch (err) {
+    console.warn("API sitemap-urls.json unavailable:", err.message);
+  }
+
+  const localPortfolio = path.join(OUT_DIR, "sitemap-portfolios.xml");
+  if (existsSync(localPortfolio)) {
+    return parseUrlsetXml(readFileSync(localPortfolio, "utf8"));
+  }
+
+  try {
     const res = await fetch(`${ORIGIN}/sitemap-portfolios.xml`, {
-      headers: { "User-Agent": "BEXO-sitemap-generator/1.0" },
+      headers: { "User-Agent": "BEXO-sitemap-generator/2.0" },
       signal: AbortSignal.timeout(15000),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const xml = await res.text();
-    const locs = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
-    const lastmods = [...xml.matchAll(/<lastmod>([^<]+)<\/lastmod>/g)].map((m) => m[1]);
-    return locs.map((loc, i) => ({
-      loc,
-      lastmod: lastmods[i] || TODAY,
-      changefreq: loc.includes("/hire-me/") ? "monthly" : "weekly",
-      priority: loc.includes("/hire-me/") ? 0.55 : loc.includes(".mybexo.cyou") ? 0.85 : 0.65,
-    }));
+    if (res.ok) return parseUrlsetXml(await res.text());
   } catch (err) {
-    console.warn("Could not refresh portfolios from live API:", err.message);
-    return [];
+    console.warn("Could not refresh portfolios:", err.message);
   }
+  return [];
 }
 
 mkdirSync(OUT_DIR, { recursive: true });
@@ -98,34 +93,23 @@ mkdirSync(OUT_DIR, { recursive: true });
 const portfolioEntries = await fetchPortfolioEntries();
 const allEntries = [...staticEntries, ...portfolioEntries];
 
-writeFileSync(path.join(OUT_DIR, "sitemap-static.xml"), renderUrlset(staticEntries));
-writeFileSync(path.join(OUT_DIR, "sitemap-portfolios.xml"), renderUrlset(portfolioEntries));
-writeFileSync(
-  path.join(OUT_DIR, "sitemap.xml"),
-  renderIndex([`${ORIGIN}/sitemap-static.xml`, `${ORIGIN}/sitemap-portfolios.xml`]),
-);
-// Combined single file — easiest for Search Console (one submission)
-writeFileSync(path.join(OUT_DIR, "sitemap-all.xml"), renderUrlset(allEntries));
+writeFileSync(path.join(OUT_DIR, "sitemap.xml"), renderUrlset(allEntries), "utf8");
+writeFileSync(path.join(OUT_DIR, "sitemap-static.xml"), renderUrlset(staticEntries), "utf8");
+writeFileSync(path.join(OUT_DIR, "sitemap-portfolios.xml"), renderUrlset(portfolioEntries), "utf8");
 
-const robots = `# BEXO — ${ORIGIN}
+const robots = `Sitemap: ${ORIGIN}/sitemap.xml
+
 User-agent: *
 Allow: /
-Allow: /sitemap.xml
-Allow: /sitemap-static.xml
-Allow: /sitemap-portfolios.xml
-Allow: /sitemap-all.xml
 Disallow: /dashboard
 Disallow: /billing
 Disallow: /welcome
 Disallow: /login
 Disallow: /step/
 Disallow: /api/
-
-Sitemap: ${ORIGIN}/sitemap.xml
-Sitemap: ${ORIGIN}/sitemap-all.xml
 `;
-writeFileSync(path.join(OUT_DIR, "robots.txt"), robots);
+writeFileSync(path.join(OUT_DIR, "robots.txt"), robots, "utf8");
 
 console.log(
-  `Wrote sitemaps → ${OUT_DIR} (${staticEntries.length} static, ${portfolioEntries.length} portfolio URLs)`,
+  `Wrote sitemap.xml (urlset) → ${OUT_DIR} (${staticEntries.length} static + ${portfolioEntries.length} portfolio URLs)`,
 );

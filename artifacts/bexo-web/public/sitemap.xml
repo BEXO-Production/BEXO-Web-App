@@ -1,11 +1,35 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <sitemap>
-    <loc>https://mybexo.cyou/sitemap-static.xml</loc>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://mybexo.cyou/</loc>
     <lastmod>2026-07-20</lastmod>
-  </sitemap>
-  <sitemap>
-    <loc>https://mybexo.cyou/sitemap-portfolios.xml</loc>
+  </url>
+  <url>
+    <loc>https://mybexo.cyou/terms</loc>
     <lastmod>2026-07-20</lastmod>
-  </sitemap>
-</sitemapindex>
+  </url>
+  <url>
+    <loc>https://mybexo.cyou/privacy</loc>
+    <lastmod>2026-07-20</lastmod>
+  </url>
+  <url>
+    <loc>https://mybexo.cyou/refund</loc>
+    <lastmod>2026-07-20</lastmod>
+  </url>
+  <url>
+    <loc>https://mybexo.cyou/cookies</loc>
+    <lastmod>2026-07-20</lastmod>
+  </url>
+  <url>
+    <loc>https://bexo-demo.mybexo.cyou/</loc>
+    <lastmod>2026-07-20</lastmod>
+  </url>
+  <url>
+    <loc>https://mybexo.cyou/hire-me/maha</loc>
+    <lastmod>2026-07-19</lastmod>
+  </url>
+  <url>
+    <loc>https://mybexo.cyou/maha</loc>
+    <lastmod>2026-07-19</lastmod>
+  </url>
+</urlset>
