@@ -102,10 +102,17 @@
         var staticBlock = document.getElementById("bexo-oauth-static");
         if (!root || !staticBlock) return;
         var hide = function () {
-          if (root.childNodes.length) staticBlock.style.display = "none";
+          if (root.childElementCount > 0) {
+            staticBlock.setAttribute("hidden", "");
+            staticBlock.style.display = "none";
+          }
         };
         hide();
-        new MutationObserver(hide).observe(root, { childList: true });
+        new MutationObserver(hide).observe(root, { childList: true, subtree: true });
+        window.addEventListener("load", hide);
+        setTimeout(hide, 0);
+        setTimeout(hide, 500);
+        setTimeout(hide, 2000);
       })();
     </script>
   </body>
