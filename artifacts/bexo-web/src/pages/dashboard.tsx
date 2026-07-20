@@ -1381,15 +1381,15 @@ export default function Dashboard() {
   );
 
   return (
-    <div className="min-h-screen flex flex-col transition-colors duration-300 bg-slate-50 text-slate-800">
+    <div className="min-h-[100dvh] w-full max-w-[100vw] overflow-x-hidden flex flex-col transition-colors duration-300 bg-slate-50 text-slate-800">
       {/* Premium custom top-right "Successfully Logged In" toast */}
       {showLoginToast && (
-        <div className="fixed top-6 right-6 z-[100] animate-in slide-in-from-top-4 md:slide-in-from-right-4 duration-500">
-          <div className="bg-slate-900 text-white rounded-2xl shadow-2xl p-4 pr-12 flex items-center gap-3.5 border border-slate-800 max-w-sm relative">
+        <div className="fixed left-3 right-3 top-[max(0.75rem,env(safe-area-inset-top))] z-[100] sm:left-auto sm:right-6 sm:top-6 animate-in slide-in-from-top-4 md:slide-in-from-right-4 duration-500">
+          <div className="bg-slate-900 text-white rounded-2xl shadow-2xl p-3.5 pr-11 sm:p-4 sm:pr-12 flex items-center gap-3 border border-slate-800 w-full sm:max-w-sm relative">
             <div className="w-9 h-9 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center shrink-0">
               <CheckCircle2 className="w-5 h-5" />
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-sm font-bold tracking-tight">Successfully logged in</p>
               <p className="text-[11px] text-slate-400 leading-normal mt-0.5">Welcome back! Manage your digital portfolio credentials here.</p>
             </div>
@@ -1404,18 +1404,18 @@ export default function Dashboard() {
       )}
 
       {/* Navigation bar */}
-      <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 px-6 py-4 flex items-center justify-between sticky top-0 z-20 transition-colors duration-300">
-        <div className="flex items-center gap-2 cursor-pointer" onClick={() => setCurrentView('overview')}>
-          <img src={logo} alt="BEXO" className="w-7 h-7 object-contain animate-pulse" />
-          <span className="font-serif font-bold text-xl text-slate-900 tracking-tight">BEXO</span>
+      <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 px-4 py-3 sm:px-6 sm:py-4 flex items-center justify-between sticky top-0 z-20 transition-colors duration-300 w-full">
+        <div className="flex items-center gap-2 cursor-pointer min-w-0" onClick={() => setCurrentView('overview')}>
+          <img src={logo} alt="BEXO" className="w-7 h-7 object-contain animate-pulse shrink-0" />
+          <span className="font-serif font-bold text-lg sm:text-xl text-slate-900 tracking-tight">BEXO</span>
         </div>
-        <div className="flex items-center gap-4 relative" ref={profileMenuRef}>
+        <div className="flex items-center gap-3 sm:gap-4 relative shrink-0" ref={profileMenuRef}>
           <div className="text-sm font-semibold text-slate-700 hidden md:block select-none transition-colors">
             {data.name || 'User'}
           </div>
           <button 
             onClick={() => setShowProfileMenu(!showProfileMenu)}
-            className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold text-sm border-2 border-indigo-200 hover:border-indigo-400 hover:shadow-sm focus:outline-none overflow-hidden transition-all shrink-0"
+            className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold text-sm border-2 border-indigo-200 hover:border-indigo-400 hover:shadow-sm focus:outline-none overflow-hidden transition-all shrink-0"
             aria-label="Toggle profile menu"
           >
             {data.photoUrl ? (
@@ -1426,7 +1426,7 @@ export default function Dashboard() {
           </button>
           
           {showProfileMenu && (
-            <div className="absolute right-0 top-full mt-2 w-72 bg-white rounded-2xl border border-slate-200 shadow-xl py-3 z-30 animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="absolute right-0 top-full mt-2 w-[min(18rem,calc(100vw-1.5rem))] bg-white rounded-2xl border border-slate-200 shadow-xl py-3 z-30 animate-in fade-in slide-in-from-top-2 duration-200">
               {/* Header with user info */}
               <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold border border-indigo-105 overflow-hidden shrink-0">
@@ -1520,28 +1520,28 @@ export default function Dashboard() {
 
       <main
         className={cn(
-          "mx-auto px-4 py-8 md:px-6 md:py-12",
+          "mx-auto w-full min-w-0 px-3 pt-5 pb-[calc(6.75rem+env(safe-area-inset-bottom))] sm:px-4 sm:pt-8 md:px-6 md:py-12",
           currentView === "settings" ? "max-w-[min(100%,96rem)]" : "max-w-5xl",
         )}
       >
         {/* Main Dashboard Overview */}
         {currentView === 'overview' && (
-          <div className="space-y-8 animate-in fade-in duration-300">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-              <div>
-                <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400 mb-2">Portfolio command center</p>
-                <h1 className="font-serif text-3.5xl font-bold text-slate-900 tracking-tight">
+          <div className="space-y-5 sm:space-y-8 animate-in fade-in duration-300">
+            <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3 sm:gap-4">
+              <div className="min-w-0">
+                <p className="text-[10px] sm:text-xs font-bold uppercase tracking-[0.14em] text-slate-400 mb-1.5 sm:mb-2">Portfolio command center</p>
+                <h1 className="font-serif text-2xl sm:text-3xl md:text-4xl font-bold text-slate-900 tracking-tight break-words">
                   Welcome back, {data.name?.split(' ')[0] || 'there'}
                 </h1>
-                <p className="text-slate-500 max-w-2xl">Keep your public portfolio ready for applications, recruiters, and campus opportunities.</p>
+                <p className="text-sm sm:text-base text-slate-500 max-w-2xl mt-1.5 leading-relaxed">Keep your public portfolio ready for applications, recruiters, and campus opportunities.</p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button onClick={() => setCurrentView('edit-profile')} className="h-10 px-4 text-xs gap-2">
-                  <Pencil className="w-4 h-4" /> Edit profile
+              <div className="grid grid-cols-2 gap-2 w-full md:w-auto md:flex md:flex-wrap md:items-center">
+                <Button onClick={() => setCurrentView('edit-profile')} className="h-10 px-3 sm:px-4 text-xs gap-1.5 sm:gap-2 w-full md:w-auto">
+                  <Pencil className="w-4 h-4 shrink-0" /> Edit profile
                 </Button>
-                <a href={correctVisitUrl} target="_blank" rel="noreferrer">
-                  <Button variant="outline" className="h-10 px-4 text-xs gap-2">
-                    <ExternalLink className="w-4 h-4" /> View live
+                <a href={correctVisitUrl} target="_blank" rel="noreferrer" className="w-full md:w-auto">
+                  <Button variant="outline" className="h-10 px-3 sm:px-4 text-xs gap-1.5 sm:gap-2 w-full">
+                    <ExternalLink className="w-4 h-4 shrink-0" /> View live
                   </Button>
                 </a>
               </div>
@@ -1574,60 +1574,60 @@ export default function Dashboard() {
               </Card>
             )}
 
-            <div className="grid lg:grid-cols-[1.35fr_0.85fr] gap-6 items-stretch">
-              <Card className="p-6 bg-slate-950 text-slate-100 border border-slate-900 shadow-sm overflow-hidden">
-                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-5">
-                  <div className="space-y-5">
+            <div className="grid lg:grid-cols-[1.35fr_0.85fr] gap-4 sm:gap-6 items-stretch">
+              <Card className="p-4 sm:p-6 bg-slate-950 text-slate-100 border border-slate-900 shadow-sm overflow-hidden min-w-0">
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 sm:gap-5">
+                  <div className="space-y-4 sm:space-y-5 min-w-0">
                     <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Next best action</p>
-                      <h2 className="text-2xl font-bold mt-2">{nextAction.label}</h2>
-                      <p className="text-sm text-slate-300 mt-1 max-w-xl">{nextAction.detail}</p>
+                      <p className="text-[10px] sm:text-xs font-bold uppercase tracking-[0.14em] text-slate-400">Next best action</p>
+                      <h2 className="text-xl sm:text-2xl font-bold mt-1.5 sm:mt-2 leading-snug">{nextAction.label}</h2>
+                      <p className="text-sm text-slate-300 mt-1 max-w-xl leading-relaxed">{nextAction.detail}</p>
                     </div>
                     <Button
                       onClick={nextAction.action}
-                      className="h-11 px-4 bg-slate-100 text-slate-950 hover:bg-white border-none shadow-none gap-2"
+                      className="h-10 sm:h-11 px-4 bg-slate-100 text-slate-950 hover:bg-white border-none shadow-none gap-2 w-full sm:w-auto"
                     >
                       <NextActionIcon className="w-4 h-4" /> Continue
                     </Button>
                   </div>
-                  <div className="grid grid-cols-3 sm:grid-cols-1 gap-3 sm:w-36">
-                    <div className="rounded-xl bg-slate-900 border border-slate-800 p-3">
-                      <p className="text-[11px] text-slate-400 font-semibold">Readiness</p>
-                      <p className="text-xl font-bold mt-1">{completionScore}%</p>
+                  <div className="grid grid-cols-3 sm:grid-cols-1 gap-2 sm:gap-3 sm:w-36 min-w-0">
+                    <div className="rounded-xl bg-slate-900 border border-slate-800 p-2.5 sm:p-3 min-w-0">
+                      <p className="text-[10px] sm:text-[11px] text-slate-400 font-semibold">Readiness</p>
+                      <p className="text-lg sm:text-xl font-bold mt-0.5 sm:mt-1 tabular-nums">{completionScore}%</p>
                     </div>
-                    <div className="rounded-xl bg-slate-900 border border-slate-800 p-3">
-                      <p className="text-[11px] text-slate-400 font-semibold">Entries</p>
-                      <p className="text-xl font-bold mt-1">{totalEntries}</p>
+                    <div className="rounded-xl bg-slate-900 border border-slate-800 p-2.5 sm:p-3 min-w-0">
+                      <p className="text-[10px] sm:text-[11px] text-slate-400 font-semibold">Entries</p>
+                      <p className="text-lg sm:text-xl font-bold mt-0.5 sm:mt-1 tabular-nums">{totalEntries}</p>
                     </div>
-                    <div className="rounded-xl bg-slate-900 border border-slate-800 p-3">
-                      <p className="text-[11px] text-slate-400 font-semibold">Plan</p>
-                      <p className="text-sm font-bold mt-1 truncate">{planName}</p>
+                    <div className="rounded-xl bg-slate-900 border border-slate-800 p-2.5 sm:p-3 min-w-0">
+                      <p className="text-[10px] sm:text-[11px] text-slate-400 font-semibold">Plan</p>
+                      <p className="text-xs sm:text-sm font-bold mt-0.5 sm:mt-1 truncate">{planName}</p>
                     </div>
                   </div>
                 </div>
               </Card>
 
-              <Card className="p-6 bg-white border border-slate-200 shadow-sm">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Subscription</p>
-                    <h3 className="text-xl font-bold text-slate-900 mt-2">{billingLoading ? 'Checking plan' : planName}</h3>
+              <Card className="p-4 sm:p-6 bg-white border border-slate-200 shadow-sm min-w-0">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[10px] sm:text-xs font-bold uppercase tracking-[0.14em] text-slate-400">Subscription</p>
+                    <h3 className="text-lg sm:text-xl font-bold text-slate-900 mt-1.5 sm:mt-2 truncate">{billingLoading ? 'Checking plan' : planName}</h3>
                     <p className="text-xs text-slate-500 mt-1 flex items-center gap-1.5">
-                      <CalendarClock className="w-3.5 h-3.5" /> {planRenewal}
+                      <CalendarClock className="w-3.5 h-3.5 shrink-0" /> <span className="truncate">{planRenewal}</span>
                     </p>
                   </div>
                   <span className={cn(
-                    "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold",
+                    "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] sm:text-xs font-bold shrink-0 whitespace-nowrap",
                     data.isPremium ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"
                   )}>
                     {data.isPremium ? <Crown className="w-3.5 h-3.5" /> : <CreditCard className="w-3.5 h-3.5" />}
                     {data.isPremium ? 'Pro active' : 'Free'}
                   </span>
                 </div>
-                <div className="mt-6 space-y-3">
-                  <div className="flex items-center justify-between text-xs font-bold text-slate-600">
+                <div className="mt-5 sm:mt-6 space-y-3">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-600 gap-2">
                     <span>Storage</span>
-                    <span>{(usedStorage / 1024 / 1024).toFixed(1)} / {(storageLimit / 1024 / 1024).toFixed(0)} MB</span>
+                    <span className="tabular-nums shrink-0">{(usedStorage / 1024 / 1024).toFixed(1)} / {(storageLimit / 1024 / 1024).toFixed(0)} MB</span>
                   </div>
                   <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
                     <div
@@ -1642,15 +1642,15 @@ export default function Dashboard() {
               </Card>
             </div>
 
-            <div className="grid md:grid-cols-3 gap-6">
+            <div className="grid md:grid-cols-3 gap-4 sm:gap-6">
               {/* Profile Completion / Status Card */}
               {completionScore >= 90 ? (
                 data.isPremium ? (
-                  <Card className="p-6 bg-white border border-slate-200 shadow-sm flex flex-col justify-between hover:border-emerald-200 hover:shadow-md transition-all duration-300">
+                  <Card className="p-4 sm:p-6 bg-white border border-slate-200 shadow-sm flex flex-col justify-between hover:border-emerald-200 hover:shadow-md transition-all duration-300 min-w-0">
                     <div>
-                      <div className="flex justify-between items-center mb-4">
+                      <div className="flex justify-between items-center mb-4 gap-2">
                         <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Portfolio Status</p>
-                        <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-full flex items-center gap-1 select-none">
+                        <span className="text-[10px] sm:text-xs font-bold text-emerald-600 bg-emerald-50 px-2 sm:px-2.5 py-0.5 rounded-full flex items-center gap-1 select-none shrink-0 whitespace-nowrap">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> LIVE & ACTIVE
                         </span>
                       </div>
@@ -1669,11 +1669,11 @@ export default function Dashboard() {
                     </div>
                   </Card>
                 ) : (
-                  <Card className="p-6 bg-white border border-slate-200 shadow-sm flex flex-col justify-between hover:border-indigo-105 hover:shadow-md transition-all duration-300">
+                  <Card className="p-4 sm:p-6 bg-white border border-slate-200 shadow-sm flex flex-col justify-between hover:border-indigo-105 hover:shadow-md transition-all duration-300 min-w-0">
                     <div>
-                      <div className="flex justify-between items-center mb-4">
+                      <div className="flex justify-between items-center mb-4 gap-2">
                         <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Portfolio Status</p>
-                        <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full flex items-center gap-1 select-none">
+                        <span className="text-[10px] sm:text-xs font-bold text-slate-500 bg-slate-100 px-2 sm:px-2.5 py-0.5 rounded-full flex items-center gap-1 select-none shrink-0 whitespace-nowrap">
                           Basic Portfolio
                         </span>
                       </div>
@@ -1695,7 +1695,7 @@ export default function Dashboard() {
               ) : (
                 <Card 
                   onClick={() => setShowCompletionModal(true)}
-                  className="p-6 bg-white border border-slate-200 shadow-sm flex flex-col justify-between cursor-pointer hover:border-indigo-300 hover:shadow-md transition-all duration-300 group"
+                  className="p-4 sm:p-6 bg-white border border-slate-200 shadow-sm flex flex-col justify-between cursor-pointer hover:border-indigo-300 hover:shadow-md transition-all duration-300 group min-w-0"
                 >
                   <div>
                     <div className="flex justify-between items-center mb-4">
@@ -1716,7 +1716,7 @@ export default function Dashboard() {
               )}
 
               {/* Accent & Style Card */}
-              <Card className="p-6 bg-white border border-slate-200 shadow-sm flex flex-col justify-between">
+              <Card className="p-4 sm:p-6 bg-white border border-slate-200 shadow-sm flex flex-col justify-between min-w-0">
                 <div>
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Appearance & Theme</p>
                   <div className="flex items-center gap-3 mb-4">
@@ -1739,10 +1739,10 @@ export default function Dashboard() {
               </Card>
 
               {/* Plan Status Card */}
-              <Card className="p-6 bg-white border border-slate-200 shadow-sm flex flex-col justify-between transition-all duration-300">
+              <Card className="p-4 sm:p-6 bg-white border border-slate-200 shadow-sm flex flex-col justify-between transition-all duration-300 min-w-0">
                 <div>
                   <p className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Workspace tier</p>
-                  <h3 className="text-2xl font-bold text-slate-900 capitalize flex items-center gap-2">
+                  <h3 className="text-xl sm:text-2xl font-bold text-slate-900 capitalize flex items-center gap-2">
                     {planName}
                   </h3>
                 </div>
@@ -1760,27 +1760,27 @@ export default function Dashboard() {
 
             {/* Hiring Availability Card */}
             {!(data.openToHire || localStorage.getItem('bexo_hiring_availability_ever_enabled') === 'true') && (
-              <Card className="p-6 bg-white border border-slate-200 shadow-sm animate-in slide-in-from-bottom duration-300">
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                  <div className="space-y-1">
+              <Card className="p-4 sm:p-6 bg-white border border-slate-200 shadow-sm animate-in slide-in-from-bottom duration-300 min-w-0">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+                  <div className="space-y-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg shrink-0">
                         <Sparkles className="w-4 h-4" />
                       </span>
                       <h3 className="font-bold text-slate-900 text-sm">Hiring Availability</h3>
                     </div>
-                    <p className="text-xs text-slate-500 max-w-xl">
+                    <p className="text-xs text-slate-500 max-w-xl leading-relaxed">
                       Enable this option to display an "Available for Hire" badge on your public portfolio and receive professional inquiry leads.
                     </p>
                   </div>
-                  <div className="flex items-center gap-3 shrink-0">
+                  <div className="flex items-center gap-3 shrink-0 w-full sm:w-auto justify-between sm:justify-end">
                     <span className={cn(
-                      "text-xs font-bold px-2.5 py-0.5 rounded-full select-none transition-colors",
+                      "text-[11px] sm:text-xs font-bold px-2.5 py-0.5 rounded-full select-none transition-colors whitespace-nowrap",
                       data.openToHire 
                         ? "text-emerald-700 bg-emerald-50" 
                         : "text-slate-500 bg-slate-100"
                     )}>
-                      {data.openToHire ? 'Actively looking' : 'Not looking for opportunities'}
+                      {data.openToHire ? 'Actively looking' : 'Not looking'}
                     </span>
                     {/* Custom Toggle Switch */}
                     <button
@@ -1815,26 +1815,26 @@ export default function Dashboard() {
             )}
 
             {/* Public URL Box */}
-            <Card className="p-6 bg-white border border-slate-200 shadow-sm">
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Public Domain</p>
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
-                <div className="flex items-center gap-2 text-slate-900 font-medium truncate">
-                  <Globe className="w-5 h-5 text-indigo-500 shrink-0" />
-                  <span className="text-lg font-mono">
+            <Card className="p-4 sm:p-6 bg-white border border-slate-200 shadow-sm min-w-0">
+              <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Public Domain</p>
+              <div className="flex flex-col gap-3 sm:gap-4 bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-100 min-w-0">
+                <div className="flex items-start gap-2 text-slate-900 font-medium min-w-0">
+                  <Globe className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
+                  <span className="text-sm sm:text-lg font-mono break-all leading-snug">
                     https://<span className="text-indigo-600 font-semibold">{url}</span>
                   </span>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <Button variant="outline" size="sm" onClick={handleCopyUrl} className="h-9 px-3 text-xs flex gap-1">
+                <div className="grid grid-cols-3 gap-2 sm:flex sm:items-center sm:flex-wrap">
+                  <Button variant="outline" size="sm" onClick={handleCopyUrl} className="h-9 px-2 sm:px-3 text-xs flex gap-1 justify-center">
                     {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
                     {copied ? 'Copied' : 'Copy'}
                   </Button>
-                  <Button variant="outline" size="sm" onClick={handleShareUrl} className="h-9 px-3 text-xs flex gap-1">
+                  <Button variant="outline" size="sm" onClick={handleShareUrl} className="h-9 px-2 sm:px-3 text-xs flex gap-1 justify-center">
                     <Share2 className="w-3.5 h-3.5 text-indigo-500" />
                     Share
                   </Button>
-                  <a href={correctVisitUrl} target="_blank" rel="noreferrer">
-                    <Button variant="secondary" size="sm" className="h-9 px-3 text-xs flex gap-1">
+                  <a href={correctVisitUrl} target="_blank" rel="noreferrer" className="contents sm:contents">
+                    <Button variant="secondary" size="sm" className="h-9 px-2 sm:px-3 text-xs flex gap-1 justify-center w-full">
                       Visit <ExternalLink className="w-3.5 h-3.5" />
                     </Button>
                   </a>
@@ -1844,11 +1844,11 @@ export default function Dashboard() {
 
             {/* Actions Grid */}
             <div>
-              <h2 className="text-lg font-bold text-slate-900 mb-4">Quick Portfolio Actions</h2>
-              <div className="grid md:grid-cols-3 gap-6">
+              <h2 className="text-base sm:text-lg font-bold text-slate-900 mb-3 sm:mb-4">Quick Portfolio Actions</h2>
+              <div className="grid md:grid-cols-3 gap-4 sm:gap-6">
                 <Card 
                   onClick={() => setCurrentView('edit-profile')} 
-                  className="p-6 hover:shadow-md transition-shadow group cursor-pointer border-slate-200 bg-white flex flex-col justify-between"
+                  className="p-4 sm:p-6 hover:shadow-md transition-shadow group cursor-pointer border-slate-200 bg-white flex flex-col justify-between min-w-0"
                 >
                   <div>
                     <div className="w-10 h-10 rounded-xl bg-blue-50 text-indigo-600 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
@@ -1913,7 +1913,7 @@ export default function Dashboard() {
 
             <div className="flex justify-between items-center border-b border-slate-200 pb-4">
               <div>
-                <h1 className="text-2xl md:text-3.5xl font-serif font-bold text-slate-900">Edit Profile</h1>
+                <h1 className="text-2xl sm:text-3xl font-serif font-bold text-slate-900">Edit Profile</h1>
                 <p className="text-slate-500 text-sm">Add, remove, and modify the details in your public portfolio.</p>
               </div>
             </div>
@@ -3696,9 +3696,12 @@ export default function Dashboard() {
         )}
 
         {/* Floating Action Button */}
-        <div ref={fabRef} className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3 animate-in slide-in-from-bottom-8 fade-in duration-300">
+        <div
+          ref={fabRef}
+          className="fixed z-50 flex flex-col items-end gap-3 animate-in slide-in-from-bottom-8 fade-in duration-300 right-3 sm:right-6 bottom-[max(1rem,env(safe-area-inset-bottom))] sm:bottom-6"
+        >
           {showFabMenu && (
-            <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col w-56 animate-in slide-in-from-bottom-4 fade-in duration-200 origin-bottom-right">
+            <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col w-[min(14rem,calc(100vw-1.5rem))] animate-in slide-in-from-bottom-4 fade-in duration-200 origin-bottom-right">
 
               <button 
                   onClick={() => {
@@ -3708,10 +3711,10 @@ export default function Dashboard() {
                   }}
                   className="flex items-center gap-3 p-3 w-full hover:bg-slate-50 transition-colors group"
                 >
-                  <div className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:bg-indigo-100 group-hover:scale-105 transition-all">
+                  <div className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:bg-indigo-100 group-hover:scale-105 transition-all shrink-0">
                     <UploadCloud className="w-5 h-5" />
                   </div>
-                  <div className="text-left">
+                  <div className="text-left min-w-0">
                     <div className="font-semibold text-sm text-slate-900 group-hover:text-indigo-600 transition-colors">Parse My Resume</div>
                     <div className="text-[10px] text-slate-500 font-normal leading-tight">Auto-fill via AI</div>
                   </div>
@@ -3724,10 +3727,10 @@ export default function Dashboard() {
                   }}
                   className="flex items-center gap-3 p-3 w-full hover:bg-slate-50 transition-colors group"
                 >
-                  <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:bg-emerald-100 group-hover:scale-105 transition-all">
+                  <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:bg-emerald-100 group-hover:scale-105 transition-all shrink-0">
                     <Plus className="w-5 h-5" />
                   </div>
-                  <div className="text-left">
+                  <div className="text-left min-w-0">
                     <div className="font-semibold text-sm text-slate-900 group-hover:text-emerald-600 transition-colors">Post an Update</div>
                     <div className="text-[10px] text-slate-500 font-normal leading-tight">Add a quick achievement</div>
                   </div>
@@ -3737,9 +3740,10 @@ export default function Dashboard() {
 
           <button
             onClick={() => setShowFabMenu(!showFabMenu)}
-            className="w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full flex items-center justify-center shadow-[0_8px_30px_rgb(0,0,0,0.12)] hover:shadow-[0_8px_30px_rgb(79,70,229,0.3)] transition-all duration-300 hover:scale-105"
+            className="w-12 h-12 sm:w-14 sm:h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full flex items-center justify-center shadow-[0_8px_30px_rgb(0,0,0,0.12)] hover:shadow-[0_8px_30px_rgb(79,70,229,0.3)] transition-all duration-300 active:scale-95 hover:scale-105"
+            aria-label={showFabMenu ? "Close quick actions" : "Open quick actions"}
           >
-            {showFabMenu ? <X className="w-6 h-6" /> : <Plus className="w-6 h-6" />}
+            {showFabMenu ? <X className="w-5 h-5 sm:w-6 sm:h-6" /> : <Plus className="w-5 h-5 sm:w-6 sm:h-6" />}
           </button>
         </div>
 
