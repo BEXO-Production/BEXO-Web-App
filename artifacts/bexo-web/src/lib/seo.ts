@@ -3,7 +3,7 @@
 const SITE_ORIGIN =
   typeof window !== "undefined"
     ? window.location.origin.replace(/\/$/, "")
-    : "https://mybexo.cyou";
+    : "https://atbexo.com";
 
 export type PageSeoConfig = {
   title: string;
@@ -108,7 +108,7 @@ export function buildMarketingJsonLd() {
         name: "BEXO From Ace Digital",
         alternateName: "BEXO",
         description:
-          "BEXO From Ace Digital is a professional portfolio builder for students and professionals — resume to live site on mybexo.cyou. Public homepage; sign-in only to edit your portfolio.",
+          "BEXO From Ace Digital is a professional portfolio builder for students and professionals — resume to live site on atbexo.com. Public homepage; sign-in only to edit your portfolio.",
         publisher: { "@id": `${origin}/#organization` },
         inLanguage: "en-IN",
       },

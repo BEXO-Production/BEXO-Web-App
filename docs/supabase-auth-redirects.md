@@ -1,53 +1,59 @@
-# Supabase Auth URL configuration (mybexo.cyou)
+# Supabase Auth URL configuration (production — atbexo.com)
 
-Project ref: `qovrjyfhtaytaiwjbiqu`
+Project: **BEXO from Ace Digital**  
+Project ref: `nyyfcwblrnjnvhiynryb`  
+API URL: `https://nyyfcwblrnjnvhiynryb.supabase.co`
 
 ## Dashboard → Authentication → URL configuration
 
 | Setting | Value |
 |--------|--------|
-| **Site URL** | `https://mybexo.cyou` |
+| **Site URL** | `https://atbexo.com` |
 
 ### Redirect URLs (allow list)
 
-Add each line (wildcards supported):
-
-- `https://mybexo.cyou/**`
-- `https://www.mybexo.cyou/**`
-- `https://bexo-development.web.app/**`
-- `https://bexo-development.firebaseapp.com/**`
+- `https://atbexo.com/**`
+- `https://www.atbexo.com/**`
 - `http://localhost:5173/**`
 - `http://127.0.0.1:5173/**`
 
+- `https://bexo-from-ace-digital.web.app/**`
+- `https://bexo-from-ace-digital.firebaseapp.com/**`
+
 OAuth providers (Google) always return to:
 
-`https://qovrjyfhtaytaiwjbiqu.supabase.co/auth/v1/callback`
+`https://nyyfcwblrnjnvhiynryb.supabase.co/auth/v1/callback`
 
 The app then redirects users back to the **Site URL** origin (e.g. `/step/2` via `redirectTo` in the client).
 
 ## Google Cloud Console (OAuth client used by Supabase)
 
+Use **`admin@acedigital.cc`** on the company GCP/Firebase project.
+
 **Authorized JavaScript origins**
 
-- `https://mybexo.cyou`
-- `https://www.mybexo.cyou`
-- `https://bexo-development.web.app`
+- `https://atbexo.com`
+- `https://www.atbexo.com`
 - `http://localhost:5173`
 
 **Authorized redirect URIs**
 
-- `https://qovrjyfhtaytaiwjbiqu.supabase.co/auth/v1/callback`
+- `https://nyyfcwblrnjnvhiynryb.supabase.co/auth/v1/callback`
 
 **Branding (OAuth consent screen)**
 
 - App name: BEXO
-- Home: `https://mybexo.cyou`
-- Privacy: `https://mybexo.cyou/privacy`
-- Terms: `https://mybexo.cyou/terms`
-- Authorized domains: `mybexo.cyou`, `mybexo.firebaseapp.com`, `qovrjyfhtaytaiwjbiqu.supabase.co`
+- Home: `https://atbexo.com`
+- Privacy: `https://atbexo.com/privacy`
+- Terms: `https://atbexo.com/terms`
+- Authorized domains: `atbexo.com`, `nyyfcwblrnjnvhiynryb.supabase.co` (+ Firebase hosting domain when ready)
 
-If Google shows “branding is not being shown”, open **View issues** on the Branding page and complete verification (or stay in Testing mode with test users only).
+## Wildcard subdomains (`*.atbexo.com`)
 
-## Wildcard subdomains (`*.mybexo.cyou`)
+Portfolio subdomains do **not** need separate Supabase redirect entries for Google login. Login for the product happens on `atbexo.com`.
 
-Portfolio subdomains do **not** need separate Supabase redirect entries for Google login unless you run the dashboard SPA on those hosts. Login for the product happens on `mybexo.cyou`.
+## Dashboard checklist (must do once)
+
+1. Authentication → Providers → **Google** — enable and paste client ID/secret from company GCP.
+2. Authentication → URL configuration — Site URL + redirect allow list above.
+3. Project Settings → Database — copy **connection string** into Cloud Run `DATABASE_URL` (never commit).

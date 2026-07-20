@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = path.resolve(__dirname, "../artifacts/bexo-web/public");
-const ORIGIN = "https://mybexo.cyou";
+const ORIGIN = "https://atbexo.com";
 const TODAY = new Date().toISOString().slice(0, 10);
 
 function escapeXml(value) {
@@ -46,7 +46,7 @@ const staticEntries = [
   { loc: `${ORIGIN}/privacy`, lastmod: TODAY },
   { loc: `${ORIGIN}/refund`, lastmod: TODAY },
   { loc: `${ORIGIN}/cookies`, lastmod: TODAY },
-  { loc: `https://bexo-demo.mybexo.cyou/`, lastmod: TODAY },
+  { loc: `https://bexo-demo.atbexo.com/`, lastmod: TODAY },
 ];
 
 function parseUrlsetXml(xml) {

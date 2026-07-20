@@ -1,7 +1,7 @@
 /**
  * Same-origin API helper.
  *
- * Production (mybexo.cyou) must never call http://localhost — that only works on the
+ * Production (atbexo.com) must never call http://localhost — that only works on the
  * developer machine and causes Safari/iOS "Load failed" on phones.
  * Prefer relative `/api/...` so Firebase Hosting rewrites (prod) and Vite proxy (dev) both work.
  */

@@ -87,7 +87,7 @@ function Router() {
   // Shared ATS Hire Me page is public, template-neutral, and available to free
   // and paid users. It must not wait on onboarding session hydration, and it
   // takes priority over subdomain portfolio rendering so
-  // {handle}.mybexo.cyou/hire-me also resolves here.
+  // {handle}.atbexo.com/hire-me also resolves here.
   if (typeof window !== 'undefined' && window.location.pathname.startsWith('/hire-me')) {
     const parts = window.location.pathname.split('/').filter(Boolean);
     const hireHandle = parts[1] || subdomain;

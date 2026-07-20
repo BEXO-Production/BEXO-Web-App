@@ -61,3 +61,7 @@ dump.rdb
 
 # Logs
 *.log
+
+# Production deploy secrets (never commit)
+.env.cloudrun.yaml
+.env.production.server

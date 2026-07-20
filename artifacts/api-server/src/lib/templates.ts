@@ -314,7 +314,7 @@ export const getBillingReceiptEmail = (
     accent: "violet",
     ctaLabel: "Go to dashboard",
     ctaUrl: `${APP_URL}/dashboard`,
-    footnote: `Billing questions? <a href="mailto:billing@mybexo.cyou">billing@mybexo.cyou</a>`,
+    footnote: `Billing questions? <a href="mailto:billing@atbexo.com">billing@atbexo.com</a>`,
     bodyHtml: `
       ${greeting(userName)}
       ${bodyParagraph("Your payment was processed successfully. A GST tax invoice is attached to this email for your records.")}
@@ -378,7 +378,7 @@ export const getCartRecoveryEmail = (userName: string, checkoutUrl: string) => {
     bodyHtml: `
       ${greeting(userName)}
       ${bodyParagraph("You started upgrading to BEXO Pro but left before payment. Your portfolio draft is safe — complete checkout to publish with premium templates and extra storage.")}
-      ${featurePills(["Premium templates", "you.mybexo.cyou", "More storage"])}
+      ${featurePills(["Premium templates", "you.atbexo.com", "More storage"])}
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:8px 0 4px;">
         <tr>
           <td style="background:linear-gradient(135deg, #FFF7ED 0%, #FFFBEB 100%);border:1px dashed #FCD34D;border-radius:16px;padding:18px 20px;">
@@ -427,7 +427,7 @@ export const getContactNotificationEmail = (
 ) => {
   const safeMessage = escapeHtml(message).replace(/\n/g, "<br/>");
   const portfolioNote = handle
-    ? ` through <strong style="color:${INK};">${escapeHtml(handle)}.mybexo.cyou</strong>`
+    ? ` through <strong style="color:${INK};">${escapeHtml(handle)}.atbexo.com</strong>`
     : "";
   return wrapHtml({
     title: "New portfolio enquiry",

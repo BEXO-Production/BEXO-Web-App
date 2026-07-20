@@ -1,35 +1,43 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://mybexo.cyou/</loc>
+    <loc>https://atbexo.com/</loc>
     <lastmod>2026-07-20</lastmod>
   </url>
   <url>
-    <loc>https://mybexo.cyou/terms</loc>
+    <loc>https://atbexo.com/terms</loc>
     <lastmod>2026-07-20</lastmod>
   </url>
   <url>
-    <loc>https://mybexo.cyou/privacy</loc>
+    <loc>https://atbexo.com/privacy</loc>
     <lastmod>2026-07-20</lastmod>
   </url>
   <url>
-    <loc>https://mybexo.cyou/refund</loc>
+    <loc>https://atbexo.com/refund</loc>
     <lastmod>2026-07-20</lastmod>
   </url>
   <url>
-    <loc>https://mybexo.cyou/cookies</loc>
+    <loc>https://atbexo.com/cookies</loc>
     <lastmod>2026-07-20</lastmod>
   </url>
   <url>
-    <loc>https://bexo-demo.mybexo.cyou/</loc>
+    <loc>https://bexo-demo.atbexo.com/</loc>
     <lastmod>2026-07-20</lastmod>
   </url>
   <url>
-    <loc>https://mybexo.cyou/hire-me/maha</loc>
+    <loc>https://atbexo.com/dhanyasri</loc>
+    <lastmod>2026-07-20</lastmod>
+  </url>
+  <url>
+    <loc>https://atbexo.com/ezhil</loc>
+    <lastmod>2026-07-20</lastmod>
+  </url>
+  <url>
+    <loc>https://atbexo.com/hire-me/maha</loc>
     <lastmod>2026-07-19</lastmod>
   </url>
   <url>
-    <loc>https://mybexo.cyou/maha</loc>
+    <loc>https://atbexo.com/maha</loc>
     <lastmod>2026-07-19</lastmod>
   </url>
 </urlset>

@@ -14,7 +14,7 @@ export default defineConfig(({ mode }) => {
   // development. That value must NOT win over .env.production — otherwise the
   // production bundle calls localhost and mobile OTP fails with "Load failed".
   if (mode === 'production') {
-    const productionApi = fileEnv.VITE_API_URL || 'https://mybexo.cyou';
+    const productionApi = fileEnv.VITE_API_URL || 'https://atbexo.com';
     if (!process.env.VITE_API_URL || /localhost|127\.0\.0\.1/i.test(process.env.VITE_API_URL)) {
       process.env.VITE_API_URL = productionApi;
     }

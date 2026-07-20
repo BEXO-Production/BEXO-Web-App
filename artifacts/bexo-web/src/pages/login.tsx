@@ -26,7 +26,7 @@ export default function Login() {
 
   usePageSeo({
     title: "Sign in to BEXO",
-    description: "Sign in to BEXO to edit your portfolio, templates, and subdomain on mybexo.cyou.",
+    description: "Sign in to BEXO to edit your portfolio, templates, and subdomain on atbexo.com.",
     noindex: true,
   });
 

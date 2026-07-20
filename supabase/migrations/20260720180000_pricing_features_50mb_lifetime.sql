@@ -2,13 +2,13 @@
 
 UPDATE pricing_plans SET
   subtitle = 'Publish a path-based portfolio',
-  features = '["10MB storage","Path-based portfolio","mybexo.cyou link"]'::jsonb,
+  features = '["10MB storage","Path-based portfolio","atbexo.com link"]'::jsonb,
   updated_at = now()
 WHERE id = 'free';
 
 UPDATE pricing_plans SET
   subtitle = 'Best for students & professionals',
-  features = '["Premium templates","100MB cloud storage base","yourname.mybexo.cyou","AI resume parses","Renew extends access 1 year"]'::jsonb,
+  features = '["Premium templates","100MB cloud storage base","yourname.atbexo.com","AI resume parses","Renew extends access 1 year"]'::jsonb,
   updated_at = now()
 WHERE id = 'annual';
 

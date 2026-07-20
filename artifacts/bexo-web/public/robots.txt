@@ -1,4 +1,4 @@
-Sitemap: https://mybexo.cyou/sitemap.xml
+Sitemap: https://atbexo.com/sitemap.xml
 
 User-agent: *
 Allow: /

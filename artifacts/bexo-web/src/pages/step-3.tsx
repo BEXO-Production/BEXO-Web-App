@@ -470,7 +470,7 @@ export default function Step3Info() {
                 }}
               />
               <div className="flex items-center px-4 bg-slate-50 border-l border-slate-200 text-slate-500 text-sm font-medium">
-                .mybexo.cyou
+                .atbexo.com
               </div>
             </div>
             {handleAvailability === 'checking' && (

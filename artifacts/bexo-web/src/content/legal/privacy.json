@@ -25,7 +25,7 @@
         {
           "type": "ul",
           "items": [
-            "Your use of the BEXO website at www.mybexo.cyou and its subdomains.",
+            "Your use of the BEXO website at www.atbexo.com and its subdomains.",
             "Your creation and use of a BEXO Account and Portfolio.",
             "Your subscription to and payment for BEXO plans.",
             "Your interactions with our support and communications team."
@@ -110,7 +110,7 @@
         {
           "type": "ul",
           "items": [
-            "Service Delivery: Creating and maintaining your Account, building and hosting your Portfolio at {handle}.mybexo.cyou, and providing all platform features.",
+            "Service Delivery: Creating and maintaining your Account, building and hosting your Portfolio at {handle}.atbexo.com, and providing all platform features.",
             "Payment Processing: Verifying and processing Subscription payments via Razorpay, issuing GST-compliant invoices, and managing renewals and cancellations.",
             "Communications: Sending transactional emails (account confirmation, payment receipts, password resets, renewal reminders, service alerts).",
             "Platform Improvement: Analysing usage patterns and performance data to identify bugs, improve features, and develop new services.",

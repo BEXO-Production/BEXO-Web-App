@@ -1,6 +1,6 @@
-/** Portfolio platform domain (subdomains: {handle}.mybexo.cyou). */
+/** Portfolio platform domain (subdomains: {handle}.atbexo.com). */
 export const PLATFORM_DOMAIN =
-  import.meta.env.VITE_PLATFORM_DOMAIN?.toLowerCase().trim() || "mybexo.cyou";
+  import.meta.env.VITE_PLATFORM_DOMAIN?.toLowerCase().trim() || "atbexo.com";
 
 export function portfolioHostname(handle: string): string {
   const safe = String(handle || "")

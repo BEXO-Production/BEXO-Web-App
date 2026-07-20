@@ -114,7 +114,7 @@ const FEATURES = [
   },
   {
     icon: Globe,
-    title: "you.mybexo.cyou",
+    title: "you.atbexo.com",
     body: "A personal subdomain that looks like you — not a generic link-in-bio page.",
   },
   {
@@ -156,7 +156,7 @@ function buildPlans(prices: { annual: number; lifetime: number }) {
       features: [
         "Premium templates",
         "100MB cloud storage base",
-        "yourname.mybexo.cyou",
+        "yourname.atbexo.com",
         "AI resume parses",
         "Renew extends access 1 year",
       ],
@@ -198,9 +198,9 @@ export default function LandingPage({
   usePageSeo({
     title: `${BEXO_OAUTH_APP_NAME} — Professional portfolios for students`,
     description:
-      "BEXO From Ace Digital helps students and professionals publish placement-ready portfolios on mybexo.cyou. This home page is public — sign-in is only required to edit your portfolio.",
-    canonical: "https://mybexo.cyou/",
-    ogImage: "https://mybexo.cyou/og-default.jpg",
+      "BEXO From Ace Digital helps students and professionals publish placement-ready portfolios on atbexo.com. This home page is public — sign-in is only required to edit your portfolio.",
+    canonical: "https://atbexo.com/",
+    ogImage: "https://atbexo.com/og-default.jpg",
     jsonLd: buildMarketingJsonLd(),
   });
 
@@ -332,19 +332,19 @@ export default function LandingPage({
           </p>
           <p className="landing-muted mx-auto mt-4 text-[15px] leading-relaxed sm:text-base">
             {BEXO_APP_PURPOSE} Public pages:{" "}
-            <a href="https://mybexo.cyou/" className="text-[#7BA0FF] hover:underline">
+            <a href="https://atbexo.com/" className="text-[#7BA0FF] hover:underline">
               home
             </a>
             ,{" "}
-            <a href="https://mybexo.cyou/#pricing" className="text-[#7BA0FF] hover:underline">
+            <a href="https://atbexo.com/#pricing" className="text-[#7BA0FF] hover:underline">
               pricing
             </a>
             ,{" "}
-            <a href="https://mybexo.cyou/privacy" className="text-[#7BA0FF] hover:underline">
+            <a href="https://atbexo.com/privacy" className="text-[#7BA0FF] hover:underline">
               privacy
             </a>
             , and{" "}
-            <a href="https://mybexo.cyou/terms" className="text-[#7BA0FF] hover:underline">
+            <a href="https://atbexo.com/terms" className="text-[#7BA0FF] hover:underline">
               terms
             </a>
             .

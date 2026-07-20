@@ -8,7 +8,7 @@ export const BEXO_APP_NAME = "BEXO";
 export const BEXO_FOOTER_COPYRIGHT = "© 2026 BEXO From Ace Digital. All rights reserved.";
 
 export const BEXO_APP_TAGLINE =
-  "Upload a resume, pick a premium template, and publish on mybexo.cyou — sign in only when you create or edit."
+  "Upload a resume, pick a premium template, and publish on atbexo.com — sign in only when you create or edit."
 
 export const BEXO_APP_PURPOSE =
   "Purpose: help students and professionals create placement-ready digital portfolios. You can explore templates, pricing, and legal policies on this public home page without signing in. Sign-in is only required when you create or edit your own portfolio.";

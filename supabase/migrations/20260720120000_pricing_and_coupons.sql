@@ -36,7 +36,7 @@ VALUES
     true,
     0,
     false,
-    '["10MB storage","Path-based portfolio","mybexo.cyou link"]'::jsonb
+    '["10MB storage","Path-based portfolio","atbexo.com link"]'::jsonb
   ),
   (
     'annual',
@@ -47,7 +47,7 @@ VALUES
     true,
     1,
     true,
-    '["Premium templates","100MB cloud storage base","yourname.mybexo.cyou","AI resume parses","Renew extends access 1 year"]'::jsonb
+    '["Premium templates","100MB cloud storage base","yourname.atbexo.com","AI resume parses","Renew extends access 1 year"]'::jsonb
   ),
   (
     'lifetime',

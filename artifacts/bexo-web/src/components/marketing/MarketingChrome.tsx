@@ -208,7 +208,7 @@ export function MarketingFooter({ light = false }: { light?: boolean }) {
 
 export function LegalDocument({ doc, slug }: { doc: LegalDoc; slug: string }) {
   const origin =
-    typeof window !== "undefined" ? window.location.origin.replace(/\/$/, "") : "https://mybexo.cyou";
+    typeof window !== "undefined" ? window.location.origin.replace(/\/$/, "") : "https://atbexo.com";
   usePageSeo({
     title: `${doc.title} — BEXO`,
     description: doc.lead || `${doc.title} for BEXO (Ace Digital).`,

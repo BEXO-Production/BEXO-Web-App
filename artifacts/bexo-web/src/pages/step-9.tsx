@@ -102,7 +102,7 @@ export default function Step9Plan() {
   const isBillingManagement = data.hasCompletedOnboarding;
 
   const handleStr = data.handle || (data.name ? data.name.toLowerCase().replace(/[^a-z0-9]/g, '') : '');
-  const portfolioUrl = handleStr ? `${handleStr}.mybexo.cyou` : null;
+  const portfolioUrl = handleStr ? `${handleStr}.atbexo.com` : null;
 
   const expiryLabel = data.expiresAt
     ? new Date(data.expiresAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
@@ -607,12 +607,12 @@ export default function Step9Plan() {
             {
               icon: <X className="w-4 h-4 text-red-600" />,
               title: 'Locked Premium Templates',
-              desc: `Free publishes a basic path URL. Pro unlocks ${PORTFOLIO_TEMPLATES.map((t) => t.name).join(', ')} on yourname.mybexo.cyou.`,
+              desc: `Free publishes a basic path URL. Pro unlocks ${PORTFOLIO_TEMPLATES.map((t) => t.name).join(', ')} on yourname.atbexo.com.`,
             },
             {
               icon: <X className="w-4 h-4 text-red-600" />,
               title: 'No Custom Subdomains',
-              desc: 'Portfolio at mybexo.cyou/handle only — no yourname.mybexo.cyou custom domain.',
+              desc: 'Portfolio at atbexo.com/handle only — no yourname.atbexo.com custom domain.',
             },
           ].map((item, idx) => (
             <div key={idx} className={cn("flex items-start gap-3", idx < 3 && "pb-3 border-b border-slate-100")}>
@@ -661,7 +661,7 @@ export default function Step9Plan() {
   // ──────────────────────────────────────────────────────────────────────
   if (freeFlowStep === 'handle') {
     const selectedThemeObj = THEMES.find(t => t.id === freeTheme) || THEMES[0];
-    const previewUrl = `${freeHandle || 'yourhandle'}.mybexo.cyou`;
+    const previewUrl = `${freeHandle || 'yourhandle'}.atbexo.com`;
 
     return (
       <div className="flex flex-col h-full max-w-md w-full mx-auto justify-center pb-10 animate-in fade-in slide-in-from-right-4">
@@ -695,7 +695,7 @@ export default function Step9Plan() {
                 }}
               />
               <span className="inline-flex items-center px-4 rounded-r-2xl border border-l-0 border-slate-200 bg-slate-50 text-slate-500 text-sm font-semibold select-none">
-                .mybexo.cyou
+                .atbexo.com
               </span>
             </div>
             
@@ -905,7 +905,7 @@ export default function Step9Plan() {
         {portfolioUrl && (
           <div className="inline-flex items-center gap-2 mb-6 px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-full w-fit">
             <Globe className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-            <span className="text-sm font-semibold text-indigo-700"><span className="text-indigo-500">{data.handle || ''}</span>.mybexo.cyou</span>
+            <span className="text-sm font-semibold text-indigo-700"><span className="text-indigo-500">{data.handle || ''}</span>.atbexo.com</span>
           </div>
         )}
 
@@ -1024,7 +1024,7 @@ export default function Step9Plan() {
         {portfolioUrl && (
           <div className="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-full">
             <Globe className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-            <span className="text-sm font-semibold text-indigo-700"><span className="text-indigo-500">{data.handle || ''}</span>.mybexo.cyou</span>
+            <span className="text-sm font-semibold text-indigo-700"><span className="text-indigo-500">{data.handle || ''}</span>.atbexo.com</span>
           </div>
         )}
       </div>
@@ -1101,13 +1101,13 @@ export default function Step9Plan() {
                     ? [
                         'Extend access by 1 year from current expiry',
                         'Keep your current storage quota',
-                        'yourname.mybexo.cyou',
+                        'yourname.atbexo.com',
                         'Premium templates',
                       ]
                     : [
                         'Premium templates',
                         '100MB cloud storage base',
-                        'yourname.mybexo.cyou',
+                        'yourname.atbexo.com',
                         'AI resume parses',
                         'Renew extends access 1 year',
                       ]

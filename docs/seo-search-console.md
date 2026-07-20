@@ -1,6 +1,6 @@
 # Google Search Console — BEXO SEO setup
 
-Production domain: **https://mybexo.cyou**
+Production domain: **https://atbexo.com**
 
 ## 1. Submit sitemap
 
@@ -13,7 +13,7 @@ In [Google Search Console](https://search.google.com/search-console) → **Sitem
 sitemap.xml
 ```
 
-(or full URL `https://mybexo.cyou/sitemap.xml`)
+(or full URL `https://atbexo.com/sitemap.xml`)
 
 `sitemap.xml` is a **single urlset** (Google’s recommended format for small/medium sites): home, legal pages, demo, and all public portfolio + Hire Me URLs in one file. No sitemap index — Google fetches one URL.
 
@@ -21,8 +21,8 @@ Regenerate before hosting deploys (`node scripts/generate-sitemaps.mjs` — also
 
 Verify:
 
-- https://mybexo.cyou/sitemap.xml (must start with `<urlset`, not `<sitemapindex`)
-- https://mybexo.cyou/robots.txt
+- https://atbexo.com/sitemap.xml (must start with `<urlset`, not `<sitemapindex`)
+- https://atbexo.com/robots.txt
 
 ## 2. Cloudflare robots.txt (important)
 
@@ -32,12 +32,12 @@ If **Cloudflare Managed robots.txt** (Content Signals) is enabled, it **replaces
 - **Dashboard → Rules → robots.txt** — append:
 
 ```text
-Sitemap: https://mybexo.cyou/sitemap.xml
+Sitemap: https://atbexo.com/sitemap.xml
 ```
 
 Also ensure **Bot Fight Mode** / WAF does not block Googlebot on `/sitemap.xml`.
 
-The home page includes `<link rel="sitemap" href="https://mybexo.cyou/sitemap.xml" />` as a fallback discovery hint.
+The home page includes `<link rel="sitemap" href="https://atbexo.com/sitemap.xml" />` as a fallback discovery hint.
 
 ## 3. robots.txt (Firebase)
 
@@ -55,13 +55,13 @@ Static file in `artifacts/bexo-web/public/robots.txt`. `Sitemap:` is listed firs
 
 ## 5. Open Graph images
 
-- Platform default: `https://mybexo.cyou/og-default.jpg`  
-- Portfolio fallback: `https://mybexo.cyou/og-portfolio.jpg`  
+- Platform default: `https://atbexo.com/og-default.jpg`  
+- Portfolio fallback: `https://atbexo.com/og-portfolio.jpg`  
 - User photo used when URL is absolute HTTPS  
 
 ## 6. Recommended Search Console checks
 
-1. **URL inspection** — test `https://mybexo.cyou/` and one live portfolio subdomain.  
+1. **URL inspection** — test `https://atbexo.com/` and one live portfolio subdomain.  
 2. **Page indexing** — confirm legal URLs and portfolios move to “Indexed”.  
 3. **Core Web Vitals** — monitor after traffic grows.  
 4. **Removals** — unclaimed handles use `noindex` on the claim page (not in sitemap).  
@@ -70,8 +70,8 @@ Static file in `artifacts/bexo-web/public/robots.txt`. `Sitemap:` is listed firs
 
 After each production deploy, optionally request indexing for:
 
-- `https://mybexo.cyou/`  
-- `https://mybexo.cyou/sitemap.xml`  
+- `https://atbexo.com/`  
+- `https://atbexo.com/sitemap.xml`  
 
 Re-run the generator (or full `bexo-web` build) after portfolio launches so new handles appear in `sitemap.xml`.
 

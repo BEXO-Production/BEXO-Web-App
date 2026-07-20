@@ -43,7 +43,7 @@ export default function Step7Theme() {
   const [previewTemplate, setPreviewTemplate] = useState<string | null>(null);
   const [isSwooshing, setIsSwooshing] = useState(false);
   const showThemeOptions = THEMEABLE_TEMPLATE_IDS.has(selectedTemplate);
-  const previewLabel = `${MARKETING_DEMO_HANDLE}.mybexo.cyou`;
+  const previewLabel = `${MARKETING_DEMO_HANDLE}.atbexo.com`;
 
   const handleContinue = () => {
     const chosen = TEMPLATES.find(t => t.id === selectedTemplate);

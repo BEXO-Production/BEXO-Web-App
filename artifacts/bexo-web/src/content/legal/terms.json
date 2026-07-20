@@ -7,7 +7,7 @@
       "blocks": [
         {
           "type": "p",
-          "text": "These Terms of Service (\"Terms\") constitute a legally binding agreement between you (\"User\", \"you\") and Ace Digital (\"Company\", \"we\", \"us\", \"our\"). Ace Digital is owned and operated by KSKG Private Ltd. BEXO is a product of Ace Digital, accessible at www.mybexo.cyou and all associated subdomains, mobile applications, and APIs (collectively, the \"Platform\"). These Terms govern your access to and use of the Platform and all services offered therein."
+          "text": "These Terms of Service (\"Terms\") constitute a legally binding agreement between you (\"User\", \"you\") and Ace Digital (\"Company\", \"we\", \"us\", \"our\"). Ace Digital is owned and operated by KSKG Private Ltd. BEXO is a product of Ace Digital, accessible at www.atbexo.com and all associated subdomains, mobile applications, and APIs (collectively, the \"Platform\"). These Terms govern your access to and use of the Platform and all services offered therein."
         },
         {
           "type": "p",
@@ -29,11 +29,11 @@
         {
           "type": "ul",
           "items": [
-            "\"BEXO\" refers to the online portfolio-building and professional showcase product of Ace Digital, operated by the Company at www.mybexo.cyou and associated subdomains including {handle}.mybexo.cyou.",
+            "\"BEXO\" refers to the online portfolio-building and professional showcase product of Ace Digital, operated by the Company at www.atbexo.com and associated subdomains including {handle}.atbexo.com.",
             "\"User\" means any individual or entity who accesses, browses, registers on, or uses the Platform in any capacity, whether as a Free User or a Subscribed User.",
             "\"Account\" means the registered user profile created upon completing the sign-up process on the Platform.",
             "\"Content\" means any text, images, photographs, videos, files, documents, links, data, or other material uploaded, submitted, created, or published by a User on the Platform.",
-            "\"Portfolio\" means the personalised public-facing webpage created and hosted for a User at {handle}.mybexo.cyou.",
+            "\"Portfolio\" means the personalised public-facing webpage created and hosted for a User at {handle}.atbexo.com.",
             "\"Subscription\" means a paid access plan (Annual or Lifetime) that unlocks premium features on the Platform.",
             "\"Subscription Fee\" means the applicable fee charged for a Subscription plan as listed on the Platform's pricing page at any given time.",
             "\"Intellectual Property Rights\" means all patents, copyrights, trademarks, trade secrets, database rights, and any other proprietary rights recognised under Indian or international law.",
@@ -114,7 +114,7 @@
           "type": "ul",
           "items": [
             "Portfolio Builder: An intuitive interface to create and customise a professional portfolio website.",
-            "Subdomain Hosting: A unique live portfolio hosted at {yourhandle}.mybexo.cyou.",
+            "Subdomain Hosting: A unique live portfolio hosted at {yourhandle}.atbexo.com.",
             "Asset Storage: Up to 100 MB of cloud storage per Account.",
             "Lifetime Hosting: Continued hosting for the duration of your active Subscription or indefinitely (Lifetime plan).",
             "Profile Analytics: Basic statistics on portfolio visits and engagement (Subscribed Users).",
@@ -400,7 +400,7 @@
       "blocks": [
         {
           "type": "p",
-          "text": "The Company reserves the right to update or modify these Terms at any time. Material changes will be communicated via email and via a prominent notice on the Platform at least 15 days before taking effect. Continued use after the effective date constitutes acceptance of the revised Terms. The most current version will always be available at https://mybexo.cyou/terms."
+          "text": "The Company reserves the right to update or modify these Terms at any time. Material changes will be communicated via email and via a prominent notice on the Platform at least 15 days before taking effect. Continued use after the effective date constitutes acceptance of the revised Terms. The most current version will always be available at https://atbexo.com/terms."
         }
       ]
     },

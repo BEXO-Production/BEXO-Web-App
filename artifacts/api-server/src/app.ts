@@ -140,7 +140,10 @@ app.get("/", (req, res) => {
   res.json({
     status: "ok",
     message: "BEXO API Server is running.",
-    frontendUrl: "http://localhost:5173"
+    frontendUrl:
+      process.env.FRONTEND_URL ||
+      process.env.WEB_URL ||
+      `https://${process.env.PLATFORM_DOMAIN || "atbexo.com"}`,
   });
 });
 

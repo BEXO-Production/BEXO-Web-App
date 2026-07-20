@@ -37,7 +37,7 @@ const FALLBACK_PLANS: PricingPlanRow[] = [
     isPurchasable: true,
     sortOrder: 0,
     isHighlighted: false,
-    features: ["10MB storage", "Path-based portfolio", "mybexo.cyou link"],
+    features: ["10MB storage", "Path-based portfolio", "atbexo.com link"],
   },
   {
     id: "annual",
@@ -51,7 +51,7 @@ const FALLBACK_PLANS: PricingPlanRow[] = [
     features: [
       "Premium templates",
       "100MB cloud storage base",
-      "yourname.mybexo.cyou",
+      "yourname.atbexo.com",
       "AI resume parses",
       "Renew extends access 1 year",
     ],

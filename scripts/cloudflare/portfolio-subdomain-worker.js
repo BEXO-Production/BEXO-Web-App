@@ -1,24 +1,24 @@
 /**
- * Cloudflare Worker — wildcard portfolio subdomains (*.mybexo.cyou) → Cloud Run API
+ * Cloudflare Worker — wildcard portfolio subdomains (*.atbexo.com) → Cloud Run API
  *
  * Cloud Run only accepts its *.run.app Host on the TLS connection. This worker
  * proxies to ORIGIN_URL but forwards the visitor hostname via X-Forwarded-Host
- * so Express subdomainRouter can render {handle}.mybexo.cyou portfolios.
+ * so Express subdomainRouter can render {handle}.atbexo.com portfolios.
  *
  * Deploy: Workers & Pages → Create Worker → paste this file.
- * Route: *mybexo.cyou/*
+ * Route: *atbexo.com/*
  *
  * Environment variables (Worker settings):
- *   ORIGIN_URL = https://bexo-api-742793974585.asia-south1.run.app
- *   APEX_URL   = https://bexo-development.web.app  (optional — apex/www app)
- *   PLATFORM_DOMAIN = mybexo.cyou
+ *   ORIGIN_URL = https://bexo-api-557785925639.asia-south1.run.app
+ *   APEX_URL   = https://bexo-from-ace-digital.web.app  (optional — apex/www app)
+ *   PLATFORM_DOMAIN = atbexo.com
  */
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const visitorHost = url.hostname.toLowerCase();
-    const platformDomain = (env.PLATFORM_DOMAIN || "mybexo.cyou").toLowerCase();
+    const platformDomain = (env.PLATFORM_DOMAIN || "atbexo.com").toLowerCase();
     const originBase = (env.ORIGIN_URL || "").replace(/\/$/, "");
     const apexBase = (env.APEX_URL || "").replace(/\/$/, "");
 
