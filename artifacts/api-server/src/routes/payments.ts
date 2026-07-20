@@ -14,6 +14,12 @@ import {
   resolveSubscriptionState,
   type PaidPlan,
 } from "../lib/subscriptions";
+import {
+  calculatePlanAmount,
+  loadPricingCatalog,
+  recordCouponRedemption,
+  toPublicPricingPayload,
+} from "../lib/pricingCatalog";
 
 const router = Router();
 
@@ -28,41 +34,6 @@ const isRazorpayConfigured =
 const razorpay = isRazorpayConfigured
   ? new Razorpay({ key_id: razorpayKeyId, key_secret: razorpayKeySecret })
   : null;
-
-const planPrices: Record<PaidPlan, number> = {
-  annual: 1499,
-  lifetime: 2999,
-};
-
-const normalizeCoupon = (couponCode?: string) => couponCode?.trim().toUpperCase() || null;
-
-const calculateAmount = (plan: PaidPlan, couponCode?: string) => {
-  const base = planPrices[plan];
-  const coupon = normalizeCoupon(couponCode);
-  let discount = 0;
-
-  const now = new Date();
-  const expiryDate = new Date("2026-12-31T23:59:59Z");
-  const isPromoValid = now.getTime() <= expiryDate.getTime();
-
-  if (isPromoValid && (coupon === "BEXO2026" || coupon === "PROMO2026")) {
-    if (plan === "annual") {
-      discount = base - 999; // Promo → ₹999/year
-    } else if (plan === "lifetime") {
-      discount = base - 1999; // Promo → ₹1999
-    }
-  } else if (coupon === "BEXO50") {
-    discount = base * 0.5;
-  } else if (coupon === "STUDENT") {
-    discount = 200;
-  }
-
-  const subtotal = Math.max(base - discount, 0);
-  const gst = subtotal * 0.18;
-  const total = Math.round(subtotal + gst);
-
-  return { base, discount, gst, total, coupon };
-};
 
 const timingSafeEqualHex = (left: string, right: string) => {
   const leftBuffer = Buffer.from(left, "hex");
@@ -117,6 +88,7 @@ router.get("/status", requireAuth, async (req: any, res: any) => {
       .orderBy(desc(payments.createdAt))
       .limit(1);
 
+    const catalog = await loadPricingCatalog();
     res.json({
       plan: state.plan,
       status: state.status,
@@ -144,8 +116,9 @@ router.get("/status", requireAuth, async (req: any, res: any) => {
           }
         : null,
       pricing: {
-        annual: calculateAmount("annual"),
-        lifetime: calculateAmount("lifetime"),
+        ...toPublicPricingPayload(catalog),
+        annual: await calculatePlanAmount("annual"),
+        lifetime: await calculatePlanAmount("lifetime"),
       },
     });
   } catch (error) {
@@ -170,7 +143,7 @@ router.post("/create-order", requireAuth, async (req: any, res: any) => {
       return res.status(409).json({ error: blocked, canBuy: current.canBuy, renewalMode: current.renewalMode });
     }
 
-    const pricing = calculateAmount(plan, couponCode);
+    const pricing = await calculatePlanAmount(plan, couponCode);
     const amountInPaise = pricing.total * 100;
     const orderOptions = {
       amount: amountInPaise,
@@ -297,6 +270,9 @@ router.post("/verify", requireAuth, async (req: any, res: any) => {
 
     const expiresAt = await getRenewalExpiry(userId, plan);
     const activated = await activatePaidPlan(userId, plan, expiresAt);
+    const couponCode =
+      typeof req.body?.couponCode === "string" ? req.body.couponCode : undefined;
+    await recordCouponRedemption(couponCode);
     await sendBillingReceipts(userId, plan, payment.amount / 100, razorpay_payment_id);
     await markOnboardingComplete(userId).catch((err) =>
       logger.warn({ err, userId }, "markOnboardingComplete failed after payment"),

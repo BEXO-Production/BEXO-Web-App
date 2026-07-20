@@ -499,7 +499,7 @@
     }
     const isLocal =
       window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
-    const webOrigin = isLocal ? "http://localhost:5173" : `${window.location.protocol}//mybexo.com`;
+    const webOrigin = isLocal ? "http://localhost:5173" : `${window.location.protocol}//mybexo.cyou`;
     const url = `${webOrigin}/hire-me/${encodeURIComponent(handle)}`;
     const link = document.querySelector("[data-hire-link]");
     if (link) {

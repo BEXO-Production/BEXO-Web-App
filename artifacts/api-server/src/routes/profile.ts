@@ -689,7 +689,7 @@ router.post("/resume", requireAuth, upload.single("resume"), async (req: Authent
           headers: {
             "Content-Type": "application/json",
             "Authorization": `Bearer ${apiKey}`,
-            "HTTP-Referer": "https://mybexo.com",
+            "HTTP-Referer": "https://mybexo.cyou",
             "X-Title": "Bexo Onboarding"
           },
           body: JSON.stringify({

@@ -13,8 +13,8 @@ import { PORTFOLIO_TEMPLATES } from '../lib/templates';
 import {
   ANNUAL_STORAGE_BYTES,
   LIFETIME_STORAGE_BYTES,
-  PLAN_PRICES_INR,
 } from '../lib/pricing';
+import { usePricing, validateCouponApi } from '../hooks/use-pricing';
 
 declare global {
   interface Window {
@@ -35,6 +35,7 @@ export default function Step9Plan() {
   const { data, updateData } = useOnboarding();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const { prices, gstRate } = usePricing();
 
   const canBuyLifetime = data.canBuy?.lifetime !== false && !data.isPremium;
   const canBuyAnnual = data.canBuy?.annual !== false;
@@ -58,6 +59,13 @@ export default function Step9Plan() {
   const [showCheckout, setShowCheckout] = useState(false);
   const [couponCode, setCouponCode] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
+  const [couponPricing, setCouponPricing] = useState<{
+    base: number;
+    discount: number;
+    subtotal: number;
+    gst: number;
+    total: number;
+  } | null>(null);
   const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
   const [showUpgradeOptions, setShowUpgradeOptions] = useState(false);
 
@@ -75,31 +83,26 @@ export default function Step9Plan() {
     if (yearlyOnly && plan === 'lifetime') setPlan('annual');
   }, [yearlyOnly, plan]);
 
+  useEffect(() => {
+    setAppliedCoupon(null);
+    setCouponPricing(null);
+  }, [plan]);
+
   const portfolioHTML = useMemo(
     () => buildMinimalPortfolioHTML(data, freeTheme, freeHandle || 'yourhandle', freeThemeBg),
     [data, freeTheme, freeHandle, freeThemeBg]
   );
 
-  const basePrice = plan === 'annual' ? PLAN_PRICES_INR.annual : PLAN_PRICES_INR.lifetime;
-  
-  const getDiscount = () => {
-    if (appliedCoupon === 'BEXO50') return basePrice * 0.5;
-    if (appliedCoupon === 'STUDENT') return 200;
-    if (appliedCoupon === 'BEXO2026' || appliedCoupon === 'PROMO2026') {
-      if (plan === 'annual') return basePrice - 999;
-      if (plan === 'lifetime') return basePrice - 1999;
-    }
-    return 0;
-  };
+  const basePrice = plan === 'annual' ? prices.annual : prices.lifetime;
 
-  const discount = getDiscount();
-  const subtotal = basePrice - discount;
-  const gst = subtotal * 0.18;
-  const total = Math.round(subtotal + gst);
+  const discount = couponPricing?.discount ?? 0;
+  const subtotal = couponPricing?.subtotal ?? basePrice;
+  const gst = couponPricing?.gst ?? subtotal * gstRate;
+  const total = couponPricing?.total ?? Math.round(subtotal + gst);
   const isBillingManagement = data.hasCompletedOnboarding;
 
   const handleStr = data.handle || (data.name ? data.name.toLowerCase().replace(/[^a-z0-9]/g, '') : '');
-  const portfolioUrl = handleStr ? `${handleStr}.mybexo.com` : null;
+  const portfolioUrl = handleStr ? `${handleStr}.mybexo.cyou` : null;
 
   const expiryLabel = data.expiresAt
     ? new Date(data.expiresAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
@@ -180,7 +183,8 @@ export default function Step9Plan() {
       },
       body: JSON.stringify({
         ...payload,
-        plan
+        plan,
+        couponCode: appliedCoupon,
       })
     });
 
@@ -210,19 +214,28 @@ export default function Step9Plan() {
     return true;
   };
 
-  const handleApplyCoupon = () => {
+  const handleApplyCoupon = async () => {
     setIsApplyingCoupon(true);
-    setTimeout(() => {
-      setIsApplyingCoupon(false);
-      const codeUpper = couponCode.toUpperCase();
-      if (codeUpper === 'BEXO50' || codeUpper === 'STUDENT' || codeUpper === 'BEXO2026' || codeUpper === 'PROMO2026') {
-        setAppliedCoupon(codeUpper);
-        toast({ title: 'Coupon Applied', description: 'Discount has been applied to your total.' });
-      } else {
-        toast({ title: 'Invalid Coupon', description: 'The coupon code you entered is invalid.', variant: 'destructive' });
+    try {
+      const result = await validateCouponApi(plan, couponCode);
+      if (!result.valid || !result.pricing) {
         setAppliedCoupon(null);
+        setCouponPricing(null);
+        toast({
+          title: 'Invalid Coupon',
+          description: result.message || 'The coupon code you entered is invalid.',
+          variant: 'destructive',
+        });
+        return;
       }
-    }, 600);
+      setAppliedCoupon(result.coupon || couponCode.toUpperCase());
+      setCouponPricing(result.pricing);
+      toast({ title: 'Coupon Applied', description: 'Discount has been applied to your total.' });
+    } catch {
+      toast({ title: 'Error', description: 'Could not validate coupon. Try again.', variant: 'destructive' });
+    } finally {
+      setIsApplyingCoupon(false);
+    }
   };
 
   const handleRazorpayCheckout = async () => {
@@ -599,7 +612,7 @@ export default function Step9Plan() {
             {
               icon: <X className="w-4 h-4 text-red-600" />,
               title: 'No Custom Subdomains',
-              desc: 'Portfolio at mybexo.com/handle only — no yourname.mybexo.com custom domain.',
+              desc: 'Portfolio at mybexo.cyou/handle only — no yourname.mybexo.cyou custom domain.',
             },
           ].map((item, idx) => (
             <div key={idx} className={cn("flex items-start gap-3", idx < 3 && "pb-3 border-b border-slate-100")}>
@@ -648,7 +661,7 @@ export default function Step9Plan() {
   // ──────────────────────────────────────────────────────────────────────
   if (freeFlowStep === 'handle') {
     const selectedThemeObj = THEMES.find(t => t.id === freeTheme) || THEMES[0];
-    const previewUrl = `${freeHandle || 'yourhandle'}.mybexo.com`;
+    const previewUrl = `${freeHandle || 'yourhandle'}.mybexo.cyou`;
 
     return (
       <div className="flex flex-col h-full max-w-md w-full mx-auto justify-center pb-10 animate-in fade-in slide-in-from-right-4">
@@ -682,7 +695,7 @@ export default function Step9Plan() {
                 }}
               />
               <span className="inline-flex items-center px-4 rounded-r-2xl border border-l-0 border-slate-200 bg-slate-50 text-slate-500 text-sm font-semibold select-none">
-                .mybexo.com
+                .mybexo.cyou
               </span>
             </div>
             
@@ -892,7 +905,7 @@ export default function Step9Plan() {
         {portfolioUrl && (
           <div className="inline-flex items-center gap-2 mb-6 px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-full w-fit">
             <Globe className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-            <span className="text-sm font-semibold text-indigo-700"><span className="text-indigo-500">{data.handle || ''}</span>.mybexo.com</span>
+            <span className="text-sm font-semibold text-indigo-700"><span className="text-indigo-500">{data.handle || ''}</span>.mybexo.cyou</span>
           </div>
         )}
 
@@ -1011,7 +1024,7 @@ export default function Step9Plan() {
         {portfolioUrl && (
           <div className="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-full">
             <Globe className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-            <span className="text-sm font-semibold text-indigo-700"><span className="text-indigo-500">{data.handle || ''}</span>.mybexo.com</span>
+            <span className="text-sm font-semibold text-indigo-700"><span className="text-indigo-500">{data.handle || ''}</span>.mybexo.cyou</span>
           </div>
         )}
       </div>
@@ -1072,7 +1085,7 @@ export default function Step9Plan() {
                   </p>
                 </div>
                 <div className="text-right">
-                  <span className="text-2xl font-bold text-slate-900">₹{PLAN_PRICES_INR.annual.toLocaleString('en-IN')}</span>
+                  <span className="text-2xl font-bold text-slate-900">₹{prices.annual.toLocaleString('en-IN')}</span>
                   <span className="text-xs text-slate-500">/year</span>
                   <span className="text-[10px] text-slate-400 block">excl. GST</span>
                 </div>
@@ -1088,13 +1101,13 @@ export default function Step9Plan() {
                     ? [
                         'Extend access by 1 year from current expiry',
                         'Keep your current storage quota',
-                        'Personalized subdomain (yourname.mybexo.com)',
+                        'Personalized subdomain (yourname.mybexo.cyou)',
                         'Cura Futuri, Sierra Montana & Nico Palmer templates',
                       ]
                     : [
                         '100MB Cloud Storage space capacity',
                         '3 AI Resume Parses per month (resets every 30 days)',
-                        'Personalized subdomain (yourname.mybexo.com)',
+                        'Personalized subdomain (yourname.mybexo.cyou)',
                         'Cura Futuri, Sierra Montana & Nico Palmer templates',
                       ]
                 ).map((feat, i) => (
@@ -1127,7 +1140,7 @@ export default function Step9Plan() {
                   <p className="text-xs text-indigo-600 font-bold mt-0.5">Expose your skills & profile forever</p>
                 </div>
                 <div className="text-right">
-                  <span className="text-2xl font-bold text-slate-900">₹{PLAN_PRICES_INR.lifetime.toLocaleString('en-IN')}</span>
+                  <span className="text-2xl font-bold text-slate-900">₹{prices.lifetime.toLocaleString('en-IN')}</span>
                   <span className="text-[10px] text-slate-400 block">excl. GST</span>
                 </div>
               </div>
@@ -1137,7 +1150,7 @@ export default function Step9Plan() {
                   '500MB Premium Cloud Storage (photos & assets)',
                   'Stack +100MB anytime with a Yearly add-on',
                   '1 AI Resume Parse per month (resets every 30 days)',
-                  'Personalized subdomain (yourname.mybexo.com)',
+                  'Personalized subdomain (yourname.mybexo.cyou)',
                   'Cura Futuri, Sierra Montana & Nico Palmer templates',
                   'Portfolio visibility to placement cells'
                 ].map((feat, i) => (

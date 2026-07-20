@@ -299,7 +299,7 @@ export const generateInvoicePDF = async (
       const terms = [
         'This Tax Invoice is issued by Ace Digital.\nBexo is a product of Ace Digital.',
         'All purchases are subject to the standard Bexo\nRefund Policy and Terms of Service.',
-        'For payment, billing, or invoices queries, please\nreach out directly to billing@mybexo.com or\ninfo@acedigital.cc.'
+        'For payment, billing, or invoices queries, please\nreach out directly to billing@mybexo.cyou or\ninfo@acedigital.cc.'
       ];
       terms.forEach((t, i) => {
         const ty = tmY + 22 + (i * 34);
@@ -333,9 +333,9 @@ export const generateInvoicePDF = async (
 
       doc.fontSize(7.5).font('Helvetica').fillColor('#9999BB')
         .text('Need help?', ml + 15, fY + 7, { continued: true });
-      doc.fillColor(white).text('   billing@mybexo.com', { continued: true });
+      doc.fillColor(white).text('   billing@mybexo.cyou', { continued: true });
       doc.fillColor('#9999BB').text('   |   ', { continued: true });
-      doc.fillColor(white).text('mybexo.com');
+      doc.fillColor(white).text('mybexo.cyou');
 
       doc.fontSize(8.5).font('Helvetica-Bold').fillColor(white)
         .text('Thank you!', mr - 80, fY + 7);

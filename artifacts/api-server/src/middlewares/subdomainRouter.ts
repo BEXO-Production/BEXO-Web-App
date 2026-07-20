@@ -17,6 +17,12 @@ import {
   MARKETING_DEMO_ASSETS_DIR,
 } from "../lib/marketingDemoProfile";
 import express from "express";
+import {
+  getRequestHost,
+  isPlatformApexHost,
+  PLATFORM_DOMAIN,
+  portfolioHostname,
+} from "../lib/platform";
 
 // Map template IDs to their deployed URLs (or localhost for dev)
 const TEMPLATE_URLS: Record<string, string> = {
@@ -81,26 +87,31 @@ async function renderBundledTemplate(
 }
 
 export async function subdomainRouter(req: Request, res: Response, next: NextFunction): Promise<void> {
-  const host = req.hostname; // e.g., 'kavin.mybexo.com' or 'kavin.localhost'
+  const host = getRequestHost(req.hostname, req.get("x-forwarded-host"));
 
   // API calls from a rendered template must reach the API routes, not be
   // interpreted as template assets.
   if (req.path.startsWith("/api/")) {
     return next();
   }
-  
-  // Skip if accessing the main domains directly
+
   if (
     host === "localhost" ||
     host === "127.0.0.1" ||
-    host.startsWith("www.") ||
+    host.endsWith(".run.app") ||
     host.startsWith("api.") ||
-    host === "mybexo.com"
+    isPlatformApexHost(host)
   ) {
     return next();
   }
 
-  // Extract the subdomain (e.g., 'kavin')
+  const isPortfolioHost =
+    host.endsWith(`.${PLATFORM_DOMAIN}`) ||
+    (host.endsWith(".localhost") && host !== "localhost");
+  if (!isPortfolioHost) {
+    return next();
+  }
+
   const subdomain = host.split(".")[0];
   if (!subdomain) {
     return next();
@@ -334,7 +345,7 @@ export async function renderPortfolioForHandle(
 <h1 style="margin:0 0 .5rem;font-size:1.35rem">${isPremiumUser ? "Open your portfolio" : "Custom subdomain is Pro"}</h1>
 <p>${isPremiumUser
   ? "Your free Minimal layout lives on the BEXO path URL."
-  : `Custom subdomains like <strong>${subdomain}.mybexo.com</strong> need Pro. Your free portfolio is still live:`}</p>
+  : `Custom subdomains like <strong>${portfolioHostname(subdomain)}</strong> need Pro. Your free portfolio is still live:`}</p>
 <a href="${freeUrl}">${freeUrl.replace(/^https?:\/\//, "")}</a>
 </div></body></html>`);
       return;

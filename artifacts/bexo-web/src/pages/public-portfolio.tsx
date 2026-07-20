@@ -5,6 +5,7 @@ import { Card } from '../design-system/primitives';
 import { cn } from '@/lib/utils';
 import logo from '../assets/bexo-logo.png';
 import { BUNDLED_PREMIUM_TEMPLATES } from '../lib/templates';
+import { PLATFORM_DOMAIN, portfolioHostname } from '../lib/platform';
 
 interface PublicPortfolioProps {
   handleOverride?: string;
@@ -21,7 +22,10 @@ const getSubdomain = () => {
     return null;
   }
   
-  if (hostname.endsWith('mybexo.com')) {
+  if (
+    hostname === PLATFORM_DOMAIN ||
+    hostname.endsWith(`.${PLATFORM_DOMAIN}`)
+  ) {
     if (parts.length > 2 && parts[0] !== 'www') {
       return parts[0];
     }
@@ -134,7 +138,7 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
           <div className="space-y-2">
             <h1 className="text-2xl font-bold text-slate-900">Custom Subdomain Locked</h1>
             <p className="text-sm text-slate-550 leading-relaxed">
-              Custom subdomains (<strong>{handle}.mybexo.com</strong>) are a premium feature of Bexo.
+              Custom subdomains (<strong>{portfolioHostname(handle)}</strong>) are a premium feature of Bexo.
             </p>
           </div>
           <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-xs text-slate-650 text-left space-y-1">
@@ -1218,7 +1222,7 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
 
       {/* Floating Watermark */}
       <a 
-        href="https://mybexo.com" 
+        href="https://mybexo.cyou" 
         target="_blank" 
         rel="noreferrer"
         className="fixed bottom-6 right-6 z-50 flex items-center gap-2 text-white px-3.5 py-2 rounded-full shadow-lg backdrop-blur-sm transition-all duration-300 hover:scale-105 active:scale-95 group font-sans bg-slate-900/90 border border-slate-800 hover:bg-slate-900"

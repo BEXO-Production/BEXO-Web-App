@@ -18,7 +18,7 @@ import { TemplateShowcaseCard } from "@/components/marketing/TemplateShowcaseCar
 import { TemplatePreviewModal } from "@/components/marketing/TemplatePreviewModal";
 import { LandingCursor, LandingScrollProgress, HeroPublishStage } from "@/components/marketing/LandingMotion";
 import { PORTFOLIO_TEMPLATES, type PortfolioTemplate } from "@/lib/templates";
-import { PLAN_PRICES_INR } from "@/lib/pricing";
+import { usePricing } from "@/hooks/use-pricing";
 import logo from "@/assets/bexo-logo.png";
 
 const fadeUp: Variants = {
@@ -106,7 +106,7 @@ const FEATURES = [
   },
   {
     icon: Globe,
-    title: "you.mybexo.com",
+    title: "you.mybexo.cyou",
     body: "A personal subdomain that looks like you — not a generic link-in-bio page.",
   },
   {
@@ -126,54 +126,58 @@ const FEATURES = [
   },
 ];
 
-const PLANS = [
-  {
-    id: "free",
-    name: "Free",
-    price: "₹0",
-    period: "forever",
-    blurb: "Publish a clean Minimal portfolio and prove the flow.",
-    features: ["Minimal template", "10MB storage", "Path-based portfolio", "Hire Me page"],
-    cta: "Start free",
-    promoted: false,
-  },
-  {
-    id: "annual",
-    name: "Yearly",
-    price: `₹${PLAN_PRICES_INR.annual.toLocaleString("en-IN")}`,
-    period: "/year",
-    note: "+ 18% GST",
-    blurb: "Best for students — full Pro templates and 100MB cloud storage.",
-    features: [
-      "Cura · Sierra · Nico templates",
-      "100MB cloud storage base",
-      "yourname.mybexo.com",
-      "AI resume parses",
-      "Renew extends access 1 year",
-    ],
-    cta: "Get Yearly",
-    promoted: true,
-  },
-  {
-    id: "lifetime",
-    name: "Lifetime",
-    price: `₹${PLAN_PRICES_INR.lifetime.toLocaleString("en-IN")}`,
-    period: "once",
-    note: "+ 18% GST",
-    blurb: "Pay once. Keep Pro access forever — stack Yearly for more storage.",
-    features: [
-      "Everything in Yearly (templates & subdomain)",
-      "500MB storage base",
-      "No renewals for Pro access",
-      "Optional Yearly add-on = +100MB",
-      "Forever hosting",
-    ],
-    cta: "Go Lifetime",
-    promoted: false,
-  },
-];
+function buildPlans(prices: { annual: number; lifetime: number }) {
+  return [
+    {
+      id: "free",
+      name: "Free",
+      price: "₹0",
+      period: "forever",
+      blurb: "Publish a clean Minimal portfolio and prove the flow.",
+      features: ["Minimal template", "10MB storage", "Path-based portfolio", "Hire Me page"],
+      cta: "Start free",
+      promoted: false,
+    },
+    {
+      id: "annual",
+      name: "Yearly",
+      price: `₹${prices.annual.toLocaleString("en-IN")}`,
+      period: "/year",
+      note: "+ 18% GST",
+      blurb: "Best for students — full Pro templates and 100MB cloud storage.",
+      features: [
+        "Cura · Sierra · Nico templates",
+        "100MB cloud storage base",
+        "yourname.mybexo.cyou",
+        "AI resume parses",
+        "Renew extends access 1 year",
+      ],
+      cta: "Get Yearly",
+      promoted: true,
+    },
+    {
+      id: "lifetime",
+      name: "Lifetime",
+      price: `₹${prices.lifetime.toLocaleString("en-IN")}`,
+      period: "once",
+      note: "+ 18% GST",
+      blurb: "Pay once. Keep Pro access forever — stack Yearly for more storage.",
+      features: [
+        "Everything in Yearly (templates & subdomain)",
+        "500MB storage base",
+        "No renewals for Pro access",
+        "Optional Yearly add-on = +100MB",
+        "Forever hosting",
+      ],
+      cta: "Go Lifetime",
+      promoted: false,
+    },
+  ];
+}
 
 export default function LandingPage() {
+  const { prices } = usePricing();
+  const PLANS = React.useMemo(() => buildPlans(prices), [prices.annual, prices.lifetime]);
   const [previewTemplate, setPreviewTemplate] = useState<PortfolioTemplate | null>(null);
 
   useEffect(() => {
@@ -373,16 +377,16 @@ export default function LandingPage() {
             <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#2F6BFF]">Pricing</p>
             <h2 className="mt-3 font-serif text-3xl font-bold text-slate-900 sm:text-5xl">Simple plans. Serious presence.</h2>
             <p className="mt-3 max-w-xl text-slate-600">
-              Yearly is recommended for most students — ₹{PLAN_PRICES_INR.annual.toLocaleString("en-IN")}/year with 100MB.
-              Lifetime is ₹{PLAN_PRICES_INR.lifetime.toLocaleString("en-IN")} once with 500MB; stack Yearly anytime for +100MB.
+              Yearly is recommended for most students — ₹{prices.annual.toLocaleString("en-IN")}/year with 100MB.
+              Lifetime is ₹{prices.lifetime.toLocaleString("en-IN")} once with 500MB; stack Yearly anytime for +100MB.
             </p>
           </Reveal>
 
           <Reveal lift className="mt-8 grid gap-3 sm:grid-cols-3">
             {[
               { k: "Free", v: "10MB", d: "Minimal forever" },
-              { k: "Yearly", v: "100MB", d: `₹${PLAN_PRICES_INR.annual.toLocaleString("en-IN")}/yr` },
-              { k: "Lifetime", v: "500MB+", d: `₹${PLAN_PRICES_INR.lifetime.toLocaleString("en-IN")} · stackable` },
+              { k: "Yearly", v: "100MB", d: `₹${prices.annual.toLocaleString("en-IN")}/yr` },
+              { k: "Lifetime", v: "500MB+", d: `₹${prices.lifetime.toLocaleString("en-IN")} · stackable` },
             ].map((item) => (
               <div
                 key={item.k}

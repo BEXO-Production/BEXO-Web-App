@@ -236,7 +236,7 @@ export default function Dashboard() {
     }
   }, [data.storageQuotaBytes]);
 
-  // URL management — local subdomains use *.localhost:5001; production uses mybexo.com
+  // URL management — local subdomains use *.localhost:5001; production uses mybexo.cyou
   const handleString = data.handle || (data.name ? data.name.toLowerCase().replace(/[^a-z0-9]/g, '') : 'portfolio');
   const isLocalHost =
     typeof window !== 'undefined' &&
@@ -247,14 +247,14 @@ export default function Dashboard() {
   const url = data.isPremium
     ? isLocalHost
       ? `${handleString}.localhost:${localApiPort}`
-      : `${handleString}.mybexo.com`
+      : `${handleString}.mybexo.cyou`
     : isLocalHost
       ? `${window.location.host}/${handleString}`
-      : `mybexo.com/${handleString}`;
+      : `mybexo.cyou/${handleString}`;
   const correctVisitUrl = data.isPremium
     ? isLocalHost
       ? `http://${handleString}.localhost:${localApiPort}/`
-      : `https://${handleString}.mybexo.com`
+      : `https://${handleString}.mybexo.cyou`
     : `${window.location.protocol}//${window.location.host}/${handleString}`;
   const [copied, setCopied] = useState(false);
 
@@ -3279,7 +3279,7 @@ export default function Dashboard() {
                         <div className="flex items-center justify-between px-1">
                           <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Live Preview</span>
                           <span className="text-[11px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full font-medium truncate max-w-[55%]">
-                            mybexo.com/{handleString}
+                            mybexo.cyou/{handleString}
                           </span>
                         </div>
 
@@ -3295,7 +3295,7 @@ export default function Dashboard() {
                             <div className="flex-1 mx-2">
                               <div className="h-5 bg-white rounded-md border border-slate-200 flex items-center px-2.5 gap-1.5">
                                 <Globe className="w-3 h-3 text-slate-400 shrink-0" />
-                                <span className="text-[11px] text-slate-500 font-medium truncate">mybexo.com/{handleString}</span>
+                                <span className="text-[11px] text-slate-500 font-medium truncate">mybexo.cyou/{handleString}</span>
                               </div>
                             </div>
                           </div>

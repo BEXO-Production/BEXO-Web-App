@@ -26,6 +26,7 @@ import WelcomeSuccess from './pages/welcome';
 import LandingPage from './pages/landing/LandingPage';
 import { TermsPage, PrivacyPage, RefundPage, CookiesPage } from './pages/legal';
 import { useToast } from './hooks/use-toast';
+import { PLATFORM_DOMAIN } from './lib/platform';
 
 const queryClient = new QueryClient();
 
@@ -40,7 +41,10 @@ const getSubdomain = () => {
     return null;
   }
   
-  if (hostname.endsWith('mybexo.com')) {
+  if (
+    hostname === PLATFORM_DOMAIN ||
+    hostname.endsWith(`.${PLATFORM_DOMAIN}`)
+  ) {
     if (parts.length > 2 && parts[0] !== 'www') {
       return parts[0];
     }
@@ -83,7 +87,7 @@ function Router() {
   // Shared ATS Hire Me page is public, template-neutral, and available to free
   // and paid users. It must not wait on onboarding session hydration, and it
   // takes priority over subdomain portfolio rendering so
-  // {handle}.mybexo.com/hire-me also resolves here.
+  // {handle}.mybexo.cyou/hire-me also resolves here.
   if (typeof window !== 'undefined' && window.location.pathname.startsWith('/hire-me')) {
     const parts = window.location.pathname.split('/').filter(Boolean);
     const hireHandle = parts[1] || subdomain;

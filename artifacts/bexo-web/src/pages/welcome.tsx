@@ -26,7 +26,7 @@ import logo from "../assets/bexo-logo.png";
 export const JUST_ACTIVATED_KEY = "bexo_just_activated";
 
 function resolveLiveSiteUrl(handle: string): { display: string; href: string } {
-  const host = typeof window !== "undefined" ? window.location.hostname : "mybexo.com";
+  const host = typeof window !== "undefined" ? window.location.hostname : "mybexo.cyou";
   const isLocal =
     host === "localhost" ||
     host === "127.0.0.1" ||
@@ -39,8 +39,8 @@ function resolveLiveSiteUrl(handle: string): { display: string; href: string } {
   }
 
   return {
-    display: `${handle}.mybexo.com`,
-    href: `https://${handle}.mybexo.com`,
+    display: `${handle}.mybexo.cyou`,
+    href: `https://${handle}.mybexo.cyou`,
   };
 }
 

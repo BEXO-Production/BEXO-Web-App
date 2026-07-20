@@ -1,0 +1,969 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>BEXO — Master Architecture & Execution Plan (Consolidated)</title>
+<style>
+  :root{
+    --cream:#f7f2e9; --cream-deep:#efe6d3; --ink:#2b2620; --ink-soft:#5a5346;
+    --gold:#a9772f; --gold-deep:#8a5f24; --line:#ddd0b3; --card:#fffdf8;
+    --code-bg:#2b2620; --code-fg:#f2e8d5; --green:#4a6b4d; --red:#8a3b2e; --blue:#3a5a78;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--cream);color:var(--ink);font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;line-height:1.65;}
+  .wrap{max-width:1060px;margin:0 auto;padding:0 32px 120px;}
+  header.hero{padding:70px 32px 50px;text-align:center;border-bottom:3px double var(--gold-deep);background:linear-gradient(180deg,var(--cream-deep),var(--cream));}
+  header.hero .eyebrow{letter-spacing:.35em;text-transform:uppercase;font-size:12px;color:var(--gold-deep);font-family:"Helvetica Neue",Arial,sans-serif;margin-bottom:14px;}
+  header.hero h1{font-size:44px;margin:0 0 10px;font-weight:600;letter-spacing:-.01em;}
+  header.hero p.sub{font-size:17px;color:var(--ink-soft);max-width:720px;margin:0 auto;font-style:italic;}
+  header.hero .v{display:inline-block;margin-top:14px;font-family:"Helvetica Neue",Arial,sans-serif;font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:var(--green);border:1px solid var(--green);padding:3px 10px;border-radius:12px;}
+  nav.toc{background:var(--card);border:1px solid var(--line);border-radius:4px;margin:48px 0;padding:28px 34px;}
+  nav.toc h2{font-family:"Helvetica Neue",Arial,sans-serif;font-size:11px;letter-spacing:.28em;text-transform:uppercase;color:var(--gold-deep);margin:0 0 16px;}
+  nav.toc ol{columns:2;-webkit-columns:2;column-gap:40px;padding-left:20px;margin:0;font-size:14.5px;}
+  nav.toc li{margin-bottom:9px;}
+  nav.toc a{color:var(--ink);text-decoration:none;border-bottom:1px dotted var(--gold);}
+  nav.toc a:hover{color:var(--gold-deep);}
+  section.part{margin:64px 0;}
+  .part-head{display:flex;align-items:baseline;gap:18px;border-bottom:3px double var(--gold-deep);padding-bottom:12px;margin-bottom:28px;flex-wrap:wrap;}
+  .part-num{font-family:"Helvetica Neue",Arial,sans-serif;font-size:13px;letter-spacing:.2em;color:var(--gold-deep);background:var(--cream-deep);border:1px solid var(--gold);padding:4px 12px;border-radius:20px;}
+  .part-head h2{font-size:28px;margin:0;font-weight:600;}
+  .part-head .tag{margin-left:auto;font-family:"Helvetica Neue",Arial,sans-serif;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft);align-self:center;}
+  h3{font-size:21px;margin:34px 0 10px;color:var(--gold-deep);font-weight:600;}
+  h4{font-size:16px;margin:20px 0 6px;text-transform:uppercase;letter-spacing:.08em;font-family:"Helvetica Neue",Arial,sans-serif;color:var(--ink-soft);}
+  p{margin:8px 0 14px;font-size:16px;}
+  .card{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--gold);border-radius:3px;padding:22px 26px;margin:18px 0;}
+  .card.warn{border-left-color:var(--red);}
+  .card.good{border-left-color:var(--green);}
+  .card.info{border-left-color:var(--blue);}
+  table{width:100%;border-collapse:collapse;margin:16px 0 26px;font-size:14.5px;background:var(--card);}
+  th,td{border:1px solid var(--line);padding:10px 12px;text-align:left;vertical-align:top;}
+  th{background:var(--cream-deep);font-family:"Helvetica Neue",Arial,sans-serif;letter-spacing:.04em;text-transform:uppercase;font-size:11.5px;color:var(--ink-soft);}
+  tr:nth-child(even) td{background:#fbf7ee;}
+  tr.total td{background:var(--cream-deep);font-weight:700;border-top:2px solid var(--gold-deep);}
+  code,.mono{font-family:"SF Mono",Consolas,Menlo,monospace;font-size:13.5px;background:var(--cream-deep);padding:1px 6px;border-radius:3px;color:var(--gold-deep);}
+  pre{background:var(--code-bg);color:var(--code-fg);padding:20px 22px;border-radius:5px;overflow-x:auto;font-size:13px;line-height:1.55;margin:16px 0 26px;}
+  pre code{background:none;color:inherit;padding:0;}
+  .flow{display:flex;flex-wrap:wrap;align-items:center;gap:0;margin:22px 0 30px;font-family:"Helvetica Neue",Arial,sans-serif;font-size:13px;}
+  .flow .box{background:var(--card);border:1px solid var(--gold);border-radius:5px;padding:12px 16px;text-align:center;min-width:110px;color:var(--ink);}
+  .flow .box.new{border-color:var(--green);background:#eef4ee;}
+  .flow .box.deprecated{border-color:var(--red);color:var(--ink-soft);text-decoration:line-through;background:#f5ece9;}
+  .flow .arrow{padding:0 10px;color:var(--gold-deep);font-size:18px;}
+  ul,ol{padding-left:22px;}
+  li{margin-bottom:6px;font-size:15.5px;}
+  .badge{display:inline-block;font-family:"Helvetica Neue",Arial,sans-serif;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;padding:2px 9px;border-radius:10px;background:var(--cream-deep);border:1px solid var(--gold);color:var(--gold-deep);margin-left:6px;}
+  .badge.now{background:#e9f0e9;border-color:var(--green);color:var(--green);}
+  .badge.later{background:#f2e6e2;border-color:var(--red);color:var(--red);}
+  .badge.new{background:#e9f0e9;border-color:var(--green);color:var(--green);}
+  .badge.merged{background:#e9eef4;border-color:var(--blue);color:var(--blue);}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;}
+  .grid4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:14px;}
+  .timeline{position:relative;margin:30px 0;padding-left:50px;}
+  .timeline::before{content:'';position:absolute;left:19px;top:6px;bottom:6px;width:2px;background:var(--gold);}
+  .tstep{position:relative;margin-bottom:26px;}
+  .tstep .dot{position:absolute;left:-50px;top:0;width:40px;height:40px;border-radius:50%;background:var(--gold-deep);color:#fff;font-family:"Helvetica Neue",Arial,sans-serif;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:16px;}
+  .tstep.newstep .dot{background:var(--green);}
+  .tstep .content{background:var(--card);border:1px solid var(--line);border-radius:4px;padding:14px 18px;}
+  .tstep.newstep .content{border-left:4px solid var(--green);}
+  .tstep .content h4{margin:0 0 6px;color:var(--ink);letter-spacing:0;text-transform:none;font-family:inherit;font-size:17px;font-weight:600;}
+  .tstep .content p{margin:0;font-size:14.5px;color:var(--ink-soft);}
+  .meter{background:var(--cream-deep);border-radius:20px;height:22px;overflow:hidden;border:1px solid var(--line);margin:10px 0;}
+  .meter .fill{background:linear-gradient(90deg,var(--gold),var(--gold-deep));height:100%;display:flex;align-items:center;justify-content:flex-end;color:#fff;font-size:11px;font-family:"Helvetica Neue",Arial,sans-serif;padding-right:8px;}
+  .barchart{display:flex;align-items:flex-end;gap:4px;height:120px;margin:20px 0;border-bottom:1px solid var(--line);padding-bottom:2px;}
+  .barchart .bar{background:var(--gold);border-radius:2px 2px 0 0;flex:1;position:relative;}
+  .barchart .bar.tall{background:var(--gold-deep);}
+  .chart-caption{font-family:"Helvetica Neue",Arial,sans-serif;font-size:12px;color:var(--ink-soft);text-align:center;margin-top:-14px;margin-bottom:24px;}
+  footer{text-align:center;margin-top:80px;padding-top:30px;border-top:1px solid var(--line);font-size:13px;color:var(--ink-soft);font-family:"Helvetica Neue",Arial,sans-serif;}
+  @media(max-width:720px){nav.toc ol{columns:1;} .grid2,.grid3,.grid4{grid-template-columns:1fr;} header.hero h1{font-size:32px;}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <div class="eyebrow">Ace Digital — Internal Systems Document</div>
+  <h1>BEXO</h1>
+  <p class="sub">Master Architecture & Execution Plan — the single, consolidated reference for student portfolio infrastructure: signup through a live, discoverable portfolio at <code>{handle}.mybexo.com</code>, engineered to run on Google Cloud today and move to owned infrastructure within twelve months without a rewrite.</p>
+  <span class="v">Consolidated Edition — merges v1, v2 and v3 into one authoritative document</span>
+</header>
+
+<nav class="toc">
+  <h2>Table of Contents</h2>
+  <ol>
+    <li><a href="#overview0">00 — Founder's Note: How This Document Was Consolidated</a></li>
+    <li><a href="#overview">01 — System Overview & Design Principles</a></li>
+    <li><a href="#part1">02 — The Full Onboarding Flow (9 Steps)</a></li>
+    <li><a href="#part2">03 — Data Collection Reliability & UX</a></li>
+    <li><a href="#part3">04 — Activation Keys & College Distribution</a></li>
+    <li><a href="#part4">05 — Rich Media Evidence System</a></li>
+    <li><a href="#part5">06 — The 50MB Storage Quota Engine</a></li>
+    <li><a href="#part6">07 — Template & Theme Live Selection</a></li>
+    <li><a href="#part7">08 — User Interface Layer (Web · Mobile · Admin)</a></li>
+    <li><a href="#part8">09 — API & Services Layer</a></li>
+    <li><a href="#part9">10 — Database & Data Architecture</a></li>
+    <li><a href="#part10">11 — Routing & Rendering Engine</a></li>
+    <li><a href="#part11">12 — SEO Engine</a></li>
+    <li><a href="#part12">13 — Infrastructure, Hosting & Portability</a></li>
+    <li><a href="#part13">14 — Security, Auth & Compliance</a></li>
+    <li><a href="#part14">15 — Observability & Reliability</a></li>
+    <li><a href="#part15">16 — Cost Analysis: 1,00,000 Students on GCP</a></li>
+    <li><a href="#part16">17 — Billing, Growth & Cost Model</a></li>
+    <li><a href="#part17">18 — Migration Plan: GCP → Own Servers</a></li>
+    <li><a href="#part18">19 — New Features I'd Ship</a></li>
+    <li><a href="#part19">20 — Execution Roadmap</a></li>
+    <li><a href="#appendix">Appendix — Full Stack & Screen Reference</a></li>
+  </ol>
+</nav>
+
+<section class="part" id="overview0">
+  <div class="part-head"><span class="part-num">00</span><h2>Founder's Note: How This Document Was Consolidated</h2></div>
+  <p>Three planning documents were produced in sequence — an original architecture plan, a revision that corrected the onboarding order and replaced per-user static site generation with a shared rendering engine, and a further revision that added the photo step, rich media evidence, a storage quota engine, live template/theme selection, and a real cost model. This document merges all three into <strong>one authoritative plan</strong>, so there is never a question of "which version is current" again.</p>
+  <div class="grid2">
+    <div class="card good">
+      <h4 style="margin-top:0">What each revision contributed</h4>
+      <ul style="margin-bottom:0">
+        <li><strong>Original plan</strong> — UI layer (web/mobile/admin), API module map, database foundations, infrastructure & portability strategy, security, observability, billing, the GCP → own-servers migration plan, and the execution roadmap. Almost all of this still stands and is carried forward unchanged.</li>
+        <li><strong>Revision 2</strong> — corrected the onboarding order to phone-first, introduced activation keys for college distribution, and replaced the per-user static-build hosting model with a single shared rendering engine + edge cache. This is a genuine architectural correction, not an addition, and it fully replaces the original generation pipeline.</li>
+        <li><strong>Revision 3</strong> — added the profile-photo step, rich media evidence (images/PDFs on Projects, Certificates, Achievements, Research), the 50MB storage quota engine, live template & theme selection, asset-serving detail for the rendering engine, and a real cost model for 1,00,000 students.</li>
+      </ul>
+    </div>
+    <div class="card warn">
+      <h4 style="margin-top:0">What this means practically</h4>
+      <p style="margin-bottom:0">Anywhere the original plan and a later revision genuinely conflict (onboarding order, hosting model), <strong>the later revision wins</strong> and the older approach is not carried forward — you will not find the old email-first flow or the per-user static-build pipeline described anywhere below except as historical context inside comparison tables. Everything else from the original plan (UI layer, database foundations not superseded, infra portability, security, observability, billing, migration, roadmap) is preserved because nothing since has replaced it.</p>
+    </div>
+  </div>
+</section>
+
+<section class="part" id="overview">
+  <div class="part-head"><span class="part-num">01</span><h2>System Overview & Design Principles</h2></div>
+
+  <p>BEXO takes a student from <strong>phone verification → resume upload → parsed profile → verified profile → template/theme choice → a live portfolio at <code>{handle}.mybexo.com</code></strong>, and keeps that portfolio updatable for the life of the subscription. Everything in this document is designed around four non-negotiable principles:</p>
+
+  <div class="grid2">
+    <div class="card">
+      <h4>1. Boring, portable infrastructure</h4>
+      <p>Every managed GCP service we use has a 1:1 open-source or self-hosted equivalent (Cloud Run → Docker/K8s, Cloud SQL → PostgreSQL, Memorystore → Redis, GCS → MinIO/S3). We never adopt a GCP-proprietary API we can't replace in a weekend.</p>
+    </div>
+    <div class="card">
+      <h4>2. Stateless services, stateful stores</h4>
+      <p>All application services are stateless containers. State lives in exactly three places: PostgreSQL, Redis, and object storage. This is what makes the Year-1 migration a DNS + volume-copy exercise, not a re-architecture.</p>
+    </div>
+    <div class="card">
+      <h4>3. One monorepo, many deployables</h4>
+      <p>A single pnpm monorepo (apps: <code>web</code>, <code>mobile</code>, <code>api</code>, <code>rendering</code>, <code>worker</code>) stays the single source of truth. Shared types, validation schemas (Zod), and API clients live in <code>packages/shared</code> so the web app, mobile app, and internal admin console never drift out of sync.</p>
+    </div>
+    <div class="card">
+      <h4>4. Async by default for anything slow</h4>
+      <p>Resume parsing and AI content generation never block an HTTP request. They go through a queue (BullMQ on Redis) and the client polls or listens over SSE for job status. Publishing a portfolio, by contrast, is now a fast synchronous database write followed by a targeted cache purge — not a background build (see Part 11).</p>
+    </div>
+  </div>
+
+  <h3>High-Level Data Flow (current architecture)</h3>
+  <div class="flow">
+    <div class="box">Phone OTP<br><span class="mono">Trust anchor</span></div><div class="arrow">→</div>
+    <div class="box">Google OAuth<br><span class="mono">Email</span></div><div class="arrow">→</div>
+    <div class="box">Resume Upload<br><span class="mono">AI Parser</span></div><div class="arrow">→</div>
+    <div class="box">Photo + Verification<br><span class="mono">8 sections</span></div><div class="arrow">→</div>
+    <div class="box">Activation Key<br>or Payment</div><div class="arrow">→</div>
+    <div class="box">Template + Theme<br>Live Selection</div><div class="arrow">→</div>
+    <div class="box"><strong>Publish</strong></div><div class="arrow">→</div>
+    <div class="box">Rendering Engine<br><span class="mono">reads DB row</span></div><div class="arrow">→</div>
+    <div class="box"><strong>handle.mybexo.com</strong></div>
+  </div>
+  <p style="margin-top:-10px;color:var(--ink-soft);font-size:14px;"><em>Note: there is no build/generation step in this flow anymore — see Part 11 for why.</em></p>
+</section>
+
+<section class="part" id="part1">
+  <div class="part-head"><span class="part-num">02</span><h2>The Full Onboarding Flow — 9 Steps</h2><span class="tag">Identical on Web & Mobile</span></div>
+
+  <p>This sequence is deliberately rigid — every student, every college, every platform goes through the exact same nine stops in the exact same order. No branching, no shortcuts. That rigidity is what makes support easy and analytics-on-drop-off meaningful ("70% of drop-off happens at Step 6, Experience section" is only a useful insight if the order never changes).</p>
+
+  <div class="timeline">
+    <div class="tstep"><div class="dot">1</div><div class="content"><h4>Phone Number Verification (OTP)</h4><p>First and only gate before anything else exists. SMS OTP via MSG91 today, WhatsApp Cloud API planned. No account row is created as "real" until this passes — prevents junk signups and gives you a working contact channel from second one.</p></div></div>
+    <div class="tstep"><div class="dot">2</div><div class="content"><h4>Email via Google OAuth</h4><p>One-tap "Continue with Google" pulls verified email + profile photo automatically — zero typing, zero typos, and the email is trusted without a separate verification link. The Google avatar is also cached for reuse at Step 5.</p></div></div>
+    <div class="tstep"><div class="dot">3</div><div class="content"><h4>Basic Info — Name & Date of Birth</h4><p>Two fields only. DOB feeds age-appropriate content rules and future analytics (placement-readiness by age/year); Name pre-fills every template's hero section immediately.</p></div></div>
+    <div class="tstep"><div class="dot">4</div><div class="content"><h4>Resume Upload & AI Parsing</h4><p>PDF/DOCX uploaded direct to storage via signed URL. GPT-4o extracts structured JSON in the background while the student is shown a short "we're reading your resume" progress state.</p></div></div>
+    <div class="tstep newstep"><div class="dot">5</div><div class="content"><h4>Upload Profile Photo <span class="badge new">Adds a person, not a resume</span></h4><p>A dedicated, unmissable step — not a checkbox buried in a form. If the student signed in with Google, we pre-fill their Google avatar as a one-tap default they can accept or replace. Client-side crop-to-square + auto face-centering before upload; server-side re-compression to WebP so a 15MB phone photo doesn't quietly eat a third of their storage quota (see Part 6).</p></div></div>
+    <div class="tstep"><div class="dot">6</div><div class="content"><h4>Manual Verification Wizard — 8 Sections</h4><p>About, Education, Projects, Experience, Certificates, Achievements, Research, Contact. Every AI-filled field is editable and clearly marked "AI-suggested" until confirmed; students can add entirely new entries in any section. Four of these sections — Projects, Certificates, Achievements, Research — support rich media evidence per entry (Part 4). Nothing proceeds until every section is explicitly marked reviewed.</p></div></div>
+    <div class="tstep"><div class="dot">7</div><div class="content"><h4>Activation Key or Payment</h4><p>Student enters a management-issued Activation Key <em>or</em> taps "Buy Now" (Razorpay, ₹999/yr or ₹3,999 lifetime) if they don't have one. Either path ends with an active subscription row.</p></div></div>
+    <div class="tstep newstep"><div class="dot">8</div><div class="content"><h4>Template & Theme Live Selection <span class="badge new">Own real data, not Lorem Ipsum</span></h4><p>The student sees their <em>own real, verified data</em> rendered live across every available template. Each template offers 2–4 theme variants (color palette, typography). They can open several in new tabs, compare side by side, and pick their favorite combination before publishing. Full detail in Part 7.</p></div></div>
+    <div class="tstep"><div class="dot">9</div><div class="content"><h4>Publish → Dashboard</h4><p>One tap. Handle goes live at <code>{handle}.mybexo.com</code>, student lands on their dashboard.</p></div></div>
+  </div>
+
+  <div class="card good">
+    <h4 style="margin-top:0">Why phone-first, not email-first</h4>
+    <p style="margin-bottom:0">Phone numbers in India are more stable than college email addresses (which expire at graduation), are the channel your support team will actually use, and give you a natural OTP-based recovery path that doesn't depend on a third-party inbox. Email via Google OAuth still gets collected — just second, and effectively free since Google supplies it verified.</p>
+  </div>
+
+  <h3>2.1 The Eight Verification Sections</h3>
+  <div class="grid4">
+    <div class="card"><h4 style="margin-top:0">About</h4><p style="font-size:13.5px;margin:0">Bio, headline, career goal, profile photo crop</p></div>
+    <div class="card"><h4 style="margin-top:0">Education</h4><p style="font-size:13.5px;margin:0">Degree, college, year, CGPA, coursework</p></div>
+    <div class="card"><h4 style="margin-top:0">Projects</h4><p style="font-size:13.5px;margin:0">Title, description, tech stack, links, media</p></div>
+    <div class="card"><h4 style="margin-top:0">Experience</h4><p style="font-size:13.5px;margin:0">Role, company, dates, responsibilities</p></div>
+    <div class="card"><h4 style="margin-top:0">Certificates</h4><p style="font-size:13.5px;margin:0">Name, issuer, date, credential link, media</p></div>
+    <div class="card"><h4 style="margin-top:0">Achievements</h4><p style="font-size:13.5px;margin:0">Awards, hackathon wins, rankings, media</p></div>
+    <div class="card"><h4 style="margin-top:0">Research</h4><p style="font-size:13.5px;margin:0">Papers, publications, conferences, media</p></div>
+    <div class="card"><h4 style="margin-top:0">Contact</h4><p style="font-size:13.5px;margin:0">Public email, LinkedIn, GitHub, socials</p></div>
+  </div>
+  <p>Each section is its own <code>profile_sections</code> row set (see Part 10), so a student can leave Research empty entirely without it blocking the other seven — but each section still needs an explicit "reviewed" flag flipped before Step 7 unlocks.</p>
+</section>
+
+<section class="part" id="part2">
+  <div class="part-head"><span class="part-num">03</span><h2>Data Collection Reliability & UX</h2><span class="tag">Because completion quality is the whole product</span></div>
+
+  <p>A portfolio is only as good as the data in it. Since these students are motivated to spend real time getting this right, the job of the UI is to <strong>reward that effort with zero frustration</strong> — nothing lost on refresh, nothing re-typed, always obvious what's left to do.</p>
+
+  <div class="grid2">
+    <div class="card">
+      <h4 style="margin-top:0">Autosave, every field</h4>
+      <p>Each field blur (or 2-second debounce while typing) fires a PATCH to the API. No "Save" button anywhere in the wizard — a student closing the app mid-sentence loses nothing.</p>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0">Visible completion score</h4>
+      <p>A persistent progress ring (0–100%) across all 8 sections, visible in the wizard header. Section-level checkmarks turn solid only once marked "reviewed," not just "touched."</p>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0">Inline validation, not end-of-form errors</h4>
+      <p>Dates checked for logical order (end date after start date), links checked for valid URL shape, CGPA checked against scale — all as-you-type, never as a wall of errors after submit.</p>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0">AI pre-fill reduces typing, never replaces judgment</h4>
+      <p>Every AI-suggested value is visually distinct (a subtle left border + "AI-suggested" tag) until the student edits or explicitly confirms it — so nothing gets published without a human actually having looked at it.</p>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0">Add-new is always one tap away</h4>
+      <p>Every section has a persistent "+ Add" affordance so a student whose resume didn't mention a recent internship isn't fighting the AI's version of their life.</p>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0">Nudges for incomplete profiles</h4>
+      <p>If a student stalls mid-wizard for 48 hours, a WhatsApp/push/email nudge fires once ("You're 60% done — finish your portfolio") — never more than one nudge per stall to avoid feeling spammy.</p>
+    </div>
+  </div>
+
+  <div class="card info">
+    <h4 style="margin-top:0">Mobile-specific reliability additions</h4>
+    <ul style="margin-bottom:0">
+      <li>Form state cached locally (SQLite/secure-store, never plain localStorage) so a dropped connection mid-college-WiFi never loses an edit — syncs silently when connectivity returns.</li>
+      <li>Certificate/achievement photos can be captured directly via camera and auto-cropped, since many students only have a physical certificate, not a PDF.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="part" id="part3">
+  <div class="part-head"><span class="part-num">04</span><h2>Activation Keys & College Distribution</h2><span class="tag">B2B2C model</span></div>
+
+  <p>Colleges (via partners like a FACE Prep-style network, or direct institutional deals) receive a <strong>batch of activation keys</strong> to distribute internally to their students, bypassing individual payment entirely for that cohort. A student without a key simply buys directly — same subscription table, same dashboard, no second-class experience.</p>
+
+  <h3>4.1 Key Lifecycle</h3>
+  <div class="flow">
+    <div class="box">Admin generates<br>batch of N keys<br>for Org X</div><div class="arrow">→</div>
+    <div class="box">Keys distributed<br>by college<br>(offline/email)</div><div class="arrow">→</div>
+    <div class="box">Student enters<br>key at Step 7</div><div class="arrow">→</div>
+    <div class="box">Key validated:<br>unused + not expired</div><div class="arrow">→</div>
+    <div class="box">Key marked<br><strong>redeemed</strong></div><div class="arrow">→</div>
+    <div class="box">Subscription<br>activated</div>
+  </div>
+
+  <h3>4.2 Key States</h3>
+  <table>
+    <tr><th>State</th><th>Meaning</th></tr>
+    <tr><td><code>unused</code></td><td>Generated, not yet claimed by any student</td></tr>
+    <tr><td><code>redeemed</code></td><td>Claimed — permanently tied to one <code>user_id</code>, cannot be reused</td></tr>
+    <tr><td><code>expired</code></td><td>Batch validity window passed unclaimed</td></tr>
+    <tr><td><code>revoked</code></td><td>Manually disabled by admin (e.g. issued in error)</td></tr>
+  </table>
+
+  <div class="card">
+    <p style="margin-bottom:0">Keys are generated in the admin console as a batch tied to an <code>organizations</code> row (the college/partner), with a human-readable prefix (e.g. <code>CBM-7F2K-91XQ</code>) so support can immediately tell which institution a key belongs to just by looking at it.</p>
+  </div>
+</section>
+
+<section class="part" id="part4">
+  <div class="part-head"><span class="part-num">05</span><h2>Rich Media Evidence System</h2><span class="tag">Projects · Certificates · Achievements · Research</span></div>
+
+  <p>This is the feature that makes BEXO feel like a real portfolio instead of a formatted resume. If a student did a photography project, they don't just get a text description — they show it.</p>
+
+  <h3>5.1 Per-Entry Attachment Rules</h3>
+  <table>
+    <tr><th>Asset type</th><th>Limit per entry</th><th>Counts against 50MB quota?</th></tr>
+    <tr><td>Images</td><td>Up to 5</td><td>Yes</td></tr>
+    <tr><td>PDFs</td><td>Up to 2</td><td>Yes</td></tr>
+    <tr><td>External links</td><td>Up to 3</td><td>No — free, unlimited</td></tr>
+  </table>
+  <p>Applies identically to a Project, a Certificate, an Achievement, or a Research entry. "Entry" is the unit — a student with 4 projects can attach up to 5 images <em>each</em>, i.e. per-entry, not shared across the whole section.</p>
+
+  <div class="card good">
+    <h4 style="margin-top:0">The photography-project example, concretely</h4>
+    <p style="margin-bottom:0">Student adds a Project entry: title "Golden Hour Series," description of the shoot, uploads 5 of their best shots as images, adds a link to the full album on Instagram or Behance. No PDF needed here — the fields are independent, not "either/or forced choices." A research student instead might use both PDF slots for the actual paper and zero images.</p>
+  </div>
+
+  <h3>5.2 Why No Per-File Size Limit — And the Guardrail That Replaces It</h3>
+  <p>We don't cap individual file size, because a founder telling a student "your certificate scan can't be more than 2MB" is a bad first impression. Instead, the guardrail is the <strong>total account quota</strong> (Part 6) — it's simpler for the student to understand ("I have 50MB, I've used 12") than a maze of per-file rules, and it naturally self-regulates: nobody uploads a 40MB PDF twice when they can see exactly what it costs them.</p>
+</section>
+
+<section class="part" id="part5">
+  <div class="part-head"><span class="part-num">06</span><h2>The 50MB Storage Quota Engine</h2><span class="tag">Premium Membership benefit</span></div>
+
+  <p>Every activated account — whether via a management-issued key or a direct purchase — is a Premium Membership and gets <strong>50MB of cloud storage</strong>, shared across the resume file and every image/PDF uploaded anywhere in the profile.</p>
+
+  <h3>6.1 What Counts, What Doesn't</h3>
+  <div class="grid2">
+    <div class="card good">
+      <h4 style="margin-top:0">Counts toward the 50MB</h4>
+      <ul style="margin-bottom:0"><li>Uploaded resume (PDF/DOCX)</li><li>Profile photo</li><li>Every image attached to Projects/Certificates/Achievements/Research</li><li>Every PDF attached to the same</li></ul>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0">Does NOT count</h4>
+      <ul style="margin-bottom:0"><li>External links (Behance, GitHub, YouTube, Drive, LinkedIn...)</li><li>All text fields — bio, descriptions, titles</li><li>Template/theme selection</li></ul>
+    </div>
+  </div>
+
+  <h3>6.2 What Happens at 100%</h3>
+  <div class="card warn">
+    <p style="margin-bottom:0">Once the quota is exhausted, the student <strong>cannot upload new images or PDFs anywhere</strong> — but everything else stays fully open: they can still add new Achievements, Certificates, Projects, and Research entries as text, still add unlimited links, still edit every existing field. Storage full is a wall around <em>new binary uploads only</em>, never around the student's ability to keep their portfolio current. This distinction matters enormously for a placement season where a student's most urgent update might just be "I won a hackathon last week" — text and a link, no new file needed.</p>
+  </div>
+
+  <h3>6.3 The Usage Meter</h3>
+  <p>The dashboard shows a persistent, honest meter — no dark patterns, no surprise walls:</p>
+  <div class="meter"><div class="fill" style="width:64%">32MB / 50MB</div></div>
+  <p style="margin-top:-8px;font-size:14px;color:var(--ink-soft)">Broken down on tap: Resume 2.1MB · Profile photo 0.4MB · Projects 18.2MB · Certificates 8.9MB · Achievements 1.8MB · Research 0.6MB</p>
+
+  <h3>6.4 Smart Quota Stretching (the quietly important part)</h3>
+  <table>
+    <tr><th>Technique</th><th>Effect</th></tr>
+    <tr><td>Auto re-encode every image to WebP on upload</td><td>Typically 25–35% smaller than the original JPEG/PNG at equal visual quality — students get more photos for the same 50MB without ever knowing a compression step happened</td></tr>
+    <tr><td>Auto-resize to a sane max dimension (e.g. 2400px longest edge)</td><td>Phone camera photos routinely arrive at 12MB+ for web display that never needs more than ~2000px — this alone can cut typical uploads by 70–90%</td></tr>
+    <tr><td>PDF compression pass (image-heavy PDFs especially)</td><td>Certificate scans exported from a phone scanning app are often needlessly large; a compression pass server-side before storage buys real headroom</td></tr>
+    <tr><td>"Move to a link instead" suggestion</td><td>If a student is near quota and tries to upload a large research PDF, we proactively suggest hosting it on Google Drive/Overleaf and linking it — zero quota cost, same visitor experience</td></tr>
+  </table>
+  <p>None of this is presented to the student as a restriction — it's invisible plumbing that makes "no per-file size limit" actually sustainable at 1 lakh users, which is the whole point of Part 16.</p>
+
+  <h3>6.5 Upsell Path <span class="badge later">Phase 2</span></h3>
+  <p style="margin-bottom:0">Storage top-ups as a small paid add-on — e.g. "+100MB for ₹149/year" — for the small percentage of students (design/photography portfolios especially) who genuinely need more. This is close to pure margin since the underlying GCS cost per extra 100MB is a fraction of a rupee.</p>
+</section>
+
+<section class="part" id="part6">
+  <div class="part-head"><span class="part-num">07</span><h2>Template & Theme Live Selection</h2><span class="tag">Step 8 — after payment, before publish</span></div>
+
+  <div class="flow">
+    <div class="box">Payment/Key<br>confirmed (Step 7)</div><div class="arrow">→</div>
+    <div class="box new">Draft profile data<br>ready in DB</div><div class="arrow">→</div>
+    <div class="box new">Gallery: every template<br>rendered live w/ real data</div><div class="arrow">→</div>
+    <div class="box new">Student opens 2–3<br>in new tabs to compare</div><div class="arrow">→</div>
+    <div class="box new">Picks template<br>+ theme variant</div><div class="arrow">→</div>
+    <div class="box"><strong>Publish</strong></div>
+  </div>
+
+  <h3>7.1 How "Live" Preview Works Without Extra Infrastructure</h3>
+  <p>This reuses the exact same routing/rendering engine described in Part 11 — it doesn't need a separate preview system. A short-lived signed preview token (<code>preview.mybexo.com/{token}</code>) points the renderer at the student's <em>unpublished</em> draft data instead of a published handle. Same render path, same templates, just a different data source and a route that isn't indexed or cached publicly.</p>
+
+  <h3>7.2 Templates vs Themes — Keep These Separate</h3>
+  <table>
+    <tr><th>Concept</th><th>What it controls</th><th>Engineering cost to add one</th></tr>
+    <tr><td>Template</td><td>Layout, structure, section order, component design</td><td>Real work — a new template package satisfying the data contract in Part 9</td></tr>
+    <tr><td>Theme</td><td>Color palette, font pairing, accent style — applied on top of a template via CSS variables</td><td>Cheap — a JSON of design tokens, no new components</td></tr>
+  </table>
+  <div class="card good">
+    <p style="margin-bottom:0">This separation is the single best lever for <em>perceived</em> choice without <em>actual</em> engineering sprawl: 6 templates × 3 themes each = 18 visibly distinct options for the student, built from just 6 real templates to test and maintain.</p>
+  </div>
+
+  <h3>7.3 Comparison UX</h3>
+  <ul>
+    <li>Gallery view: thumbnail of each template pre-rendered with the student's actual name/photo (not a generic mock), so the choice feels personal from the first glance.</li>
+    <li>"Open live" button per template — full-screen live preview at the real breakpoint (mobile/desktop toggle).</li>
+    <li>A lightweight "Compare" tray: pin up to 3 templates, view thumbnails side by side before committing to one.</li>
+    <li>Theme swatches as small dots under each template thumbnail — tap to see the same template re-painted instantly, client-side, no reload.</li>
+  </ul>
+
+  <h3>7.4 Template Sourcing & CI Contract</h3>
+  <ul>
+    <li>Templates live as versioned packages in <code>packages/templates/{template-id}</code> — each is a small Vite/React (or plain HTML/CSS/JS) project with a strict <strong>data contract</strong>: a single <code>profile.json</code> shape they must render from.</li>
+    <li>New templates are added by dropping a folder that satisfies the contract — no changes to the rendering service required. This is what lets you keep shipping Codegrid-sourced templates without engineering overhead.</li>
+    <li>Every template is pre-tested against a "fixture" profile (a fake but fully-populated student) in CI before it's allowed into the live gallery.</li>
+  </ul>
+</section>
+
+<section class="part" id="part7">
+  <div class="part-head"><span class="part-num">08</span><h2>User Interface Layer</h2><span class="tag">Web · Mobile · Admin</span></div>
+
+  <p>Three separate front-ends share one design system and one API contract: the <strong>public marketing site</strong>, the <strong>student app</strong> (web + mobile, same codebase logic via Expo), and an <strong>internal admin console</strong> for you and support staff. The exact sequence of screens the student app walks through is Part 2 (9-step onboarding); this section covers the platforms and shell around it.</p>
+
+  <h3>8.1 Public Marketing Site</h3>
+  <p>Static, served from CDN, not behind auth. SEO-critical — server-rendered or pre-rendered, and the primary conversion surface driving visitors into Step 1 of onboarding.</p>
+
+  <h3>8.2 Student App — Mobile (Expo / React Native)</h3>
+  <ul>
+    <li>Same screens as web, same API, same Zod schemas from <code>packages/shared</code> — no parallel validation logic to maintain.</li>
+    <li>Push notifications (Expo Push / FCM) for: "your portfolio is live," "your subscription expires in 7 days," "a recruiter viewed your portfolio" (see Part 19).</li>
+    <li>Offline-tolerant profile editing — form state persists locally (not localStorage; <code>expo-secure-store</code> / SQLite) and syncs when connectivity returns.</li>
+    <li>Deep links: <code>bexo://portfolio/{handle}</code> so sharing a portfolio can open directly in-app if installed.</li>
+    <li>Certificate/achievement photos can be captured directly via camera and auto-cropped (see Part 3).</li>
+  </ul>
+
+  <h3>8.3 Internal Admin Console</h3>
+  <div class="card">
+    <p style="margin-bottom:0">A separate, IP-restricted or SSO-gated web app for you and support staff: search any user, issue and manage activation-key batches per organization, issue refunds, view GPT-4o token spend per user (cost control), and impersonate a user's session for support debugging. This is the tool that saves you from ever touching the production database directly through <code>psql</code> at 11pm.</p>
+  </div>
+
+  <h3>8.4 Auth Strategy</h3>
+  <table>
+    <tr><th>Method</th><th>Use case</th></tr>
+    <tr><td>Phone OTP (MSG91 today, WhatsApp Cloud API planned)</td><td>Primary path — the trust anchor, Step 1 of onboarding</td></tr>
+    <tr><td>Google OAuth</td><td>Fastest way to collect a verified email + avatar, Step 2 of onboarding</td></tr>
+    <tr><td>JWT (access 15 min) + refresh token (7 days, rotated, stored httpOnly)</td><td>Session management across web + mobile</td></tr>
+  </table>
+  <p style="margin-bottom:0">We do not use Firebase Auth for the primary identity store — it's a soft lock-in. A self-hosted auth module (NestJS + <code>@node-rs/argon2</code> + JWT) inside the <code>api</code> service keeps identity fully portable.</p>
+</section>
+
+<section class="part" id="part8">
+  <div class="part-head"><span class="part-num">09</span><h2>API & Services Layer</h2><span class="tag">NestJS · Modular Monolith → Services</span></div>
+
+  <p>At current scale, a <strong>modular monolith</strong> beats microservices — one NestJS deployable, cleanly separated into modules, each of which can be peeled off into its own service later without a rewrite, only a deployment change.</p>
+
+  <h3>9.1 Module Map</h3>
+  <table>
+    <tr><th>Module</th><th>Responsibility</th><th>Splits off first?</th></tr>
+    <tr><td><code>auth</code></td><td>Phone OTP, Google OAuth exchange, JWT issuance/refresh</td><td>No — stays core</td></tr>
+    <tr><td><code>profiles</code></td><td>Student data CRUD, onboarding state, completion scoring</td><td>No</td></tr>
+    <tr><td><code>parser</code></td><td>Resume upload handling, GPT-4o call orchestration</td><td><strong>Yes</strong> — CPU/API-spend heavy, isolate for cost control</td></tr>
+    <tr><td><code>assets</code></td><td>Signed uploads for photos/media, WebP/PDF compression, storage quota enforcement</td><td>Possibly — media processing is CPU-heavy</td></tr>
+    <tr><td><code>rendering</code></td><td>Server-renders <code>handle → HTML</code> on request; the replacement for the old per-user build worker (see Part 11)</td><td><strong>Yes</strong> — already conceptually its own deployable</td></tr>
+    <tr><td><code>templates</code></td><td>Template & theme registry, metadata, previews</td><td>No</td></tr>
+    <tr><td><code>activation</code></td><td>Organization & activation-key lifecycle</td><td>No</td></tr>
+    <tr><td><code>billing</code></td><td>Razorpay integration, subscription state</td><td>No — but isolate its DB schema strictly</td></tr>
+    <tr><td><code>notifications</code></td><td>Email (Resend/SES), push, SMS/WhatsApp</td><td>Eventually</td></tr>
+    <tr><td><code>admin</code></td><td>Support tooling, impersonation, refunds, key batch generation</td><td>No, internal-only</td></tr>
+  </table>
+
+  <h3>9.2 Endpoint Reference</h3>
+  <table>
+    <tr><th>Endpoint group</th><th>Purpose</th></tr>
+    <tr><td><code>/auth/phone/otp</code></td><td>Send + verify phone OTP — the very first call the app ever makes</td></tr>
+    <tr><td><code>/auth/google</code></td><td>Exchange Google OAuth token for verified email, tied to the already-verified phone-based user row</td></tr>
+    <tr><td><code>/profile/basic</code></td><td>Name + DOB</td></tr>
+    <tr><td><code>/resume/upload</code>, <code>/resume/status/:jobId</code></td><td>Signed upload URL, then poll/subscribe for parse completion</td></tr>
+    <tr><td><code>/assets/upload-url</code>, <code>/assets/:id</code></td><td>Signed URL for photo/image/PDF upload; quota check happens transactionally before the URL is issued</td></tr>
+    <tr><td><code>/profile/sections/:type</code></td><td>Get/update one of the 8 sections; supports partial PATCH for autosave, including per-entry media/link references</td></tr>
+    <tr><td><code>/profile/completion</code></td><td>Returns the 0–100% completion score used by the progress ring</td></tr>
+    <tr><td><code>/activation/redeem</code></td><td>Validate + redeem an activation key</td></tr>
+    <tr><td><code>/billing/checkout</code></td><td>Razorpay order creation for direct purchase path</td></tr>
+    <tr><td><code>/templates/preview/:token</code></td><td>Signed draft-preview lookup used during Step 8's live template/theme comparison</td></tr>
+    <tr><td><code>/portfolio/publish</code></td><td>Writes the handle→template→theme→data pointer, triggers Redis update + targeted CDN purge</td></tr>
+  </table>
+
+  <h3>9.3 API Contract Discipline</h3>
+  <ul>
+    <li>REST over GraphQL for now — simpler caching at the CDN edge, simpler mental model for a small team. Revisit GraphQL only if the admin console's data-shaping needs get complex.</li>
+    <li>Every endpoint's request/response shape is a Zod schema in <code>packages/shared</code>, imported by both API and clients — the API rejects anything that doesn't match, and clients get compile-time safety.</li>
+    <li>API versioned from day one at the path level: <code>/api/v1/...</code>. This single decision saves you from ever breaking the mobile app on old versions still installed on users' phones.</li>
+  </ul>
+
+  <h3>9.4 Rate Limiting & Abuse Control</h3>
+  <div class="card warn">
+    <p style="margin-bottom:0">The GPT-4o parsing endpoint is the one place real money leaks if abused. Enforce: (1) one parse per resume upload, hashed and cached — re-uploading the identical file returns the cached result instead of re-calling the model; (2) per-user daily parse quota; (3) Redis-backed sliding-window rate limit at the API gateway layer before the request even reaches the parser module. Phone OTP gets the same treatment (Part 14).</p>
+  </div>
+
+  <h3>9.5 Internal Communication</h3>
+  <p style="margin-bottom:0">Within the monolith: direct function calls. Once <code>parser</code>, <code>assets</code>, and <code>rendering</code> split into standalone services: BullMQ queues (already Redis-backed, zero new infra) for anything async, and plain HTTP for the rendering service's read path — keeps the system resilient to any single service being temporarily down.</p>
+</section>
+
+<section class="part" id="part9">
+  <div class="part-head"><span class="part-num">10</span><h2>Database & Data Architecture</h2><span class="tag">PostgreSQL · Redis · Object Storage</span></div>
+
+  <h3>10.1 Core Schema (PostgreSQL) — Consolidated</h3>
+  <pre><code>users             (id, phone, phone_verified_at, email, oauth_provider, oauth_id,
+                    name, dob, profile_photo_asset_id, storage_used_bytes,
+                    storage_quota_bytes DEFAULT 52428800, created_at)
+
+profiles          (id, user_id, headline, career_goal, bio, completion_pct, updated_at)
+
+profile_sections  (id, profile_id, type[about|education|projects|experience|
+                    certificates|achievements|research|contact],
+                    entries JSONB[] -- each entry references up to 5 image
+                    asset_ids, 2 pdf asset_ids, 3 entry_links rows,
+                    reviewed_at, position)
+
+assets            (id, user_id, section_type[resume|photo|project|certificate|
+                    achievement|research], entry_id NULLABLE, kind[image|pdf],
+                    gcs_path, cdn_asset_id, size_bytes, width, height,
+                    thumbnail_path, created_at)
+
+entry_links       (id, entry_id, section_type, url, label, position)
+                    -- links never touch the assets table; zero storage cost
+
+organizations     (id, name, contact_email, plan_type)
+
+activation_keys   (id, code, org_id NULLABLE, batch_id, status[unused|redeemed|
+                    expired|revoked], redeemed_by_user_id, redeemed_at, expires_at)
+
+templates         (id, name, version, thumbnail_url, is_active, tier[free|paid])
+theme_variants    (id, template_id, name, tokens JSONB) -- color/typography only
+
+portfolios        (id, user_id, handle, selected_template_id, selected_theme_id,
+                    domain_id NULLABLE, is_indexable, is_published,
+                    draft_preview_token, published_at)
+
+domain_mappings   (id, domain, portfolio_id, verified_at)
+
+subscriptions     (id, user_id, source[activation_key|purchase], plan[annual|lifetime],
+                    razorpay_sub_id, activation_key_id NULLABLE, status, expires_at)
+
+payments          (id, user_id, amount, razorpay_payment_id, status, created_at)
+
+analytics_events  (id, portfolio_id, event_type, visitor_hash, created_at)</code></pre>
+
+  <div class="card info">
+    <h4 style="margin-top:0">Note the absence of a "generation_jobs" table</h4>
+    <p style="margin-bottom:0">The original schema had one — it doesn't exist here because there is no build job anymore (see Part 11). The only background jobs left are: resume parsing, media compression (WebP re-encode, PDF compression, thumbnail generation), OG-image generation (once per publish, cached), and scheduled sitemap regeneration.</p>
+  </div>
+
+  <p><strong>Why JSONB for <code>profile_sections.entries</code>:</strong> education, experience, projects, and skills all have different shapes, and templates evolve. JSONB gives schema flexibility without a migration every time a template wants a new field, while Postgres's JSONB indexing keeps queries fast.</p>
+
+  <h3>10.2 Storage Quota Enforcement — Where It Lives</h3>
+  <div class="card warn">
+    <p style="margin-bottom:0">Enforced at the API layer, transactionally, on every upload: <code>storage_used_bytes + incoming_file_size &gt; storage_quota_bytes</code> → reject with a clear remaining-space message, before the file ever reaches GCS. <code>storage_used_bytes</code> is a maintained counter (incremented/decremented on upload/delete inside the same transaction as the <code>assets</code> row change), not recomputed by scanning storage on every check — that's what keeps this check fast enough to run on every single upload without adding latency.</p>
+  </div>
+
+  <h3>10.3 Redis — Three Distinct Uses</h3>
+  <table>
+    <tr><th>Use</th><th>Detail</th></tr>
+    <tr><td>Job Queue</td><td>BullMQ queues: <code>parse-resume</code>, <code>process-media</code>, <code>send-notification</code></td></tr>
+    <tr><td>Hot Cache</td><td><code>handle → {profile_json, template_id, theme_id}</code> lookups for the rendering engine; rendered template previews; parsed-resume hash cache; session/rate-limit counters</td></tr>
+    <tr><td>Pub/Sub</td><td>Real-time job status pushed to the client over SSE while a resume parses or media processes</td></tr>
+  </table>
+
+  <h3>10.4 Object Storage</h3>
+  <ul>
+    <li><strong>GCS bucket 1</strong> — user uploads (resumes, photos, project/certificate/achievement/research media) — private, signed-URL access only, served publicly through the CDN via content-addressed asset IDs (see Part 11).</li>
+    <li>Both buckets designed to be swapped for MinIO/S3-compatible storage with a one-line config change — the app talks to storage exclusively through an S3-compatible SDK, never a GCS-only client library.</li>
+  </ul>
+
+  <h3>10.5 Backups & Retention</h3>
+  <div class="card">
+    <ul style="margin-bottom:0">
+      <li>Cloud SQL automated daily snapshots, 30-day retention, plus point-in-time recovery enabled (crucial once payments are flowing).</li>
+      <li>Nightly <code>pg_dump</code> exported to a separate cold-storage bucket in a different region — protects against a regional GCP incident, and doubles as the exact file you'd import into your own server during migration.</li>
+      <li>Inactive/graduated-account media moved to Nearline storage automatically (see Part 16.4) rather than deleted, since re-activation should never mean lost media.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="part" id="part10">
+  <div class="part-head"><span class="part-num">11</span><h2>Routing & Rendering Engine</h2><span class="tag">One App, Every Handle — replaces the original per-user build pipeline</span></div>
+
+  <p>The core insight driving this section: <strong>we are not building N websites, we are building one rendering engine that is very good at answering the question "who is this, and which template/theme do they use?"</strong> for whatever hostname just hit us. This is standard multi-tenant SaaS practice — the same pattern platforms like Webflow or Notion sites use.</p>
+
+  <h3>11.1 What This Replaces</h3>
+  <div class="flow">
+    <div class="box deprecated">Docker build<br>per user</div><div class="arrow">→</div>
+    <div class="box deprecated">Push static files<br>to GCS per user</div><div class="arrow">→</div>
+    <div class="box deprecated">N buckets/paths<br>to manage</div>
+  </div>
+  <p style="margin-top:-6px;color:var(--ink-soft);font-size:14px;"><em>Removed entirely.</em> No build step exists anymore. A published portfolio is just a database row plus a cache entry — never a generated file.</p>
+
+  <h3>11.2 The Request Lifecycle</h3>
+  <div class="flow">
+    <div class="box">Browser requests<br><strong>handle.mybexo.com</strong></div><div class="arrow">→</div>
+    <div class="box">Cloudflare edge<br>cache check</div><div class="arrow">→</div>
+    <div class="box">Cache HIT?<br>Serve instantly</div><div class="arrow">→</div>
+    <div class="box">Cache MISS →<br>origin request</div>
+  </div>
+  <div class="flow">
+    <div class="box">Rendering Service<br>(Cloud Run)</div><div class="arrow">→</div>
+    <div class="box">Middleware reads<br><code>Host</code> header</div><div class="arrow">→</div>
+    <div class="box">Extract <code>handle</code><br>from hostname</div><div class="arrow">→</div>
+    <div class="box">Redis lookup:<br>profile + template + theme</div><div class="arrow">→</div>
+    <div class="box">Redis MISS →<br>Postgres query</div><div class="arrow">→</div>
+    <div class="box">Server-render<br>template + data</div><div class="arrow">→</div>
+    <div class="box">HTML returned,<br>cached at edge</div>
+  </div>
+
+  <table>
+    <tr><th>Layer</th><th>Role</th></tr>
+    <tr><td>Cloudflare (edge)</td><td>Cache key = full hostname. Serves 90%+ of requests without ever reaching origin. TTL: 1 hour, or until explicitly purged.</td></tr>
+    <tr><td>Rendering Service</td><td>A single deployable (Next.js SSR or NestJS+React SSR) that owns <em>zero</em> per-user files. It only knows how to render "template T, theme V, with data D."</td></tr>
+    <tr><td>Redis</td><td>Hot cache of <code>handle → {profile_json, template_id, theme_id}</code>, sidesteps a DB hit on every cache-miss request.</td></tr>
+    <tr><td>PostgreSQL</td><td>Source of truth, hit only on a genuine Redis miss (new/rarely-viewed profile).</td></tr>
+  </table>
+
+  <h3>11.3 Cache Invalidation — the one thing that has to be exact</h3>
+  <div class="card warn">
+    <p style="margin-bottom:0">The moment a student edits and re-publishes, two things must happen atomically: (1) Redis entry for that handle is updated immediately, and (2) a <strong>targeted Cloudflare cache purge</strong> is fired for that exact hostname only (Cloudflare's Purge-by-Tag or Purge-by-URL API — never a full-zone purge, which would evict every other student's cached page for nothing). Until the purge completes, the student sees a "publishing..." state so they never mistake a stale cached view for a failed save.</p>
+  </div>
+
+  <h3>11.4 Custom Domains, Same Engine</h3>
+  <p>A <code>domain_mappings</code> table (custom domain → handle) means the identical rendering service also answers for <code>kavin.dev</code> once its CNAME points at us — no separate code path, just one more row the middleware checks before falling back to subdomain parsing. Per-domain SSL is handled automatically via Cloudflare for SaaS, or Caddy's automatic HTTPS once we self-host.</p>
+
+  <h3>11.5 Serving Media at Scale — Images & PDFs</h3>
+  <p>Adding photos and rich media evidence to portfolios must not turn the rendering service into a file server. The rendering engine's job stays exactly what it was: output HTML. Images and PDFs are served on a completely separate, dumber, cheaper path.</p>
+  <div class="flow">
+    <div class="box">Rendering Service<br>outputs HTML</div><div class="arrow">→</div>
+    <div class="box">&lt;img src="cdn.mybexo.com/a/{id}"&gt;</div><div class="arrow">→</div>
+    <div class="box">Cloudflare edge<br>cache (long TTL)</div><div class="arrow">→</div>
+    <div class="box">Cache MISS only →<br>GCS origin fetch</div>
+  </div>
+  <table>
+    <tr><th>Design decision</th><th>Why</th></tr>
+    <tr><td>Asset URLs are content-addressed (<code>{asset_id}</code>, immutable once uploaded)</td><td>Lets Cloudflare cache them with an effectively-infinite TTL — an asset URL never changes once created, so there's never a staleness problem. Editing a photo just creates a new asset ID.</td></tr>
+    <tr><td>Assets served from a separate subdomain (<code>cdn.mybexo.com</code>) from the HTML (<code>handle.mybexo.com</code>)</td><td>Keeps cache rules simple: HTML gets short-TTL-with-purge caching, assets get long-TTL-forever caching — mixing the two policies on one hostname gets messy fast.</td></tr>
+    <tr><td>Rendering service never touches image bytes</td><td>It only ever writes an <code>&lt;img&gt;</code> tag pointing at the CDN URL. The Cloud Run instance's job stays lightweight and fast regardless of how much media a student has uploaded.</td></tr>
+    <tr><td>Thumbnails generated once, at upload time, not on every render</td><td>A background job produces 2–3 sizes (thumbnail/medium/full) per image on upload; the template picks the right size — no on-the-fly image processing on the hot request path, ever.</td></tr>
+  </table>
+
+  <h3>11.6 Re-generation & Edits</h3>
+  <p>Editing a live portfolio (new project, updated bio) is now a database write plus a targeted cache purge — never a rebuild. This is the direct benefit of the shared rendering model over the old per-user static build.</p>
+
+  <h3>11.7 Why This Is Dramatically Cheaper Than Building Per User</h3>
+  <table>
+    <tr><th></th><th>Old model: static build per user</th><th>Current model: shared rendering + edge cache</th></tr>
+    <tr><td>Compute at scale</td><td>Grows with generation jobs / edits across all users</td><td>Stays near-flat — CDN absorbs almost all read traffic, origin barely wakes up</td></tr>
+    <tr><td>Storage</td><td>Duplicated HTML/CSS/JS bundle per user, per version kept</td><td>One shared bundle for all users; only JSON data + user's own media differ</td></tr>
+    <tr><td>Edit latency</td><td>Full rebuild + upload on every change</td><td>Instant — a database write plus a cache purge</td></tr>
+    <tr><td>New template rollout</td><td>Every existing user needs a rebuild</td><td>Nothing to rebuild — next request just renders with the new template code</td></tr>
+    <tr><td>Cost to add the 1,00,000th user</td><td>Roughly linear — another full site to build and store</td><td>Marginal — a database row plus whatever media they upload, capped at 50MB</td></tr>
+  </table>
+
+  <h3>11.8 Traffic Shape: Why Edge Caching Is the Whole Game</h3>
+  <p>Any individual student's portfolio gets bursty, low-volume traffic — a recruiter looks at it once, a friend shares it once. But <em>across</em> thousands of students, aggregate traffic is meaningful, and it's unpredictable which handle spikes on a given day (placement season, a viral LinkedIn share). This is a textbook long-tail distribution:</p>
+  <div class="barchart">
+    <div class="bar tall" style="height:100%"></div>
+    <div class="bar tall" style="height:70%"></div>
+    <div class="bar tall" style="height:50%"></div>
+    <div class="bar" style="height:22%"></div>
+    <div class="bar" style="height:16%"></div>
+    <div class="bar" style="height:12%"></div>
+    <div class="bar" style="height:9%"></div>
+    <div class="bar" style="height:7%"></div>
+    <div class="bar" style="height:5%"></div>
+    <div class="bar" style="height:4%"></div>
+    <div class="bar" style="height:3%"></div>
+    <div class="bar" style="height:3%"></div>
+    <div class="bar" style="height:2%"></div>
+    <div class="bar" style="height:2%"></div>
+    <div class="bar" style="height:1.5%"></div>
+    <div class="bar" style="height:1%"></div>
+    <div class="bar" style="height:1%"></div>
+    <div class="bar" style="height:1%"></div>
+  </div>
+  <p class="chart-caption">Illustrative: a small number of handles (recruiter-viral, placement season) drive most requests on any given day; the long tail of handles gets occasional single-digit views. Edge caching handles both cases identically — it doesn't care why a page is popular, only that it's cacheable.</p>
+  <p style="margin-bottom:0">This is exactly why we don't provision per-user compute or storage: it would mean paying for thousands of idle "servers" for pages that get five views a month, while still needing to handle the occasional spike gracefully. One shared, cached rendering path does both for a fraction of the cost.</p>
+</section>
+
+<section class="part" id="part11">
+  <div class="part-head"><span class="part-num">12</span><h2>SEO Engine</h2><span class="tag">Discoverability by design, not afterthought</span></div>
+
+  <p>Since these are real, public personal websites students want recruiters and search engines to find, SEO has to be built into the rendering engine itself, not bolted on.</p>
+
+  <div class="grid2">
+    <div class="card">
+      <h4 style="margin-top:0">Server-rendered, not client-only</h4>
+      <p>Because the routing engine (Part 11) already server-renders full HTML per request, every portfolio is fully crawlable on first load — no JS-execution dependency for search engines to index the content.</p>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0">Dynamic meta tags per handle</h4>
+      <p><code>&lt;title&gt;</code>, meta description, and Open Graph tags are generated server-side from the student's own About section — "{Name} — {Career Goal} Portfolio," pulling a real, unique description instead of a generic template string.</p>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0">Auto-generated OG share images</h4>
+      <p>A lightweight image-generation step (Satori/Vercel-OG style, rendered once and cached) produces a shareable preview card with name, headline, and photo — so a WhatsApp/LinkedIn share of the portfolio link looks intentional, not blank.</p>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0">Structured data (JSON-LD)</h4>
+      <p>Each page embeds <code>schema.org/Person</code> markup (name, alumniOf, worksFor, sameAs → social links) so Google can surface rich snippets for a student's name search.</p>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0">Sitemap & robots.txt</h4>
+      <p>A dynamically generated, paginated <code>sitemap.xml</code> lists every published, indexable handle; regenerated on a schedule and submitted to Google Search Console. <code>robots.txt</code> explicitly disallows <code>/dashboard</code>, <code>/auth</code>, and admin paths.</p>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0">Per-student privacy toggle</h4>
+      <p>An <code>is_indexable</code> flag lets a student opt out of search-engine indexing (via <code>noindex</code> meta tag + sitemap exclusion) while keeping the link shareable — some students will want the portfolio private-by-link only.</p>
+    </div>
+  </div>
+
+  <div class="card good">
+    <p style="margin-bottom:0"><strong>Core Web Vitals benefit for free:</strong> because pages are cached whole at the Cloudflare edge (Part 11), time-to-first-byte for a returning or popular handle is effectively CDN-speed, which is exactly what Google's ranking signals reward.</p>
+  </div>
+</section>
+
+<section class="part" id="part12">
+  <div class="part-head"><span class="part-num">13</span><h2>Infrastructure, Hosting & Portability</h2><span class="tag">GCP now, own servers within 12 months</span></div>
+
+  <h3>13.1 Current State (GCP) — Component Map</h3>
+  <table>
+    <tr><th>Need</th><th>GCP service today</th><th>Self-hosted equivalent (Year 1)</th></tr>
+    <tr><td>Compute (API, rendering, worker)</td><td>Cloud Run</td><td>Docker Compose or k3s (lightweight Kubernetes) on your own VMs</td></tr>
+    <tr><td>Database</td><td>Cloud SQL (PostgreSQL)</td><td>Self-managed PostgreSQL + PgBouncer, or managed Postgres on the new server</td></tr>
+    <tr><td>Cache/Queue</td><td>Memorystore (Redis) or Redis on Cloud Run</td><td>Self-managed Redis</td></tr>
+    <tr><td>Object storage</td><td>Google Cloud Storage</td><td>MinIO (S3-compatible) on your own disks</td></tr>
+    <tr><td>CDN</td><td>Cloud CDN + Cloudflare</td><td>Cloudflare stays — it's already infra-agnostic, sits in front of whatever origin you point it to</td></tr>
+    <tr><td>DNS</td><td>Cloudflare</td><td>Unchanged</td></tr>
+    <tr><td>CI/CD</td><td>Cloud Build / GitHub Actions</td><td>GitHub Actions unchanged — just change the deploy target step</td></tr>
+    <tr><td>Secrets</td><td>Secret Manager</td><td>Doppler / self-hosted Vault, or encrypted <code>.env</code> via SOPS</td></tr>
+    <tr><td>Billing</td><td>₹999/yr or ₹3,999 lifetime</td><td>Razorpay Checkout embedded, webhook-driven activation (never client-confirmed)</td></tr>
+  </table>
+
+  <div class="card good">
+    <h4 style="margin-top:0">The portability rule that makes this painless</h4>
+    <p style="margin-bottom:0">Never use a GCP-specific SDK inside application code. Talk to Postgres via standard drivers, to storage via an S3-compatible client, to the queue via ioredis. GCP-specific pieces (Secret Manager, Cloud Build triggers, IAM) live only in infrastructure config — Terraform files and CI YAML — never inside business logic. The day you migrate, you're changing <code>.env</code> values and Terraform targets, not rewriting services.</p>
+  </div>
+
+  <h3>13.2 Infrastructure as Code</h3>
+  <ul>
+    <li>All GCP resources defined in <strong>Terraform</strong> from day one — even at small scale. This is the single highest-leverage decision for the coming migration: your entire infrastructure is a text diff away from being redeployed anywhere, including on-prem or a colo rack.</li>
+    <li>Environments: <code>dev</code> → <code>staging</code> → <code>production</code>, each an isolated Terraform workspace, same modules, different variable files.</li>
+  </ul>
+
+  <h3>13.3 Containers Everywhere</h3>
+  <p>Every deployable (api, worker, rendering, web) ships as a Docker image built in CI and pushed to a registry (Artifact Registry now, any OCI-compatible registry later — Docker Hub, GitHub Container Registry, or a self-hosted Harbor instance post-migration). Cloud Run today just runs these images; k3s tomorrow runs the exact same images. Nothing about the container changes.</p>
+
+  <h3>13.4 Networking Readiness for Migration</h3>
+  <table>
+    <tr><th>Consideration</th><th>Plan</th></tr>
+    <tr><td>Static egress IP</td><td>Reserve one now on GCP (Cloud NAT), so payment gateway / webhook allowlists don't need re-approval later</td></tr>
+    <tr><td>TLS</td><td>Cloudflare terminates TLS at the edge regardless of origin — origin can be GCP today, your rack tomorrow, with zero cert changes</td></tr>
+    <tr><td>Origin switch</td><td>Cloudflare's origin pointing is a single DNS/config change — this is intentionally the <em>only</em> thing that needs to change on migration day for traffic routing</td></tr>
+  </table>
+</section>
+
+<section class="part" id="part13">
+  <div class="part-head"><span class="part-num">14</span><h2>Security, Auth & Compliance</h2></div>
+
+  <div class="grid2">
+    <div class="card">
+      <h4 style="margin-top:0">Application security</h4>
+      <ul style="margin-bottom:0">
+        <li>Argon2id password hashing where applicable, never plain bcrypt-only</li>
+        <li>JWT short-lived + rotated refresh tokens, httpOnly cookies for web, secure storage for mobile</li>
+        <li>Input validation via shared Zod schemas at every API boundary</li>
+        <li>Rate limiting at gateway + per-endpoint level</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0">Data protection</h4>
+      <ul style="margin-bottom:0">
+        <li>Resumes/photos/media/PII stored in a private bucket, signed URLs with short expiry only; public assets served exclusively via content-addressed CDN URLs (Part 11.5)</li>
+        <li>Encryption at rest (default on Cloud SQL/GCS) and in transit (TLS everywhere)</li>
+        <li>Existing Privacy Policy / Terms / Refund Policy already drafted for BEXO — keep these updated as features (custom domains, recruiter-view analytics) are added</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0">Payment security</h4>
+      <ul style="margin-bottom:0">
+        <li>Never touch raw card data — Razorpay Checkout handles PCI scope entirely</li>
+        <li>Subscription state changes only ever trusted from a verified Razorpay webhook signature, never from the client</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0">Access control</h4>
+      <ul style="margin-bottom:0">
+        <li>Admin console behind SSO + IP allowlist or VPN</li>
+        <li>Role-based access: student, support staff, admin, super-admin</li>
+        <li>All admin impersonation/refund/activation-key actions logged to an immutable audit table</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>14.1 Security Notes for Phone-First Auth</h3>
+  <ul style="margin-bottom:0">
+    <li>OTP rate-limited per phone number and per IP (Redis sliding window) to block SMS-bombing abuse.</li>
+    <li>A phone number can only be tied to one active account — re-verification on that number requires proving control again, not silently taking over the old account.</li>
+    <li>Activation keys are single-use and permanently bound to the redeeming <code>user_id</code> at the database level (unique constraint), so a leaked key can't be reused after first redemption.</li>
+    <li>Google OAuth token exchange happens server-side only — the mobile/web client never sees or stores a long-lived Google token.</li>
+  </ul>
+</section>
+
+<section class="part" id="part14">
+  <div class="part-head"><span class="part-num">15</span><h2>Observability & Reliability</h2></div>
+
+  <table>
+    <tr><th>Layer</th><th>Tooling</th><th>What it catches</th></tr>
+    <tr><td>Logs</td><td>Cloud Logging now → Loki/Grafana stack post-migration</td><td>Structured JSON logs from every service, correlated by request ID</td></tr>
+    <tr><td>Metrics</td><td>Cloud Monitoring → Prometheus + Grafana</td><td>Request latency, cache-hit ratio, queue depth, GPT-4o token spend per hour, media processing job success rate</td></tr>
+    <tr><td>Error tracking</td><td>Sentry (portable regardless of host)</td><td>Front-end and back-end exceptions, grouped and alerted</td></tr>
+    <tr><td>Uptime</td><td>Better Uptime / UptimeRobot pinging <code>{handle}.mybexo.com</code> samples + the API health endpoint</td><td>Customer-facing downtime, paged immediately</td></tr>
+    <tr><td>Alerting</td><td>Routed to WhatsApp/Slack + on-call phone</td><td>Cache-hit ratio dropping, resume-parse queue backing up, payment webhook failures, error-rate spikes</td></tr>
+  </table>
+
+  <div class="card">
+    <p style="margin-bottom:0"><strong>SLO target for launch:</strong> 99.5% API uptime, resume parsing completes within 90 seconds for 95% of jobs, published portfolios served from CDN with &lt;200ms TTFB in India, 90%+ CDN cache-hit ratio sustained across HTML and assets.</p>
+  </div>
+</section>
+
+<section class="part" id="part15">
+  <div class="part-head"><span class="part-num">16</span><h2>Cost Analysis — Hosting 1,00,000 Student Portfolios on GCP</h2><span class="tag">Based on published 2026 GCP list pricing</span></div>
+
+  <div class="card info">
+    <p style="margin-bottom:0">These are informed estimates from Google's current published rates, not a quote — actual spend depends on committed-use discounts, region, and real traffic shape. Treat this as the right order of magnitude to plan around, and re-run it in the GCP Pricing Calculator before locking a budget.</p>
+  </div>
+
+  <h3>16.1 Assumptions</h3>
+  <table>
+    <tr><th>Variable</th><th>Assumption</th></tr>
+    <tr><td>Total students</td><td>1,00,000 (1 lakh) active accounts</td></tr>
+    <tr><td>Storage per user</td><td>Realistic average ~15MB used (most students well under the 50MB cap); worst case models everyone maxing out at 50MB</td></tr>
+    <tr><td>Monthly page views</td><td>~50 views/user/month average (spiky by handle, per the long-tail model in Part 11.8) = ~50 lakh (5,000,000) views/month</td></tr>
+    <tr><td>CDN cache hit ratio</td><td>90%+ (HTML + assets both edge-cached) — a realistic target for content this static</td></tr>
+    <tr><td>Region</td><td>us-central1 list pricing used as the reference point</td></tr>
+  </table>
+
+  <h3>16.2 Monthly Cost Breakdown</h3>
+  <table>
+    <tr><th>Component</th><th>Sizing</th><th>Realistic (avg. 15MB/user)</th><th>Worst case (all users at 50MB)</th></tr>
+    <tr><td>Object storage (GCS Standard, $0.020–0.023/GB)</td><td>1,500GB realistic / 5,000GB worst case</td><td>≈ $35/mo</td><td>≈ $115/mo</td></tr>
+    <tr><td>Cloud Run — rendering service + API</td><td>Autoscaled, near-zero idle cost thanks to 90%+ cache offload; sized for cache-miss + write traffic only</td><td colspan="2" style="text-align:center">≈ $300–500/mo</td></tr>
+    <tr><td>Cloud SQL (PostgreSQL, 2–4 vCPU / 8–15GB, ~150GB storage)</td><td>Non-HA to start</td><td colspan="2" style="text-align:center">≈ $180–300/mo</td></tr>
+    <tr><td>Memorystore (Redis, Basic tier, small capacity)</td><td>Hot-cache for handle→profile lookups</td><td colspan="2" style="text-align:center">≈ $50–150/mo</td></tr>
+    <tr><td>Cloudflare (CDN + DNS + wildcard SSL)</td><td>Pro/Business plan — bandwidth to end users is effectively unmetered through Cloudflare, which is the single biggest cost lever in this whole model</td><td colspan="2" style="text-align:center">≈ $20–200/mo</td></tr>
+    <tr><td>Origin egress (GCS/Cloud Run → Cloudflare only, not to end users)</td><td>Only cache-miss traffic touches this, at ~$0.12/GB tiered</td><td colspan="2" style="text-align:center">≈ $40–90/mo</td></tr>
+    <tr><td>Misc (Secret Manager, monitoring, backups, sitemap/OG jobs)</td><td>—</td><td colspan="2" style="text-align:center">≈ $50–100/mo</td></tr>
+    <tr class="total"><td>Total estimated monthly</td><td></td><td>≈ $675 – $1,140/mo</td><td>≈ $755 – $1,220/mo</td></tr>
+    <tr class="total"><td>Per student, per month</td><td></td><td>≈ ₹0.55 – ₹0.95</td><td>≈ ₹0.63 – ₹1.02</td></tr>
+  </table>
+
+  <div class="card good">
+    <h4 style="margin-top:0">The number that matters most: storage barely moves the needle</h4>
+    <p style="margin-bottom:0">Even in the worst case — every single one of 1,00,000 students maxing out their 50MB — total storage is only ~5TB, costing roughly <strong>$115/month</strong>. Compute, database, and caching infrastructure dominate the bill, not storage. This confirms the "no per-file size limit, 50MB total cap" design (Part 6) is financially safe: the real cost driver is request volume, and that's exactly what the CDN cache-hit ratio controls.</p>
+  </div>
+
+  <h3>16.3 Cost Levers to Pull as You Scale Past 1 Lakh</h3>
+  <ul style="margin-bottom:0">
+    <li><strong>1-year Committed Use Discounts</strong> on Cloud SQL and Memorystore once traffic is predictable — 25–40% off compute with no architecture change required.</li>
+    <li><strong>Push cache-hit ratio toward 95%+</strong> — the single highest-leverage lever in this entire model, since it directly suppresses both Cloud Run and origin-egress costs.</li>
+    <li><strong>Nearline storage for old portfolio versions/inactive accounts</strong> (graduated students who stop paying) — 50–70% cheaper than Standard for data accessed rarely.</li>
+    <li><strong>This is also exactly the point where the Year-1 migration to owned servers (Part 18) starts paying for itself</strong> — once Cloud Run + Cloud SQL + Memorystore collectively cross a few thousand dollars a month, the same workload on owned hardware gets meaningfully cheaper, and the portability discipline from day one is what makes that switch a config change, not a rewrite.</li>
+  </ul>
+</section>
+
+<section class="part" id="part16">
+  <div class="part-head"><span class="part-num">17</span><h2>Billing, Growth & Cost Model</h2></div>
+
+  <h3>17.1 Pricing (as established)</h3>
+  <ul>
+    <li>₹999/year, or ₹3,999 lifetime — Razorpay Checkout, subscription webhook drives activation/expiry, or redemption via an activation key (Part 4).</li>
+    <li>Grace period logic: 7 days after expiry before a portfolio is taken offline (soft paywall banner first, not an abrupt 404).</li>
+  </ul>
+
+  <h3>17.2 Cost Control on AI Spend</h3>
+  <p>GPT-4o resume parsing is the main variable cost. Controls: cache identical uploads (hash-based), fall back to cheaper models (DeepSeek/Kimi via OpenRouter, or Claude Haiku) for any non-critical text generation like bio rewrites, and reserve GPT-4o specifically for the structured extraction step where accuracy matters most.</p>
+
+  <h3>17.3 Distribution</h3>
+  <p style="margin-bottom:0">The FACE Prep-style B2B partnership motion (distribution through placement-training networks via activation-key batches, rather than college-by-college direct sales) remains the primary growth lever — this architecture is built to handle a partner onboarding hundreds of students in a single week during placement season without manual provisioning at any step.</p>
+</section>
+
+<section class="part" id="part17">
+  <div class="part-head"><span class="part-num">18</span><h2>Migration Plan: GCP → Own Servers</h2><span class="tag">Target: Month 10–12</span></div>
+
+  <h3>18.1 Pre-conditions (build these in from day one)</h3>
+  <ul>
+    <li>Terraform-managed infra — no manually-clicked GCP console resources.</li>
+    <li>Nightly database dumps stored off-GCP.</li>
+    <li>No GCP-proprietary SDKs inside application code.</li>
+    <li>Cloudflare in front of everything — origin-agnostic by design.</li>
+  </ul>
+
+  <h3>18.2 Migration Sequence</h3>
+  <table>
+    <tr><th>Step</th><th>Action</th><th>Risk if skipped</th></tr>
+    <tr><td>1</td><td>Provision new server(s): bare metal or colo, install Docker + k3s</td><td>—</td></tr>
+    <tr><td>2</td><td>Stand up PostgreSQL + Redis + MinIO on new hardware, restore from latest dump</td><td>Data loss if backups untested</td></tr>
+    <tr><td>3</td><td>Deploy identical container images to new cluster, run in parallel (shadow mode) against a copy of production traffic</td><td>Undiscovered config drift surfaces in production instead of staging</td></tr>
+    <tr><td>4</td><td>Cut over background workers (resume parser, media processor) first — lowest customer-facing risk</td><td>—</td></tr>
+    <tr><td>5</td><td>Cut over API + rendering service + database with a short maintenance window, verify, then repoint Cloudflare origin</td><td>Extended downtime if not rehearsed</td></tr>
+    <tr><td>6</td><td>Keep GCP running in standby/read-only mode for 2 weeks as rollback safety net</td><td>No fallback if new hardware fails under real load</td></tr>
+  </table>
+
+  <div class="card warn">
+    <p style="margin-bottom:0"><strong>Rehearse this in staging at least once before Month 10.</strong> A migration you've never practiced against your own architecture is a migration that will surprise you exactly when you can least afford it — mid placement season, with paying customers live.</p>
+  </div>
+</section>
+
+<section class="part" id="part18">
+  <div class="part-head"><span class="part-num">19</span><h2>New Features I'd Ship</h2><span class="tag">Founder's picks</span></div>
+
+  <div class="grid2">
+    <div class="card">
+      <h4 style="margin-top:0">Recruiter view analytics</h4>
+      <p>Since <code>analytics_events</code> already exists, surface it: "42 views this week, most-viewed section: Projects." A natural premium-tier or Phase-2 upsell, and a genuine reason for students to keep updating.</p>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0">Storage top-up add-on</h4>
+      <p>"+100MB for ₹149/year" — near-pure margin given the real GCS cost per 100MB is a fraction of a rupee, and it converts the rare power-user complaint into revenue instead of a support ticket.</p>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0">"Move to a link" nudge</h4>
+      <p>When a student nears their quota, proactively suggest hosting a large file on Drive/Overleaf/YouTube and linking it instead — protects their experience and your storage bill in the same motion.</p>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0">College leaderboard (opt-in)</h4>
+      <p>"Top 10 most-complete portfolios at CBM College this month" — cheap gamification that drives exactly the completion behavior Part 3 was designed around, and doubles as organic pressure on the next cohort to redeem their activation keys promptly.</p>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0">One-tap "Refresh from resume"</h4>
+      <p>A student who updates their resume 6 months later can re-run the parser and get a diff view — "3 new fields detected" — rather than manually re-typing everything from scratch.</p>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0">Theme auto-suggest by field</h4>
+      <p>A design student's career goal auto-suggests a bold, image-forward theme; a research-focused profile suggests a clean, typography-first one — pure delight, zero new engineering beyond reading a field already collected at Step 3.</p>
+    </div>
+  </div>
+</section>
+
+<section class="part" id="part19">
+  <div class="part-head"><span class="part-num">20</span><h2>Execution Roadmap</h2></div>
+
+  <table>
+    <tr><th>Phase</th><th>Timeframe</th><th>Focus</th></tr>
+    <tr><td>Phase 0</td><td>Now</td><td>Terraform for existing GCP resources, CI/CD hardening, finalize the consolidated schema (Part 10), retire any leftover per-user generation code paths</td></tr>
+    <tr><td>Phase 1</td><td>Month 1–3</td><td>Ship the 9-step onboarding flow end-to-end (phone OTP → photo → verification → activation/payment), 3–5 launch templates on the shared rendering engine, get first cohort live via one FACE Prep-style partner using activation keys</td></tr>
+    <tr><td>Phase 2</td><td>Month 3–6</td><td>Rich media evidence system + 50MB quota engine, billing live, admin console (incl. activation-key batch tooling), observability stack, mobile app store release</td></tr>
+    <tr><td>Phase 3</td><td>Month 6–9</td><td>Template & theme live-selection UX, custom domains, WhatsApp Cloud API migration, scale-test the rendering + caching pipeline for placement-season spikes, run the 1-lakh cost model against real usage</td></tr>
+    <tr><td>Phase 4</td><td>Month 9–12</td><td>Provision own servers, rehearse migration in staging, execute production cutover, GCP becomes standby-only</td></tr>
+  </table>
+</section>
+
+<section class="part" id="appendix">
+  <div class="part-head"><span class="part-num">A</span><h2>Appendix — Full Stack & Screen Reference</h2></div>
+
+  <h3>A.1 Full Stack Reference</h3>
+  <table>
+    <tr><th>Layer</th><th>Technology</th></tr>
+    <tr><td>Web app</td><td>React 18 (via Expo for Web), TypeScript</td></tr>
+    <tr><td>Mobile app</td><td>Expo / React Native, TypeScript</td></tr>
+    <tr><td>Shared logic</td><td><code>packages/shared</code> — Zod schemas, API client, types</td></tr>
+    <tr><td>API</td><td>NestJS, modular monolith</td></tr>
+    <tr><td>Rendering service</td><td>Next.js SSR or NestJS+React SSR — the shared multi-tenant rendering engine (Part 11)</td></tr>
+    <tr><td>Database</td><td>PostgreSQL (Cloud SQL now)</td></tr>
+    <tr><td>Cache / Queue</td><td>Redis + BullMQ</td></tr>
+    <tr><td>AI parsing</td><td>GPT-4o (structured extraction), OpenRouter fallback models for cheaper generation tasks</td></tr>
+    <tr><td>Object storage</td><td>Google Cloud Storage (S3-compatible client)</td></tr>
+    <tr><td>CDN / DNS</td><td>Cloudflare (wildcard <code>*.mybexo.com</code> for HTML, <code>cdn.mybexo.com</code> for assets)</td></tr>
+    <tr><td>Compute</td><td>Cloud Run today → k3s on owned servers Year 1</td></tr>
+    <tr><td>CI/CD</td><td>GitHub Actions → Docker builds → Artifact Registry</td></tr>
+    <tr><td>IaC</td><td>Terraform</td></tr>
+    <tr><td>Payments</td><td>Razorpay (Checkout + Webhooks) + Activation Keys for B2B2C distribution</td></tr>
+    <tr><td>Monitoring</td><td>Cloud Monitoring/Logging + Sentry, migrating to Prometheus/Grafana/Loki</td></tr>
+    <tr><td>Package management</td><td>pnpm monorepo</td></tr>
+  </table>
+
+  <h3>A.2 Full Screen / Step Reference</h3>
+  <table>
+    <tr><th>#</th><th>Screen</th><th>Blocks progress until...</th></tr>
+    <tr><td>1</td><td>Phone entry + OTP</td><td>OTP verified</td></tr>
+    <tr><td>2</td><td>Continue with Google</td><td>Email obtained</td></tr>
+    <tr><td>3</td><td>Name + DOB</td><td>Both fields valid</td></tr>
+    <tr><td>4</td><td>Resume upload</td><td>Upload + parse job complete</td></tr>
+    <tr><td>5</td><td>Profile photo upload</td><td>Photo set (Google avatar accepted, or a new one uploaded)</td></tr>
+    <tr><td>6a–6h</td><td>8 verification sections (incl. media evidence on 4 of them)</td><td>Every section marked reviewed</td></tr>
+    <tr><td>7</td><td>Activation key / purchase</td><td>Valid key redeemed OR payment confirmed via webhook</td></tr>
+    <tr><td>8</td><td>Template + theme live selection</td><td>One template + theme combination chosen</td></tr>
+    <tr><td>9</td><td>Publish</td><td>— end of onboarding, dashboard from here on</td></tr>
+  </table>
+</section>
+
+<footer>BEXO Master Architecture & Execution Plan — Consolidated Edition — prepared for Ace Digital · Coimbatore, Tamil Nadu</footer>
+
+</div>
+</body>
+</html>

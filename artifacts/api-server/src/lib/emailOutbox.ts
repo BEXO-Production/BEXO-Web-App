@@ -66,19 +66,19 @@ async function renderEmail(row: typeof emailDeliveries.$inferSelect) {
       return { html: getWelcomeEmail(name), attachments: undefined as any, replyTo: undefined as string | undefined };
     case "site_live":
       return {
-        html: getSiteLiveEmail(name, payload.siteUrl || "https://mybexo.com"),
+        html: getSiteLiveEmail(name, payload.siteUrl || "https://mybexo.cyou"),
         attachments: undefined,
         replyTo: undefined,
       };
     case "recovery":
       return {
-        html: getRecoveryEmail(name, payload.resumeUrl || "https://mybexo.com"),
+        html: getRecoveryEmail(name, payload.resumeUrl || "https://mybexo.cyou"),
         attachments: undefined,
         replyTo: undefined,
       };
     case "cart_recovery":
       return {
-        html: getCartRecoveryEmail(name, payload.checkoutUrl || "https://mybexo.com/step/9"),
+        html: getCartRecoveryEmail(name, payload.checkoutUrl || "https://mybexo.cyou/step/9"),
         attachments: undefined,
         replyTo: undefined,
       };
@@ -86,7 +86,7 @@ async function renderEmail(row: typeof emailDeliveries.$inferSelect) {
       return {
         html: getRenewalReminderEmail(
           name,
-          payload.renewUrl || "https://mybexo.com/billing",
+          payload.renewUrl || "https://mybexo.cyou/billing",
           payload.expiresLabel || "",
         ),
         attachments: undefined,

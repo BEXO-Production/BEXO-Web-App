@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
 import express, { type Express } from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
@@ -8,6 +10,9 @@ import { subdomainRouter, marketingDemoStatic } from "./middlewares/subdomainRou
 import { renderPortfolioForHandle } from "./middlewares/subdomainRouter";
 
 const app: Express = express();
+
+// Cloudflare Worker / load balancers set X-Forwarded-Host for portfolio subdomains.
+app.set("trust proxy", true);
 
 app.use(
   pinoHttp({
@@ -35,6 +40,21 @@ app.use(express.urlencoded({ extended: true }));
 
 // AI marketing demo assets for landing template previews (fictional persona)
 app.use("/api/marketing-demo", marketingDemoStatic);
+
+function resolveEmailAssetsDir(): string {
+  const candidates = [
+    path.resolve(process.cwd(), "public", "email"),
+    path.resolve(process.cwd(), "artifacts", "api-server", "public", "email"),
+  ];
+  return candidates.find((dir) => existsSync(dir)) || candidates[0];
+}
+
+app.use(
+  "/api/email-assets",
+  express.static(resolveEmailAssetsDir(), {
+    maxAge: process.env.NODE_ENV === "production" ? "30d" : 0,
+  }),
+);
 
 // Subdomain Gateway Router MUST come before other routes
 app.use(subdomainRouter);

@@ -22,7 +22,7 @@
     if (typeof window === "undefined") return false;
     const host = window.location.hostname || "";
     // Never expose the developer tool to real visitors on production.
-    if (host === "mybexo.com" || host.endsWith(".mybexo.com")) return false;
+    if (host === "mybexo.cyou" || host.endsWith(".mybexo.cyou")) return false;
     // Explicit opt-in works on any non-production host.
     if (new URLSearchParams(window.location.search).has("themeLab")) return true;
     // Auto-enable during local development / preview so themes are testable

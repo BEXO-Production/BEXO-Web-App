@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, date, integer, boolean, bigint, unique, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, date, integer, boolean, bigint, unique, jsonb, real } from "drizzle-orm/pg-core";
 
 // 1. Users Table
 export const users = pgTable("users", {
@@ -181,4 +181,45 @@ export const resumeParseAttempts = pgTable("resume_parse_attempts", {
   ipHash: text("ip_hash"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
+});
+
+// 14. Billing settings (GST, currency)
+export const billingSettings = pgTable("billing_settings", {
+  id: text("id").primaryKey().default("default"),
+  currency: text("currency").notNull().default("INR"),
+  gstRate: real("gst_rate").notNull().default(0.18),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
+// 15. Pricing plans (source of truth for web + payments)
+export const pricingPlans = pgTable("pricing_plans", {
+  id: text("id").primaryKey(),
+  displayName: text("display_name").notNull(),
+  subtitle: text("subtitle"),
+  priceInrExGst: integer("price_inr_ex_gst").notNull().default(0),
+  storageBytes: bigint("storage_bytes", { mode: "number" }).notNull(),
+  isPurchasable: boolean("is_purchasable").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isHighlighted: boolean("is_highlighted").notNull().default(false),
+  features: jsonb("features").notNull().default([]),
+  isActive: boolean("is_active").notNull().default(true),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
+// 16. Pricing coupons
+export const pricingCoupons = pgTable("pricing_coupons", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  code: text("code").notNull().unique(),
+  description: text("description"),
+  discountType: text("discount_type").notNull(),
+  percentOff: real("percent_off"),
+  inrOff: integer("inr_off"),
+  planPrices: jsonb("plan_prices"),
+  validFrom: timestamp("valid_from", { withTimezone: true }),
+  validUntil: timestamp("valid_until", { withTimezone: true }),
+  maxUses: integer("max_uses"),
+  usedCount: integer("used_count").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });

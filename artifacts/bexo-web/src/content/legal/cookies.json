@@ -7,7 +7,7 @@
       "blocks": [
         {
           "type": "p",
-          "text": "This Cookie Policy explains how Ace Digital (\"we\", \"us\", \"our\") uses cookies, web beacons, pixel tags, local storage, and similar tracking technologies (collectively, \"Cookies\") when you visit or use BEXO at www.mybexo.com and its associated subdomains. BEXO is a product of Ace Digital, which is owned and operated by KSKG Private Ltd."
+          "text": "This Cookie Policy explains how Ace Digital (\"we\", \"us\", \"our\") uses cookies, web beacons, pixel tags, local storage, and similar tracking technologies (collectively, \"Cookies\") when you visit or use BEXO at www.mybexo.cyou and its associated subdomains. BEXO is a product of Ace Digital, which is owned and operated by KSKG Private Ltd."
         },
         {
           "type": "p",
@@ -40,7 +40,7 @@
         {
           "type": "ul",
           "items": [
-            "First-Party Cookies: Set directly by BEXO on our domain (mybexo.com and its subdomains).",
+            "First-Party Cookies: Set directly by BEXO on our domain (mybexo.cyou and its subdomains).",
             "Third-Party Cookies: Set by external parties (such as Google Analytics or Razorpay) when they provide services integrated into our Platform."
           ]
         }

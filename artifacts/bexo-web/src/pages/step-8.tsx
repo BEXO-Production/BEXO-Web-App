@@ -12,7 +12,7 @@ export default function Step8Publish() {
   const { toast } = useToast();
   
   const handleString = data.handle || (data.name ? data.name.toLowerCase().replace(/[^a-z0-9]/g, '') : 'portfolio');
-  const url = `${handleString}.mybexo.com`;
+  const url = `${handleString}.mybexo.cyou`;
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(`https://${url}`);

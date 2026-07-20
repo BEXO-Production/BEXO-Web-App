@@ -2,8 +2,9 @@ import { and, eq, gte, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { db, users, profiles, payments, subscriptions } from "@workspace/db";
 import { enqueueEmail } from "./emailOutbox";
 import { logger } from "./logger";
+import { appOrigin, portfolioPublicUrl } from "./platform";
 
-const APP_ORIGIN = process.env.FRONTEND_URL || process.env.WEB_URL || "https://mybexo.com";
+const APP_ORIGIN = appOrigin();
 
 export async function enqueueWelcomeEmail(userId: string, email: string, userName: string) {
   if (!email) return;
@@ -19,7 +20,7 @@ export async function enqueueWelcomeEmail(userId: string, email: string, userNam
 
 export async function enqueueSiteLiveEmail(userId: string, email: string, userName: string, handle: string) {
   if (!email || !handle) return;
-  const siteUrl = `https://${handle}.mybexo.com`;
+  const siteUrl = portfolioPublicUrl(handle);
   await enqueueEmail({
     eventType: "site_live",
     recipient: email,

@@ -1,355 +1,394 @@
-const LOGO_URL = "https://bexo-development.web.app/assets/bexo-logo-swtm9dI0.png"; // Live logo from build output
-const BRAND_GRADIENT = "linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)";
-const BRAND_COLOR = "#4f46e5";
+import { appOrigin } from "./platform";
 
-const wrapHtml = (title: string, content: string) => `
-<!DOCTYPE html>
-<html lang="en">
+const BRAND_BLUE = "#2F6BFF";
+const BRAND_BLUE_DARK = "#1E4FD4";
+const INK = "#0B1220";
+const MUTED = "#64748B";
+const CREAM = "#F4F1EB";
+const CARD = "#FFFFFF";
+
+function getEmailAssetOrigin(): string {
+  return appOrigin();
+}
+
+const LOGO_URL = `${getEmailAssetOrigin()}/api/email-assets/bexo-logo.png`;
+const APP_URL = getEmailAssetOrigin();
+
+function escapeHtml(value: string): string {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+type EmailLayoutOptions = {
+  title: string;
+  preheader: string;
+  eyebrow: string;
+  headline: string;
+  bodyHtml: string;
+  ctaLabel?: string;
+  ctaUrl?: string;
+  footnote?: string;
+  accent?: "blue" | "violet" | "emerald" | "amber";
+};
+
+const ACCENT: Record<
+  NonNullable<EmailLayoutOptions["accent"]>,
+  { bar: string; glow: string }
+> = {
+  blue: { bar: BRAND_BLUE, glow: "rgba(47,107,255,0.45)" },
+  violet: { bar: "#7C3AED", glow: "rgba(124,58,237,0.4)" },
+  emerald: { bar: "#10B981", glow: "rgba(16,185,129,0.35)" },
+  amber: { bar: "#F59E0B", glow: "rgba(245,158,11,0.35)" },
+};
+
+function ctaButton(label: string, href: string, accent: string): string {
+  const safeLabel = escapeHtml(label);
+  const safeHref = escapeHtml(href);
+  return `
+    <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:32px auto 8px;">
+      <tr>
+        <td align="center" class="cta-cell" style="border-radius:999px;background:linear-gradient(135deg, ${BRAND_BLUE} 0%, ${BRAND_BLUE_DARK} 100%);box-shadow:0 14px 32px -8px ${accent};">
+          <!--[if mso]>
+          <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" href="${safeHref}" style="height:52px;v-text-anchor:middle;width:260px;" arcsize="50%" strokecolor="${BRAND_BLUE}" fillcolor="${BRAND_BLUE}">
+            <w:anchorlock/>
+            <center style="color:#ffffff;font-family:Segoe UI, Arial, sans-serif;font-size:16px;font-weight:700;">${safeLabel}</center>
+          </v:roundrect>
+          <![endif]-->
+          <!--[if !mso]><!-->
+          <a href="${safeHref}" class="cta-link" style="display:inline-block;padding:16px 36px;font-family:'Segoe UI', Inter, Arial, sans-serif;font-size:16px;font-weight:700;color:#ffffff !important;text-decoration:none;border-radius:999px;letter-spacing:0.02em;">
+            ${safeLabel} →
+          </a>
+          <!--<![endif]-->
+        </td>
+      </tr>
+    </table>`;
+}
+
+function featurePills(items: string[]): string {
+  const cells = items
+    .map(
+      (item) => `
+      <td class="stack" style="padding:6px;width:33.33%;">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+          <tr>
+            <td style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;padding:14px 12px;text-align:center;font-family:'Segoe UI', Inter, Arial, sans-serif;font-size:13px;line-height:1.45;color:#334155;font-weight:600;">
+              ${escapeHtml(item)}
+            </td>
+          </tr>
+        </table>
+      </td>`,
+    )
+    .join("");
+  return `
+    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin:28px 0 8px;">
+      <tr class="stack">${cells}</tr>
+    </table>`;
+}
+
+function wrapHtml(options: EmailLayoutOptions): string {
+  const accent = ACCENT[options.accent || "blue"];
+  const preheader = escapeHtml(options.preheader);
+  const eyebrow = escapeHtml(options.eyebrow);
+  const headline = escapeHtml(options.headline);
+  const footnote = options.footnote
+    ? `<p style="margin:24px 0 0;font-family:'Segoe UI', Inter, Arial, sans-serif;font-size:13px;line-height:1.6;color:#94A3B8;text-align:center;">${options.footnote}</p>`
+    : "";
+  const cta =
+    options.ctaLabel && options.ctaUrl
+      ? ctaButton(options.ctaLabel, options.ctaUrl, accent.glow)
+      : "";
+
+  return `<!DOCTYPE html>
+<html lang="en" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title}</title>
-  <!-- Import Outfit and Inter fonts -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@500;700;800&display=swap" rel="stylesheet">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="color-scheme" content="light" />
+  <meta name="supported-color-schemes" content="light" />
+  <title>${escapeHtml(options.title)}</title>
+  <!--[if mso]>
+  <noscript>
+    <xml>
+      <o:OfficeDocumentSettings>
+        <o:PixelsPerInch>96</o:PixelsPerInch>
+      </o:OfficeDocumentSettings>
+    </xml>
+  </noscript>
+  <![endif]-->
   <style>
-    /* Reset and base styles */
-    body {
-      margin: 0;
-      padding: 0;
-      background-color: #f1f5f9;
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
+    @keyframes bexo-shimmer {
+      0% { background-position: 200% center; }
+      100% { background-position: -200% center; }
     }
-    .wrapper {
-      width: 100%;
-      table-layout: fixed;
-      background-color: #f1f5f9;
-      padding: 40px 0;
+    @keyframes bexo-pulse {
+      0%, 100% { box-shadow: 0 14px 32px -8px ${accent.glow}; transform: translateY(0); }
+      50% { box-shadow: 0 18px 40px -6px ${accent.glow}; transform: translateY(-1px); }
     }
-    .main-table {
-      width: 100%;
-      max-width: 600px;
-      margin: 0 auto;
-      background-color: #ffffff;
-      border-radius: 24px;
-      overflow: hidden;
-      box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.1);
-      border: 1px solid rgba(255, 255, 255, 0.5);
+    @keyframes bexo-float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-4px); }
     }
-    /* Typography */
-    h1, h2, h3 {
-      font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-      color: #0f172a;
-      margin-top: 0;
+    .preheader { display:none !important; visibility:hidden; opacity:0; color:transparent; height:0; width:0; max-height:0; max-width:0; overflow:hidden; mso-hide:all; }
+    .cta-cell { animation: bexo-pulse 2.8s ease-in-out infinite; }
+    .logo-medallion { animation: bexo-float 4s ease-in-out infinite; }
+    .shine-bar {
+      height: 3px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, transparent, ${accent.bar}, #ffffff, ${accent.bar}, transparent);
+      background-size: 200% auto;
+      animation: bexo-shimmer 3.5s linear infinite;
     }
-    p, td, span, div {
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-      color: #334155;
-    }
-    /* Header */
-    .header {
-      background: ${BRAND_GRADIENT};
-      padding: 40px 30px;
-      text-align: center;
-      position: relative;
-      background-image: url('https://www.transparenttextures.com/patterns/cubes.png'), ${BRAND_GRADIENT};
-    }
-    .header img {
-      width: 140px;
-      height: auto;
-      margin-bottom: 10px;
-      filter: drop-shadow(0 4px 6px rgba(0,0,0,0.2));
-    }
-    .header h1 {
-      color: #ffffff;
-      font-size: 28px;
-      letter-spacing: 2px;
-      margin: 0;
-      text-transform: uppercase;
-      font-weight: 800;
-      text-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    /* Content */
-    .content-area {
-      padding: 45px 40px;
-    }
-    .content-title {
-      font-size: 26px;
-      margin-bottom: 25px;
-      font-weight: 700;
-      color: #1e293b;
-    }
-    .content-text {
-      font-size: 16px;
-      line-height: 1.7;
-      margin-bottom: 25px;
-      color: #475569;
-    }
-    /* Button */
-    .btn-container {
-      text-align: center;
-      margin: 35px 0;
-    }
-    .btn {
-      display: inline-block;
-      background: ${BRAND_GRADIENT};
-      color: #ffffff !important;
-      text-decoration: none;
-      padding: 16px 36px;
-      border-radius: 50px;
-      font-family: 'Outfit', sans-serif;
-      font-weight: 700;
-      font-size: 16px;
-      letter-spacing: 0.5px;
-      box-shadow: 0 10px 15px -3px rgba(79, 70, 229, 0.4);
-      transition: all 0.3s ease;
-    }
-    .btn:hover {
-      box-shadow: 0 15px 20px -3px rgba(79, 70, 229, 0.5);
-      transform: translateY(-2px);
-    }
-    /* Footer */
-    .footer {
-      background-color: #f8fafc;
-      padding: 30px 40px;
-      text-align: center;
-      border-top: 1px solid #f1f5f9;
-    }
-    .footer-text {
-      margin: 0;
-      color: #94a3b8;
-      font-size: 13px;
-      line-height: 1.5;
-    }
-    /* Highlight Box */
-    .highlight-box {
-      background: linear-gradient(145deg, #f8fafc, #f1f5f9);
-      border: 1px solid #e2e8f0;
-      border-radius: 16px;
-      padding: 25px;
-      text-align: center;
-      margin: 30px 0;
-      box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
-    }
-    .highlight-label {
-      font-family: 'Outfit', sans-serif;
-      font-size: 13px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      color: #64748b;
-      font-weight: 700;
-      margin-bottom: 10px;
-      margin-top: 0;
-    }
-    .highlight-value {
-      color: ${BRAND_COLOR};
-      font-size: 22px;
-      font-weight: 800;
-      font-family: 'Outfit', sans-serif;
-      margin: 0;
-      word-break: break-all;
-    }
-    
-    /* Tables */
-    .receipt-table {
-      width: 100%;
-      border-collapse: separate;
-      border-spacing: 0;
-      margin: 30px 0;
-      border-radius: 16px;
-      overflow: hidden;
-      border: 1px solid #e2e8f0;
-    }
-    .receipt-table td {
-      padding: 18px 24px;
-      border-bottom: 1px solid #f1f5f9;
-      font-size: 15px;
-    }
-    .receipt-table tr:last-child td {
-      border-bottom: none;
-      background-color: #f8fafc;
-    }
-    .receipt-label {
-      color: #64748b;
-      font-weight: 500;
-    }
-    .receipt-val {
-      text-align: right;
-      color: #0f172a;
-      font-weight: 600;
-      font-family: 'Outfit', sans-serif;
-    }
-    .receipt-amount {
-      color: ${BRAND_COLOR};
-      font-size: 20px;
-      font-weight: 800;
+    a { color: ${BRAND_BLUE}; }
+    @media only screen and (max-width: 620px) {
+      .shell { width: 100% !important; }
+      .pad { padding-left: 22px !important; padding-right: 22px !important; }
+      .stack td { display: block !important; width: 100% !important; }
     }
   </style>
 </head>
-<body>
-  <div class="wrapper">
-    <table class="main-table" cellspacing="0" cellpadding="0">
-      <tr>
-        <td class="header">
-          <!-- Bexo Logo -->
-          <img src="${LOGO_URL}" alt="Bexo Logo">
-        </td>
-      </tr>
-      <tr>
-        <td class="content-area">
-          ${content}
-        </td>
-      </tr>
-      <tr>
-        <td class="footer">
-          <p class="footer-text">&copy; ${new Date().getFullYear()} BEXO FROM Ace Digital. All rights reserved.</p>
-          <p class="footer-text" style="margin-top: 8px;">BEXO is a product of Ace Digital, Coimbatore, Tamil Nadu, India.</p>
-        </td>
-      </tr>
-    </table>
-  </div>
+<body style="margin:0;padding:0;background:${CREAM};-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+  <div class="preheader">${preheader}&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;</div>
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:linear-gradient(180deg, #0B1220 0%, #121a2e 38%, ${CREAM} 38%, ${CREAM} 100%);">
+    <tr>
+      <td align="center" style="padding:36px 16px 48px;">
+        <table role="presentation" class="shell" width="600" cellspacing="0" cellpadding="0" border="0" style="max-width:600px;width:100%;">
+          <tr>
+            <td style="padding:0 24px;text-align:center;">
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" class="logo-medallion" style="margin:0 auto -28px;position:relative;z-index:2;">
+                <tr>
+                  <td style="background:${CARD};border-radius:20px;padding:14px;box-shadow:0 20px 50px -20px rgba(11,18,32,0.55);border:1px solid rgba(255,255,255,0.85);">
+                    <img src="${LOGO_URL}" width="52" height="52" alt="BEXO" style="display:block;border:0;outline:none;text-decoration:none;width:52px;height:52px;object-fit:contain;" />
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:${CARD};border-radius:28px;overflow:hidden;box-shadow:0 28px 70px -32px rgba(11,18,32,0.35);border:1px solid rgba(15,23,42,0.06);">
+                <tr>
+                  <td style="background:linear-gradient(135deg, ${INK} 0%, #151f38 100%);padding:40px 32px 28px;text-align:center;">
+                    <div class="shine-bar" style="max-width:220px;margin:0 auto 20px;"></div>
+                    <p style="margin:0 0 10px;font-family:'Segoe UI', Inter, Arial, sans-serif;font-size:11px;font-weight:700;letter-spacing:0.22em;text-transform:uppercase;color:rgba(255,255,255,0.55);">${eyebrow}</p>
+                    <h1 style="margin:0;font-family:Georgia, 'Times New Roman', serif;font-size:28px;line-height:1.25;font-weight:700;color:#ffffff;letter-spacing:-0.02em;">${headline}</h1>
+                  </td>
+                </tr>
+                <tr>
+                  <td class="pad" style="padding:36px 40px 32px;">
+                    ${options.bodyHtml}
+                    ${cta}
+                    ${footnote}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:0 40px 32px;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                      <tr>
+                        <td style="height:1px;background:linear-gradient(90deg, transparent, #E2E8F0, transparent);font-size:0;line-height:0;">&nbsp;</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td class="pad" style="padding:0 40px 36px;text-align:center;">
+                    <p style="margin:0 0 8px;font-family:'Segoe UI', Inter, Arial, sans-serif;font-size:12px;line-height:1.6;color:#94A3B8;">
+                      BEXO is a product of Ace Digital · Coimbatore, India
+                    </p>
+                    <p style="margin:0;font-family:'Segoe UI', Inter, Arial, sans-serif;font-size:12px;line-height:1.6;color:#CBD5E1;">
+                      <a href="${APP_URL}/terms" style="color:#64748B;text-decoration:none;">Terms</a>
+                      &nbsp;·&nbsp;
+                      <a href="${APP_URL}/privacy" style="color:#64748B;text-decoration:none;">Privacy</a>
+                      &nbsp;·&nbsp;
+                      <a href="${APP_URL}/refund" style="color:#64748B;text-decoration:none;">Refunds</a>
+                    </p>
+                    <p style="margin:14px 0 0;font-family:'Segoe UI', Inter, Arial, sans-serif;font-size:11px;color:#CBD5E1;">
+                      © ${new Date().getFullYear()} BEXO FROM Ace Digital
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
 </body>
-</html>
-`;
+</html>`;
+}
+
+function bodyParagraph(text: string): string {
+  return `<p style="margin:0 0 18px;font-family:'Segoe UI', Inter, Arial, sans-serif;font-size:16px;line-height:1.75;color:#475569;">${text}</p>`;
+}
+
+function greeting(name: string): string {
+  return bodyParagraph(`Hi <strong style="color:${INK};">${escapeHtml(name)}</strong>,`);
+}
+
+function highlightCard(label: string, valueHtml: string, chipBg = "#EEF2FF"): string {
+  return `
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:26px 0;">
+      <tr>
+        <td style="background:linear-gradient(145deg, #FAFBFC, ${chipBg});border:1px solid #E2E8F0;border-radius:18px;padding:22px 24px;text-align:center;">
+          <p style="margin:0 0 8px;font-family:'Segoe UI', Inter, Arial, sans-serif;font-size:11px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;color:${MUTED};">${escapeHtml(label)}</p>
+          <p style="margin:0;font-family:Georgia, 'Times New Roman', serif;font-size:22px;line-height:1.35;font-weight:700;color:${BRAND_BLUE};word-break:break-word;">
+            ${valueHtml}
+          </p>
+        </td>
+      </tr>
+    </table>`;
+}
 
 export const getWelcomeEmail = (userName: string) => {
-  const content = `
-    <h2 class="content-title">Welcome to Bexo, ${userName}! 🚀</h2>
-    <p class="content-text">We are absolutely thrilled to have you join our community of professionals.</p>
-    <p class="content-text">Bexo is designed to help you craft the perfect, high-converting professional portfolio in just a few clicks. Whether you're a developer, designer, or creator, your next big opportunity starts here.</p>
-    
-    <div class="highlight-box">
-      <p class="highlight-label">Your Next Step</p>
-      <p class="content-text" style="margin-bottom: 0; font-weight: 500; color: #1e293b;">Complete your onboarding profile to unlock personalized templates.</p>
-    </div>
-
-    <div class="btn-container">
-      <a href="https://mybexo.com/dashboard" class="btn">Launch Dashboard</a>
-    </div>
-    
-    <p class="content-text">We can't wait to see what you build!</p>
-  `;
-  return wrapHtml("Welcome to Bexo", content);
+  const name = userName || "there";
+  return wrapHtml({
+    title: "Welcome to BEXO",
+    preheader: "Your portfolio journey starts here — templates, subdomain, and Hire Me in minutes.",
+    eyebrow: "Welcome aboard",
+    headline: "You're in. Let's build something recruiters remember.",
+    accent: "blue",
+    ctaLabel: "Open your dashboard",
+    ctaUrl: `${APP_URL}/dashboard`,
+    footnote: "Need help? Reply to this email or write to support@acedigital.cc",
+    bodyHtml: `
+      ${greeting(name)}
+      ${bodyParagraph("BEXO turns your resume into a live portfolio — polished sections, premium templates, and a personal subdomain you can share in placements and DMs.")}
+      ${featurePills(["Resume → live site", "Premium templates", "Hire Me page"])}
+      ${highlightCard("Your next step", "Complete onboarding and pick the look that fits your story.")}
+      ${bodyParagraph("We can't wait to see what you publish.")}
+    `,
+  });
 };
 
 export const getSiteLiveEmail = (userName: string, siteUrl: string) => {
-  const content = `
-    <h2 class="content-title">Your site is officially live! 🎉</h2>
-    <p class="content-text">Hi ${userName},</p>
-    <p class="content-text">Incredible work! Your new professional portfolio has been successfully published and is now streaming live across the web.</p>
-    
-    <div class="highlight-box">
-      <p class="highlight-label">Your Custom URL</p>
-      <a href="${siteUrl}" style="text-decoration: none;">
-        <p class="highlight-value">${siteUrl}</p>
-      </a>
-    </div>
-    
-    <p class="content-text">It's time to show it off. Share your new link with recruiters, add it to your resume, or post it on LinkedIn to supercharge your career.</p>
-    
-    <div class="btn-container">
-      <a href="${siteUrl}" class="btn">View Live Site</a>
-    </div>
-  `;
-  return wrapHtml("Your Bexo Site is Live!", content);
+  const safeUrl = escapeHtml(siteUrl);
+  return wrapHtml({
+    title: "Your Bexo site is live",
+    preheader: `Your portfolio is live at ${siteUrl}`,
+    eyebrow: "You're live",
+    headline: "Your portfolio is officially on the internet.",
+    accent: "emerald",
+    ctaLabel: "View live site",
+    ctaUrl: siteUrl,
+    bodyHtml: `
+      ${greeting(userName)}
+      ${bodyParagraph("Incredible work — your site is published and ready to share with recruiters, mentors, and your network.")}
+      ${highlightCard("Your link", `<a href="${safeUrl}" style="color:${BRAND_BLUE};text-decoration:none;">${safeUrl}</a>`, "#D1FAE5")}
+      ${bodyParagraph("Add it to your resume header, LinkedIn featured section, and placement forms while momentum is high.")}
+    `,
+  });
 };
 
-export const getBillingReceiptEmail = (userName: string, plan: string, amount: number, transactionId: string) => {
-  const planName = plan === 'annual' ? 'Pro Annual' : plan === 'lifetime' ? 'Pro Lifetime' : 'Premium Access';
-  const planDesc = plan === 'lifetime' 
-    ? 'Lifetime access to all Bexo Pro features with no recurring charges.' 
-    : plan === 'annual'
-    ? '12-month access to Bexo Pro features, templates, and AI tools.'
-    : 'Premium access to Bexo Pro portfolio features.';
-  
-  const content = `
-    <h2 class="content-title">Payment Received Successfully</h2>
-    <p class="content-text">Hi ${userName},</p>
-    <p class="content-text">Thank you for your purchase! Your payment has been securely processed and your Bexo Pro features are now active. Please find your detailed tax invoice attached to this email as a PDF.</p>
-    
-    <table class="receipt-table">
-      <tr>
-        <td class="receipt-label">Plan</td>
-        <td class="receipt-val">${planName}</td>
-      </tr>
-      <tr>
-        <td class="receipt-label">Description</td>
-        <td class="receipt-val" style="font-size: 13px; color: #64748b;">${planDesc}</td>
-      </tr>
-      <tr>
-        <td class="receipt-label">Transaction ID</td>
-        <td class="receipt-val" style="font-family: monospace; font-size: 13px;">${transactionId}</td>
-      </tr>
-      <tr>
-        <td class="receipt-label">Date</td>
-        <td class="receipt-val">${new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</td>
-      </tr>
-      <tr>
-        <td class="receipt-label" style="font-weight: 700; color: #0f172a;">Total Paid</td>
-        <td class="receipt-val receipt-amount">${amount > 0 ? `₹${amount.toLocaleString('en-IN')}` : 'Activation Code (Free)'}</td>
-      </tr>
-    </table>
+export const getBillingReceiptEmail = (
+  userName: string,
+  plan: string,
+  amount: number,
+  transactionId: string,
+) => {
+  const planName =
+    plan === "annual" ? "Yearly" : plan === "lifetime" ? "Lifetime" : "Premium Access";
+  const planDesc =
+    plan === "lifetime"
+      ? "Lifetime access to BEXO Pro — templates, subdomain, and storage."
+      : plan === "annual"
+        ? "12 months of BEXO Pro — templates, subdomain, and expanded storage."
+        : "Premium access to BEXO Pro portfolio features.";
+  const amountLabel =
+    amount > 0 ? `₹${amount.toLocaleString("en-IN")}` : "Activation code (₹0)";
+  const dateLabel = new Date().toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
 
-    <div class="highlight-box" style="border-left: 4px solid #4f46e5; text-align: left;">
-      <p style="margin: 0 0 8px 0; font-weight: 600; color: #1e293b; font-size: 14px;">📎 Tax Invoice Attached</p>
-      <p style="margin: 0; font-size: 13px; color: #64748b; line-height: 1.5;">A detailed tax invoice (PDF) from Ace Digital has been attached to this email for your records. You can also download it anytime from your Bexo dashboard.</p>
-    </div>
-    
-    <div class="btn-container">
-      <a href="https://mybexo.com/dashboard" class="btn">Go to Dashboard</a>
-    </div>
-
-    <p class="content-text" style="font-size: 13px; color: #94a3b8; text-align: center;">For billing queries, reach out to <a href="mailto:billing@mybexo.com" style="color: #4f46e5;">billing@mybexo.com</a></p>
-  `;
-  return wrapHtml("Bexo Payment Receipt", content);
+  return wrapHtml({
+    title: "BEXO payment receipt",
+    preheader: `Receipt for ${planName} — ${amountLabel}`,
+    eyebrow: "Payment confirmed",
+    headline: "Thanks — your Pro features are active.",
+    accent: "violet",
+    ctaLabel: "Go to dashboard",
+    ctaUrl: `${APP_URL}/dashboard`,
+    footnote: `Billing questions? <a href="mailto:billing@mybexo.cyou">billing@mybexo.cyou</a>`,
+    bodyHtml: `
+      ${greeting(userName)}
+      ${bodyParagraph("Your payment was processed successfully. A GST tax invoice is attached to this email for your records.")}
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:24px 0;border:1px solid #E2E8F0;border-radius:16px;overflow:hidden;">
+        <tr><td style="padding:14px 20px;background:#F8FAFC;font-family:'Segoe UI', Inter, Arial, sans-serif;font-size:13px;color:${MUTED};">Plan</td><td align="right" style="padding:14px 20px;background:#F8FAFC;font-family:'Segoe UI', Inter, Arial, sans-serif;font-size:14px;font-weight:700;color:${INK};">${escapeHtml(planName)}</td></tr>
+        <tr><td style="padding:14px 20px;border-top:1px solid #F1F5F9;font-family:'Segoe UI', Inter, Arial, sans-serif;font-size:13px;color:${MUTED};">Details</td><td align="right" style="padding:14px 20px;border-top:1px solid #F1F5F9;font-family:'Segoe UI', Inter, Arial, sans-serif;font-size:13px;color:#475569;">${escapeHtml(planDesc)}</td></tr>
+        <tr><td style="padding:14px 20px;border-top:1px solid #F1F5F9;font-family:'Segoe UI', Inter, Arial, sans-serif;font-size:13px;color:${MUTED};">Transaction</td><td align="right" style="padding:14px 20px;border-top:1px solid #F1F5F9;font-family:ui-monospace, SFMono-Regular, Menlo, monospace;font-size:12px;color:#475569;">${escapeHtml(transactionId)}</td></tr>
+        <tr><td style="padding:14px 20px;border-top:1px solid #F1F5F9;font-family:'Segoe UI', Inter, Arial, sans-serif;font-size:13px;color:${MUTED};">Date</td><td align="right" style="padding:14px 20px;border-top:1px solid #F1F5F9;font-family:'Segoe UI', Inter, Arial, sans-serif;font-size:14px;font-weight:600;color:${INK};">${escapeHtml(dateLabel)}</td></tr>
+        <tr><td style="padding:16px 20px;border-top:1px solid #E2E8F0;background:#F8FAFC;font-family:'Segoe UI', Inter, Arial, sans-serif;font-size:14px;font-weight:700;color:${INK};">Total paid</td><td align="right" style="padding:16px 20px;border-top:1px solid #E2E8F0;background:#F8FAFC;font-family:Georgia, serif;font-size:22px;font-weight:700;color:${BRAND_BLUE};">${escapeHtml(amountLabel)}</td></tr>
+      </table>
+    `,
+  });
 };
 
 export const getActivationEmail = (userName: string, code: string) => {
-  const content = `
-    <h2 class="content-title">Pro Account Activated! 🎊</h2>
-    <p class="content-text">Hi ${userName},</p>
-    <p class="content-text">Your activation code has been successfully verified. You now have full, unrestricted access to all of Bexo's premium features.</p>
-    
-    <div class="highlight-box" style="border: 2px dashed #c7d2fe; background: #eef2ff;">
-      <p class="highlight-label" style="color: #4f46e5;">Redeemed Code</p>
-      <p class="highlight-value" style="letter-spacing: 3px; font-family: monospace;">${code}</p>
-    </div>
-    
-    <p class="content-text">Dive into the dashboard to explore exclusive templates, advanced analytics, and custom domains.</p>
-    
-    <div class="btn-container">
-      <a href="https://mybexo.com/dashboard" class="btn">Go to Dashboard</a>
-    </div>
-  `;
-  return wrapHtml("Bexo Account Activated", content);
+  return wrapHtml({
+    title: "BEXO Pro activated",
+    preheader: "Your activation code was applied — premium features unlocked.",
+    eyebrow: "Pro unlocked",
+    headline: "You're on BEXO Pro.",
+    accent: "violet",
+    ctaLabel: "Explore templates",
+    ctaUrl: `${APP_URL}/dashboard`,
+    bodyHtml: `
+      ${greeting(userName)}
+      ${bodyParagraph("Your activation code was verified. Premium templates, subdomain hosting, and expanded storage are ready.")}
+      ${highlightCard("Redeemed code", `<span style="font-family:ui-monospace, monospace;letter-spacing:0.12em;">${escapeHtml(code)}</span>`, "#F3E8FF")}
+      ${bodyParagraph("Head to the dashboard to choose a template and publish.")}
+    `,
+  });
 };
 
 export const getRecoveryEmail = (userName: string, resumeUrl: string) => {
-  const content = `
-    <h2 class="content-title">Your Bexo portfolio is waiting</h2>
-    <p class="content-text">Hi ${userName},</p>
-    <p class="content-text">You started building your professional portfolio but did not finish onboarding. Your progress is saved — pick up where you left off in one click.</p>
-    <div class="btn-container">
-      <a href="${resumeUrl}" class="btn">Continue Onboarding</a>
-    </div>
-    <p class="content-text">If you already finished, you can ignore this email.</p>
-  `;
-  return wrapHtml("Continue your Bexo portfolio", content);
+  return wrapHtml({
+    title: "Continue your BEXO portfolio",
+    preheader: "Your progress is saved — finish onboarding in one click.",
+    eyebrow: "Pick up where you left off",
+    headline: "Your portfolio draft is still here.",
+    accent: "blue",
+    ctaLabel: "Continue onboarding",
+    ctaUrl: resumeUrl,
+    footnote: "If you already finished, you can ignore this email.",
+    bodyHtml: `
+      ${greeting(userName)}
+      ${bodyParagraph("You started building on BEXO but didn't cross the finish line. Your sections and uploads are saved — it only takes a few minutes to publish.")}
+      ${featurePills(["Saved progress", "AI resume parse", "Live subdomain"])}
+    `,
+  });
 };
 
 export const getCartRecoveryEmail = (userName: string, checkoutUrl: string) => {
-  const content = `
-    <h2 class="content-title">Complete your Bexo Pro checkout</h2>
-    <p class="content-text">Hi ${userName},</p>
-    <p class="content-text">You started upgrading to Bexo Pro but left before finishing payment. Your portfolio draft is still saved — complete checkout to publish with premium templates and storage.</p>
-    <div class="btn-container">
-      <a href="${checkoutUrl}" class="btn">Complete Checkout</a>
-    </div>
-    <p class="content-text">If you already paid, you can ignore this email.</p>
-  `;
-  return wrapHtml("Complete your Bexo Pro checkout", content);
+  return wrapHtml({
+    title: "Complete your BEXO Pro checkout",
+    preheader: "Finish checkout to unlock premium templates, subdomain, and storage.",
+    eyebrow: "Checkout waiting",
+    headline: "You're one step from BEXO Pro.",
+    accent: "amber",
+    ctaLabel: "Complete checkout",
+    ctaUrl: checkoutUrl,
+    footnote: "If you already paid, you can ignore this email.",
+    bodyHtml: `
+      ${greeting(userName)}
+      ${bodyParagraph("You started upgrading to BEXO Pro but left before payment. Your portfolio draft is safe — complete checkout to publish with premium templates and extra storage.")}
+      ${featurePills(["Premium templates", "you.mybexo.cyou", "More storage"])}
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:8px 0 4px;">
+        <tr>
+          <td style="background:linear-gradient(135deg, #FFF7ED 0%, #FFFBEB 100%);border:1px dashed #FCD34D;border-radius:16px;padding:18px 20px;">
+            <p style="margin:0;font-family:'Segoe UI', Inter, Arial, sans-serif;font-size:14px;line-height:1.6;color:#92400E;">
+              <strong style="color:#78350F;">Pro tip:</strong> Yearly and Lifetime plans include the showcase templates you previewed on the landing page.
+            </p>
+          </td>
+        </tr>
+      </table>
+    `,
+  });
 };
 
 export const getRenewalReminderEmail = (
@@ -357,16 +396,24 @@ export const getRenewalReminderEmail = (
   renewUrl: string,
   expiresLabel: string,
 ) => {
-  const content = `
-    <h2 class="content-title">Your Yearly plan renews soon</h2>
-    <p class="content-text">Hi ${userName},</p>
-    <p class="content-text">Your Bexo Annual Support Plan ${expiresLabel ? `expires on <strong>${expiresLabel}</strong>` : "is ending soon"}. Renew Yearly to keep your premium subdomain, templates, and storage without interruption.</p>
-    <div class="btn-container">
-      <a href="${renewUrl}" class="btn">Renew Yearly</a>
-    </div>
-    <p class="content-text">Renewing extends your current expiry by one year. Storage stays the same.</p>
-  `;
-  return wrapHtml("Renew your Bexo Yearly plan", content);
+  const expiryLine = expiresLabel
+    ? `Your Yearly plan expires on <strong style="color:${INK};">${escapeHtml(expiresLabel)}</strong>.`
+    : "Your Yearly plan is ending soon.";
+  return wrapHtml({
+    title: "Renew your BEXO Yearly plan",
+    preheader: `Renew before ${expiresLabel || "expiry"} to keep your subdomain and Pro features.`,
+    eyebrow: "Renewal reminder",
+    headline: "Keep your portfolio live without interruption.",
+    accent: "blue",
+    ctaLabel: "Renew Yearly",
+    ctaUrl: renewUrl,
+    bodyHtml: `
+      ${greeting(userName)}
+      ${bodyParagraph(expiryLine)}
+      ${bodyParagraph("Renewing extends your plan by one year — same subdomain, templates, and storage. No surprises.")}
+      ${featurePills(["Subdomain stays live", "Premium templates", "Storage retained"])}
+    `,
+  });
 };
 
 export const getContactNotificationEmail = (
@@ -377,31 +424,30 @@ export const getContactNotificationEmail = (
   message: string,
   handle: string,
 ) => {
-  const safeMessage = String(message || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/\n/g, "<br/>");
-  const content = `
-    <h2 class="content-title">New portfolio enquiry</h2>
-    <p class="content-text">Hi ${ownerName},</p>
-    <p class="content-text">Someone sent a message through your Bexo portfolio${handle ? ` (${handle}.mybexo.com)` : ""}.</p>
-    <table class="receipt-table">
-      <tr>
-        <td class="receipt-label">From</td>
-        <td class="receipt-val">${senderName}</td>
-      </tr>
-      <tr>
-        <td class="receipt-label">Email</td>
-        <td class="receipt-val">${senderEmail}</td>
-      </tr>
-      ${senderPhone ? `<tr><td class="receipt-label">Phone</td><td class="receipt-val">${senderPhone}</td></tr>` : ""}
-    </table>
-    <div class="highlight-box" style="text-align:left;">
-      <p class="highlight-label">Message</p>
-      <p class="content-text" style="margin:0;">${safeMessage}</p>
-    </div>
-    <p class="content-text">Reply directly to this email to continue the conversation with ${senderName}.</p>
-  `;
-  return wrapHtml("New portfolio enquiry", content);
+  const safeMessage = escapeHtml(message).replace(/\n/g, "<br/>");
+  const portfolioNote = handle
+    ? ` through <strong style="color:${INK};">${escapeHtml(handle)}.mybexo.cyou</strong>`
+    : "";
+  return wrapHtml({
+    title: "New portfolio enquiry",
+    preheader: `${senderName} sent you a message via BEXO.`,
+    eyebrow: "New message",
+    headline: "Someone reached out from your portfolio.",
+    accent: "emerald",
+    bodyHtml: `
+      ${greeting(ownerName)}
+      ${bodyParagraph(`You received a new enquiry${portfolioNote}.`)}
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:20px 0;border:1px solid #E2E8F0;border-radius:16px;overflow:hidden;">
+        <tr><td style="padding:14px 18px;background:#F8FAFC;font-size:13px;color:${MUTED};font-family:'Segoe UI', Inter, Arial, sans-serif;">From</td><td align="right" style="padding:14px 18px;background:#F8FAFC;font-size:14px;font-weight:600;color:${INK};font-family:'Segoe UI', Inter, Arial, sans-serif;">${escapeHtml(senderName)}</td></tr>
+        <tr><td style="padding:14px 18px;border-top:1px solid #F1F5F9;font-size:13px;color:${MUTED};font-family:'Segoe UI', Inter, Arial, sans-serif;">Email</td><td align="right" style="padding:14px 18px;border-top:1px solid #F1F5F9;font-size:14px;color:${INK};font-family:'Segoe UI', Inter, Arial, sans-serif;">${escapeHtml(senderEmail)}</td></tr>
+        ${
+          senderPhone
+            ? `<tr><td style="padding:14px 18px;border-top:1px solid #F1F5F9;font-size:13px;color:${MUTED};font-family:'Segoe UI', Inter, Arial, sans-serif;">Phone</td><td align="right" style="padding:14px 18px;border-top:1px solid #F1F5F9;font-size:14px;color:${INK};font-family:'Segoe UI', Inter, Arial, sans-serif;">${escapeHtml(senderPhone)}</td></tr>`
+            : ""
+        }
+      </table>
+      ${highlightCard("Message", safeMessage, "#ECFDF5")}
+      ${bodyParagraph(`Reply directly to this email to continue the conversation with ${escapeHtml(senderName)}.`)}
+    `,
+  });
 };
