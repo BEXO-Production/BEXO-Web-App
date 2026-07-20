@@ -9,6 +9,7 @@ import { BUNDLED_PREMIUM_TEMPLATES } from '../lib/templates';
 import { PLATFORM_DOMAIN, portfolioHostname } from '../lib/platform';
 import { UnclaimedHandleBanner } from '../components/UnclaimedHandleBanner';
 import { applyPageSeo, buildPortfolioPageJsonLd } from '../lib/seo';
+import { apiUrl } from '../lib/api';
 
 interface PublicPortfolioProps {
   handleOverride?: string;
@@ -53,8 +54,7 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
     if (!handle) return;
     const fetchPublicProfile = async () => {
       try {
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001';
-        const res = await fetch(`${apiUrl}/api/profile/public/${handle}`);
+        const res = await fetch(apiUrl(`/api/profile/public/${handle}`));
         if (!res.ok) {
           if (res.status === 404) {
             throw new Error('Portfolio not found');

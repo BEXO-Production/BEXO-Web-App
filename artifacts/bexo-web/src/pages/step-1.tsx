@@ -4,6 +4,7 @@ import { Input, Label } from '../design-system/primitives';
 import { Loader2, ArrowRight } from 'lucide-react';
 import { useLocation } from 'wouter';
 import { FaWhatsapp } from 'react-icons/fa';
+import { apiUrl } from '../lib/api';
 
 export default function Step1Phone() {
   const { data, updateData, nextStep, setToken } = useOnboarding();
@@ -46,10 +47,9 @@ export default function Step1Phone() {
     setIsSwooshingSend(true);
     
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001';
       const formattedPhone = phone.startsWith('91') && phone.length > 10 ? phone : `91${phone}`;
       
-      const res = await fetch(`${apiUrl}/api/auth/phone/otp`, {
+      const res = await fetch(apiUrl('/api/auth/phone/otp'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: formattedPhone })
@@ -65,7 +65,12 @@ export default function Step1Phone() {
       setCooldown(30);
     } catch (err: any) {
       setIsSwooshingSend(false);
-      setPhoneError(err.message || 'Failed to send OTP. Please check your connection or try again later.');
+      const msg = String(err?.message || '');
+      setPhoneError(
+        /load failed|failed to fetch|networkerror/i.test(msg)
+          ? 'Could not reach the server. Check your connection and try again.'
+          : msg || 'Failed to send OTP. Please check your connection or try again later.',
+      );
     }
   };
 
@@ -77,17 +82,16 @@ export default function Step1Phone() {
     setIsSwooshingVerify(true);
     
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001';
       const formattedPhone = phone.startsWith('91') && phone.length > 10 ? phone : `91${phone}`;
       
-      const res = await fetch(`${apiUrl}/api/auth/phone/otp/verify`, {
+      const res = await fetch(apiUrl('/api/auth/phone/otp/verify'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: formattedPhone, otp: otpCode })
       });
       
       if (!res.ok) {
-        const errorData = await res.json();
+        const errorData = await res.json().catch(() => ({}));
         throw new Error(errorData.error || 'Invalid OTP');
       }
       
@@ -103,7 +107,12 @@ export default function Step1Phone() {
         nextStep(1);
       }
     } catch (err: any) {
-      setOtpError(err.message || 'Verification failed. Please check your OTP.');
+      const msg = String(err?.message || '');
+      setOtpError(
+        /load failed|failed to fetch|networkerror/i.test(msg)
+          ? 'Could not reach the server. Check your connection and try again.'
+          : msg || 'Verification failed. Please check your OTP.',
+      );
     } finally {
       isSubmittingOtp.current = false;
       setIsVerifying(false);

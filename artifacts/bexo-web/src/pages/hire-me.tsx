@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useRoute } from "wouter";
 import { applyPageSeo, buildPortfolioPageJsonLd } from "@/lib/seo";
+import { apiUrl } from "@/lib/api";
 
 type PublicProfile = {
   profile: {
@@ -31,8 +32,6 @@ type PublicProfile = {
     socials?: { label: string; url: string }[];
   };
 };
-
-const apiBase = () => (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
 
 function Section({
   title,
@@ -68,7 +67,7 @@ export default function HireMePage({ handleOverride }: { handleOverride?: string
 
     let cancelled = false;
     setLoading(true);
-    fetch(`${apiBase()}/api/profile/public/${encodeURIComponent(handle)}`)
+    fetch(apiUrl(`/api/profile/public/${encodeURIComponent(handle)}`))
       .then(async (res) => {
         if (!res.ok) throw new Error("Portfolio not found.");
         return res.json();

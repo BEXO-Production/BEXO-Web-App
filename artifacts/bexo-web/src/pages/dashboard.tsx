@@ -58,6 +58,7 @@ import {
   PORTFOLIO_TEMPLATES,
 } from '../lib/templates';
 import { PLATFORM_DOMAIN, portfolioHostname, portfolioPublicUrl } from '../lib/platform';
+import { apiUrl } from '../lib/api';
 
 const TABS = [
   { id: 'about', label: 'About' },
@@ -2554,9 +2555,8 @@ export default function Dashboard() {
                                       onClick={async () => {
                                         setIsCompiling(true);
                                         try {
-                                          const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001';
                                           const token = localStorage.getItem('token');
-                                          const res = await fetch(`${apiUrl}/api/profile/generate-resume`, {
+                                          const res = await fetch(apiUrl('/api/profile/generate-resume'), {
                                             method: 'POST',
                                             headers: {
                                               'Authorization': `Bearer ${token}`

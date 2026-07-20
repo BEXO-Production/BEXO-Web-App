@@ -3,6 +3,7 @@ import { useOnboarding } from '../context/OnboardingContext';
 import { Button } from '../design-system/primitives';
 import { UploadCloud, FileText, CheckCircle2, Loader2, ArrowRight, Lightbulb } from 'lucide-react';
 import { cn } from '../design-system/primitives';
+import { apiUrl } from '../lib/api';
 
 const PARSING_STEPS = [
   "Uploading your resume secure file...",
@@ -93,10 +94,9 @@ export default function Step5Resume() {
     formData.append('resume', selectedFile);
 
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001';
       const token = localStorage.getItem('token');
 
-      const res = await fetch(`${apiUrl}/api/profile/resume`, {
+      const res = await fetch(apiUrl('/api/profile/resume'), {
         method: 'POST',
         headers: {
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
