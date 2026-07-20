@@ -113,7 +113,7 @@ const defaultData: OnboardingData = {
     customLinks: []
   },
   plan: null,
-  templateId: 'minimal',
+  templateId: 'cura-futuri',
   themeColor: 'blue',
   themeBg: 'grid',
   visitedTabs: [],

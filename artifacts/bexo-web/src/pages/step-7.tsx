@@ -5,18 +5,17 @@ import { Button, Card } from '../design-system/primitives';
 import { ArrowRight, CheckCircle2, Eye, X } from 'lucide-react';
 import { cn } from '../design-system/primitives';
 import {
-  PORTFOLIO_TEMPLATES,
+  DEFAULT_TEMPLATE_ID,
+  getDemoPreviewUrl,
+  getSelectableTemplates,
+  MARKETING_DEMO_HANDLE,
   THEMEABLE_TEMPLATE_IDS,
-  getTemplatePreviewUrl,
 } from '../lib/templates';
 
-const TEMPLATES = PORTFOLIO_TEMPLATES;
+const TEMPLATES = getSelectableTemplates();
 
 /** Premium template chosen before payment — applied automatically after the plan step. */
 export const PENDING_TEMPLATE_KEY = 'bexo_pending_template';
-
-const isTemplatePreviewable = (templateId: string) =>
-  TEMPLATES.find(t => t.id === templateId)?.previewable ?? false;
 
 const THEMES = [
   { id: 'blue', label: 'Navy', hex: 'bg-blue-600', textHex: 'text-blue-600' },
@@ -34,13 +33,17 @@ const THEME_BGS = [
 
 export default function Step7Theme() {
   const { data, updateData, nextStep } = useOnboarding();
-  const [selectedTemplate, setSelectedTemplate] = useState(data.templateId || 'minimal');
+  const initialTemplate =
+    TEMPLATES.some((t) => t.id === data.templateId)
+      ? (data.templateId as string)
+      : DEFAULT_TEMPLATE_ID;
+  const [selectedTemplate, setSelectedTemplate] = useState(initialTemplate);
   const [selectedTheme, setSelectedTheme] = useState(data.themeColor || 'blue');
   const [selectedThemeBg, setSelectedThemeBg] = useState(data.themeBg || 'grid');
   const [previewTemplate, setPreviewTemplate] = useState<string | null>(null);
   const [isSwooshing, setIsSwooshing] = useState(false);
   const showThemeOptions = THEMEABLE_TEMPLATE_IDS.has(selectedTemplate);
-  const previewHandle = data.handle || 'portfolio';
+  const previewLabel = `${MARKETING_DEMO_HANDLE}.mybexo.cyou`;
 
   const handleContinue = () => {
     const chosen = TEMPLATES.find(t => t.id === selectedTemplate);
@@ -66,11 +69,6 @@ export default function Step7Theme() {
     }, 600);
   };
 
-  const getThemeClass = (isBg = true) => {
-    const t = THEMES.find(t => t.id === selectedTheme);
-    return t ? (isBg ? t.hex : t.textHex) : 'bg-slate-900';
-  };
-
   return (
     <div className="flex flex-col h-full max-w-4xl w-full mx-auto pb-10">
       <div className="mb-8 text-center md:text-left flex flex-col md:flex-row justify-between items-end gap-6">
@@ -79,7 +77,7 @@ export default function Step7Theme() {
             Template & Theme
           </h1>
           <p className="text-slate-500 text-base md:text-lg">
-            Pick a layout and color palette for your public portfolio.
+            Preview every Pro layout with the BEXO demo portfolio, then pick yours.
           </p>
         </div>
         
@@ -136,7 +134,7 @@ export default function Step7Theme() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-6 flex-1">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6 flex-1">
         {TEMPLATES.map((tpl) => (
           <Card 
             key={tpl.id}
@@ -156,17 +154,15 @@ export default function Step7Theme() {
                 <div className="w-2 h-2 rounded-full bg-amber-400" />
                 <div className="w-2 h-2 rounded-full bg-green-400" />
                 <span className="text-[9px] text-slate-400 font-mono ml-2 truncate">
-                  {tpl.previewable
-                    ? getTemplatePreviewUrl(tpl.id, previewHandle).replace('https://', '')
-                    : `${tpl.id}.bexo — coming soon`}
+                  {previewLabel}
                 </span>
               </div>
               
-              {/* Miniature Website Iframe (or placeholder while renderer ships) */}
+              {/* Miniature Website Iframe — always demo portfolio */}
               {tpl.previewable ? (
                 <div className="w-[300%] h-[300%] origin-top-left scale-[0.333] pointer-events-none select-none shrink-0">
                   <iframe 
-                    src={getTemplatePreviewUrl(tpl.id, previewHandle)}
+                    src={getDemoPreviewUrl(tpl.id)}
                     title={`${tpl.id} Thumbnail`}
                     className="w-full h-full border-0"
                     tabIndex={-1}
@@ -197,7 +193,7 @@ export default function Step7Theme() {
                     className="bg-white/90 backdrop-blur border-white/50 text-slate-900 shadow-sm hover:bg-white"
                     onClick={(e) => { e.stopPropagation(); setPreviewTemplate(tpl.id); }}
                   >
-                    <Eye className="w-4 h-4 mr-2" /> {tpl.isPro ? 'Preview with your data' : 'Live Preview'}
+                    <Eye className="w-4 h-4 mr-2" /> Preview demo
                   </Button>
                 )}
               </div>
@@ -224,8 +220,8 @@ export default function Step7Theme() {
         <div className="mt-6 flex items-start gap-2.5 rounded-xl border border-indigo-100 bg-indigo-50/70 px-4 py-3">
           <CheckCircle2 className="w-4 h-4 text-indigo-500 mt-0.5 shrink-0" />
           <p className="text-xs text-indigo-900 leading-relaxed">
-            <span className="font-bold">Pro template selected.</span> You can preview it with your own
-            data now — it activates automatically once you pick a Pro plan at the final step.
+            <span className="font-bold">Pro template selected.</span> You are previewing the BEXO demo
+            portfolio — your choice activates automatically once you pick a Pro plan.
           </p>
         </div>
       )}
@@ -255,7 +251,7 @@ export default function Step7Theme() {
                 <div className="w-3 h-3 rounded-full bg-amber-400" />
                 <div className="w-3 h-3 rounded-full bg-green-400" />
                 <span className="ml-4 text-xs font-mono text-slate-500">
-                  {getTemplatePreviewUrl(previewTemplate, previewHandle).replace('https://', '')}
+                  {previewLabel} · {previewTemplate}
                 </span>
               </div>
               <Button variant="ghost" size="sm" onClick={() => setPreviewTemplate(null)}>
@@ -265,15 +261,9 @@ export default function Step7Theme() {
             
             <div className="flex-1 w-full h-full relative bg-slate-50">
               <iframe 
-                src={getTemplatePreviewUrl(previewTemplate, previewHandle)}
+                src={getDemoPreviewUrl(previewTemplate)}
                 title={`${previewTemplate} Preview`}
                 className="w-full h-full rounded-b-xl border-none bg-white"
-                onLoad={(e) => {
-                  if (data) {
-                    const iframeWindow = (e.target as HTMLIFrameElement).contentWindow;
-                    iframeWindow?.postMessage({ type: 'BEXO_PROFILE_UPDATE', profile: data }, '*');
-                  }
-                }}
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
                 allowFullScreen
               />

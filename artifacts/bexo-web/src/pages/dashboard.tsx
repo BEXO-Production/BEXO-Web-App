@@ -48,9 +48,15 @@ import { Calendar } from '../components/ui/calendar';
 import { format } from 'date-fns';
 import { Calendar as CalendarIcon } from 'lucide-react';
 import {
+  DEFAULT_TEMPLATE_ID,
+  FREE_FALLBACK_TEMPLATE_ID,
+  getDemoPreviewUrl,
+  getSelectableTemplates,
+  isPremiumTemplate,
+  MARKETING_DEMO_HANDLE,
   PORTFOLIO_TEMPLATES,
-  getTemplatePreviewUrl,
 } from '../lib/templates';
+import { PLATFORM_DOMAIN, portfolioHostname, portfolioPublicUrl } from '../lib/platform';
 
 const TABS = [
   { id: 'about', label: 'About' },
@@ -69,8 +75,6 @@ const THEMES = [
   { id: 'rose', label: 'Rose', hex: 'bg-rose-600', textHex: 'text-rose-600' },
   { id: 'violet', label: 'Violet', hex: 'bg-violet-600', textHex: 'text-violet-600' },
 ];
-
-const TEMPLATES = PORTFOLIO_TEMPLATES;
 
 type BillingStatus = {
   plan: 'annual' | 'lifetime' | null;
@@ -238,6 +242,18 @@ export default function Dashboard() {
 
   // URL management — local subdomains use *.localhost:5001; production uses mybexo.cyou
   const handleString = data.handle || (data.name ? data.name.toLowerCase().replace(/[^a-z0-9]/g, '') : 'portfolio');
+  const TEMPLATES = getSelectableTemplates(!!data.isPremium);
+  const activeTemplateId = isPremiumTemplate(data.templateId)
+    ? (data.templateId as string)
+    : data.isPremium
+      ? DEFAULT_TEMPLATE_ID
+      : FREE_FALLBACK_TEMPLATE_ID;
+  const activeTemplateMeta =
+    PORTFOLIO_TEMPLATES.find((t) => t.id === activeTemplateId) ||
+    PORTFOLIO_TEMPLATES.find((t) => t.id === DEFAULT_TEMPLATE_ID);
+
+  const demoPreviewHost = `${MARKETING_DEMO_HANDLE}.${PLATFORM_DOMAIN}`;
+  const livePortfolioHref = portfolioPublicUrl(handleString);
   const isLocalHost =
     typeof window !== 'undefined' &&
     (window.location.hostname === 'localhost' ||
@@ -247,16 +263,23 @@ export default function Dashboard() {
   const url = data.isPremium
     ? isLocalHost
       ? `${handleString}.localhost:${localApiPort}`
-      : `${handleString}.mybexo.cyou`
+      : portfolioHostname(handleString)
     : isLocalHost
       ? `${window.location.host}/${handleString}`
-      : `mybexo.cyou/${handleString}`;
+      : `${PLATFORM_DOMAIN}/${handleString}`;
   const correctVisitUrl = data.isPremium
     ? isLocalHost
       ? `http://${handleString}.localhost:${localApiPort}/`
-      : `https://${handleString}.mybexo.cyou`
+      : livePortfolioHref
     : `${window.location.protocol}//${window.location.host}/${handleString}`;
   const [copied, setCopied] = useState(false);
+
+  // Premium accounts never keep Minimal — migrate picker selection to a Pro layout.
+  useEffect(() => {
+    if (!data.isPremium) return;
+    if (isPremiumTemplate(data.templateId)) return;
+    updateData({ templateId: DEFAULT_TEMPLATE_ID });
+  }, [data.isPremium, data.templateId, updateData]);
 
   useEffect(() => {
     if (data.openToHire) {
@@ -1271,25 +1294,6 @@ export default function Dashboard() {
     return null;
   };
 
-  const renderMinimalMockup = (accentBg: string) => (
-    <div className="w-full h-full bg-slate-50 border border-slate-200/60 rounded-lg p-2.5 flex flex-col items-center justify-center relative overflow-hidden select-none">
-      {/* Circle avatar */}
-      <div className={`w-8 h-8 rounded-full ${accentBg} opacity-20 flex items-center justify-center mb-1.5 border border-slate-350`}>
-        <User className="w-4 h-4 text-slate-700" />
-      </div>
-      {/* Title */}
-      <div className={`h-2.5 w-16 ${accentBg} rounded mb-1`} />
-      {/* Description lines */}
-      <div className="h-1.5 w-24 bg-slate-300/60 rounded mb-1" />
-      <div className="h-1.5 w-20 bg-slate-300/40 rounded mb-2.5" />
-      {/* Single full column list items */}
-      <div className="w-full space-y-1">
-        <div className="h-2 w-full bg-white border border-slate-200 rounded-sm" />
-        <div className="h-2 w-full bg-white border border-slate-200 rounded-sm" />
-      </div>
-    </div>
-  );
-
   const renderAcademicMockup = (accentBg: string) => (
     <div className="w-full h-full bg-slate-50 border border-slate-200/60 rounded-lg p-2 flex gap-2 relative overflow-hidden select-none">
       {/* Left side info column */}
@@ -1704,7 +1708,7 @@ export default function Dashboard() {
                   <div className="flex items-center gap-3 mb-4">
                     <div className={cn("w-6 h-6 rounded-full border border-slate-200", getThemeClass())} />
                     <div>
-                      <h4 className="font-semibold text-slate-900 capitalize text-sm">{data.templateId || 'Minimal'} Layout</h4>
+                      <h4 className="font-semibold text-slate-900 capitalize text-sm">{activeTemplateMeta?.name || 'Pro'} Layout</h4>
                       <p className="text-xs text-slate-500 capitalize">Theme accent: {data.themeColor || 'Navy'}</p>
                     </div>
                   </div>
@@ -3094,8 +3098,8 @@ export default function Dashboard() {
 
                 {settingsSubTab === 'design' && (
                   <div className="space-y-6 animate-in fade-in duration-200">
-                    {/* Theme + background — Minimal (free) and Cura Futuri honor these */}
-                    {PORTFOLIO_TEMPLATES.some((t) => t.id === (data.templateId || 'minimal')) && (
+                    {/* Theme + background — Pro layouts honor these */}
+                    {PORTFOLIO_TEMPLATES.some((t) => t.id === activeTemplateId) && (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-4">
                           <div>
@@ -3187,7 +3191,7 @@ export default function Dashboard() {
 
                         <div className="flex flex-col gap-3">
                           {TEMPLATES.map(tpl => {
-                            const isSelected = data.templateId === tpl.id;
+                            const isSelected = activeTemplateId === tpl.id;
                             const accentBg = getThemeClass(true);
                             const isLocked = !data.isPremium && tpl.isPro;
                             return (
@@ -3210,7 +3214,6 @@ export default function Dashboard() {
                                     <span className="w-1 h-1 rounded-full bg-green-400" />
                                   </div>
                                   <div className="flex-1 p-1">
-                                    {tpl.id === 'minimal' && renderMinimalMockup(accentBg)}
                                     {tpl.id === 'cura-futuri' && renderCreativeMockup(accentBg)}
                                     {tpl.id === 'sierra-montana' && renderAcademicMockup(accentBg)}
                                     {tpl.id === 'nico-palmer' && renderNicoMockup(accentBg)}
@@ -3235,7 +3238,7 @@ export default function Dashboard() {
                                       onClick={(e) => { e.stopPropagation(); setPreviewTemplateId(tpl.id); }}
                                       className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-wider transition-colors"
                                     >
-                                      <Eye className="w-3 h-3" /> Preview with your data
+                                      <Eye className="w-3 h-3" /> Preview demo
                                     </button>
                                   ) : (
                                     <span className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-bold text-slate-300 uppercase tracking-wider">
@@ -3257,7 +3260,7 @@ export default function Dashboard() {
                           <div className="flex items-start gap-2.5 rounded-xl border border-indigo-100 bg-indigo-50/60 px-3.5 py-2.5">
                             <Crown className="w-4 h-4 text-indigo-500 mt-0.5 shrink-0" />
                             <p className="text-[11px] text-indigo-900 leading-relaxed">
-                              Preview any Pro template with your live content for free.
+                              Preview every Pro layout with the BEXO demo portfolio.
                               Publishing on a Pro template needs an active Pro plan.
                             </p>
                           </div>
@@ -3265,7 +3268,7 @@ export default function Dashboard() {
 
                         {/* Open portfolio link */}
                         <a
-                          href={`/${handleString}`}
+                          href={data.isPremium ? correctVisitUrl : `/${handleString}`}
                           target="_blank"
                           rel="noreferrer"
                           className="flex items-center justify-center gap-1.5 w-full py-2.5 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-755 text-xs font-bold hover:bg-indigo-100 transition-colors mt-1"
@@ -3274,12 +3277,12 @@ export default function Dashboard() {
                         </a>
                       </Card>
 
-                      {/* Right: Live iframe Preview — everyone sees their current live site */}
+                      {/* Right: Live iframe Preview */}
                       <div className="lg:col-span-3 flex flex-col gap-2">
                         <div className="flex items-center justify-between px-1">
                           <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Live Preview</span>
                           <span className="text-[11px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full font-medium truncate max-w-[55%]">
-                            mybexo.cyou/{handleString}
+                            {demoPreviewHost}
                           </span>
                         </div>
 
@@ -3295,17 +3298,18 @@ export default function Dashboard() {
                             <div className="flex-1 mx-2">
                               <div className="h-5 bg-white rounded-md border border-slate-200 flex items-center px-2.5 gap-1.5">
                                 <Globe className="w-3 h-3 text-slate-400 shrink-0" />
-                                <span className="text-[11px] text-slate-500 font-medium truncate">mybexo.cyou/{handleString}</span>
+                                <span className="text-[11px] text-slate-500 font-medium truncate">
+                                  {demoPreviewHost}
+                                </span>
                               </div>
                             </div>
                           </div>
 
-                          {/* Responsive scaled iframe: renders at 2x container width so
-                              phones get a tablet-ish viewport instead of overflowing */}
+                          {/* Responsive scaled iframe */}
                           <div className="relative w-full overflow-hidden h-[380px] md:h-[520px]">
                             <iframe
-                              key={`${data.templateId || 'minimal'}-${data.themeColor || 'indigo'}-${data.themeBg || 'grid'}`}
-                              src={getTemplatePreviewUrl(data.templateId || 'minimal', handleString)}
+                              key={`${activeTemplateId}-${data.themeColor || 'indigo'}-${data.themeBg || 'grid'}-demo`}
+                              src={getDemoPreviewUrl(activeTemplateId)}
                               title="Live Portfolio Preview"
                               className="absolute top-0 left-0 border-0 bg-white"
                               style={{
@@ -3316,18 +3320,12 @@ export default function Dashboard() {
                                 pointerEvents: 'none'
                               }}
                               sandbox="allow-scripts allow-same-origin"
-                              onLoad={(e) => {
-                                if (data) {
-                                  const iframeWindow = (e.target as HTMLIFrameElement).contentWindow;
-                                  iframeWindow?.postMessage({ type: 'BEXO_PROFILE_UPDATE', profile: data }, '*');
-                                }
-                              }}
                             />
                           </div>
                         </div>
 
                         <p className="text-[11px] text-slate-400 text-center">
-                          This preview reflects your live portfolio. Changes to template or color take effect after saving.
+                          Template demos use the BEXO showcase portfolio at {demoPreviewHost}. Use Open Live Portfolio for your public URL.
                         </p>
                       </div>
                     </div>
@@ -3757,7 +3755,7 @@ export default function Dashboard() {
                     <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0">Pro</span>
                   )}
                   <span className="hidden sm:inline text-[11px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full font-medium truncate">
-                    Your live data
+                    {demoPreviewHost}
                   </span>
                 </div>
                 <button
@@ -3773,8 +3771,8 @@ export default function Dashboard() {
               {/* Iframe */}
               <div className="flex-1 w-full relative bg-white">
                 <iframe
-                  src={getTemplatePreviewUrl(tpl.id, handleString)}
-                  title={`${tpl.name} preview with your data`}
+                  src={getDemoPreviewUrl(tpl.id)}
+                  title={`${tpl.name} preview`}
                   className="w-full h-full border-0 bg-white"
                   allow="clipboard-write"
                 />
@@ -3786,7 +3784,7 @@ export default function Dashboard() {
                   <>
                     <p className="text-xs text-slate-500 leading-snug flex items-center gap-2">
                       <Crown className="w-4 h-4 text-indigo-500 shrink-0" />
-                      This is a live preview with your own content. Upgrade to Pro to publish it.
+                      Previewing the BEXO demo portfolio. Upgrade to Pro to publish this layout as yours.
                     </p>
                     <Button
                       onClick={() => { setPreviewTemplateId(null); openBilling(); }}
@@ -3798,9 +3796,9 @@ export default function Dashboard() {
                 ) : (
                   <>
                     <p className="text-xs text-slate-500 leading-snug">
-                      Previewing with your live portfolio content.
+                      Demo layout at {demoPreviewHost}. Select a template to apply it to your portfolio.
                     </p>
-                    {data.templateId !== tpl.id && (
+                    {activeTemplateId !== tpl.id && (
                       <Button
                         onClick={() => { handleTemplateSelect(tpl.id); setPreviewTemplateId(null); }}
                         className="h-10 px-5 text-sm font-bold shrink-0"

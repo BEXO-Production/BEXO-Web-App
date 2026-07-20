@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 
 export const FREE_STORAGE_BYTES = 10 * 1024 * 1024;
 export const ANNUAL_STORAGE_BYTES = 100 * 1024 * 1024; // Yearly base
-export const LIFETIME_STORAGE_BYTES = 500 * 1024 * 1024; // Lifetime base — Yearly add-on stacks +100MB
+export const LIFETIME_STORAGE_BYTES = 50 * 1024 * 1024; // Lifetime base — Yearly add-on stacks +100MB
 
 
 

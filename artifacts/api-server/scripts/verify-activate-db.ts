@@ -72,9 +72,9 @@ async function main() {
     if (stacked.plan !== "lifetime") throw new Error("Plan should stay lifetime");
     if (stacked.storageBonusBytes !== ANNUAL_STORAGE_BYTES) throw new Error("Bonus should be +100MB");
     if (stacked.storageQuotaBytes !== LIFETIME_STORAGE_BYTES + ANNUAL_STORAGE_BYTES) {
-      throw new Error(`Expected 600MB quota, got ${stacked.storageQuotaBytes}`);
+      throw new Error(`Expected 150MB quota, got ${stacked.storageQuotaBytes}`);
     }
-    console.log("OK  lifetime → annual add-on stacks to 600MB");
+    console.log("OK  lifetime → annual add-on stacks to 150MB");
 
     // Annual renew: switch to annual, renew, quota unchanged
     const expires = addAnnualTerm(new Date());

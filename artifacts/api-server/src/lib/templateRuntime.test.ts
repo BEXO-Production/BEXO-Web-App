@@ -98,3 +98,21 @@ test("injects bootstrap into nested HTML shells", () => {
   assert.match(result, /window\.__BEXO_PROFILE__/);
   assert.match(result, /window\.__BEXO_BASE_PATH__ = "\/api\/render\/kavin\/sierra-montana"/);
 });
+
+test("injects Open Graph tags for portfolio sharing", () => {
+  const html = "<html><head><title>Old</title></head><body></body></html>";
+  const result = injectPortfolioBootstrap(
+    html,
+    {
+      profile: { handle: "kavin", headline: "CS student · Full-stack" },
+      user: { name: "Kavin Balaji", photoUrl: "https://cdn.example/photo.jpg" },
+    },
+    "/",
+  );
+
+  assert.match(result, /<title>Kavin Balaji — Portfolio on BEXO<\/title>/);
+  assert.match(result, /property="og:title" content="Kavin Balaji — Portfolio on BEXO"/);
+  assert.match(result, /property="og:image" content="https:\/\/cdn\.example\/photo\.jpg"/);
+  assert.match(result, /property="og:url" content="https:\/\/kavin\.mybexo\.cyou"/);
+  assert.match(result, /name="twitter:card" content="summary_large_image"/);
+});

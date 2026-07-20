@@ -31,35 +31,46 @@ const FALLBACK_PLANS: PricingPlanRow[] = [
   {
     id: "free",
     displayName: "Free",
-    subtitle: "Publish with the minimal template",
+    subtitle: "Publish a path-based portfolio",
     priceInrExGst: 0,
     storageBytes: 10 * 1024 * 1024,
     isPurchasable: true,
     sortOrder: 0,
     isHighlighted: false,
-    features: ["10MB storage", "Minimal template", "mybexo.cyou link"],
+    features: ["10MB storage", "Path-based portfolio", "mybexo.cyou link"],
   },
   {
     id: "annual",
     displayName: "Yearly",
-    subtitle: "Best for placements season",
+    subtitle: "Best for students & professionals",
     priceInrExGst: 1499,
     storageBytes: 100 * 1024 * 1024,
     isPurchasable: true,
     sortOrder: 1,
     isHighlighted: true,
-    features: ["100MB storage", "Premium templates", "Custom subdomain", "Hire Me page"],
+    features: [
+      "Premium templates",
+      "100MB cloud storage base",
+      "yourname.mybexo.cyou",
+      "AI resume parses",
+      "Renew extends access 1 year",
+    ],
   },
   {
     id: "lifetime",
     displayName: "Lifetime",
-    subtitle: "Pay once, keep forever",
+    subtitle: "Best for students & professionals",
     priceInrExGst: 2999,
-    storageBytes: 500 * 1024 * 1024,
+    storageBytes: 50 * 1024 * 1024,
     isPurchasable: true,
     sortOrder: 2,
     isHighlighted: false,
-    features: ["500MB storage", "Premium templates", "Custom subdomain", "Stack Yearly for +100MB"],
+    features: [
+      "Everything in Yearly (templates & subdomain)",
+      "50MB storage base",
+      "No renewals for Pro access",
+      "Forever hosting",
+    ],
   },
 ];
 
@@ -142,7 +153,7 @@ export async function getPlanStorageBytes(plan: PublicPlanId): Promise<number> {
   const row = await getPlanById(plan);
   if (row) return row.storageBytes;
   if (plan === "annual") return 100 * 1024 * 1024;
-  if (plan === "lifetime") return 500 * 1024 * 1024;
+  if (plan === "lifetime") return 50 * 1024 * 1024;
   return 10 * 1024 * 1024;
 }
 

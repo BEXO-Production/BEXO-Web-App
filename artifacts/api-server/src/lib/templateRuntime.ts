@@ -1,5 +1,6 @@
 import { existsSync, statSync } from "node:fs";
 import path from "node:path";
+import { injectShareMetaIntoHtml } from "./shareMeta";
 
 const EXTENSION_PATTERN = /\.[a-z0-9]+$/i;
 
@@ -36,9 +37,12 @@ window.__BEXO_PROFILE__ = ${serializeForInlineScript(profile)};
 window.__BEXO_BASE_PATH__ = ${serializeForInlineScript(normalizedBase)};
 </script>`;
 
-  return prepared.includes("</head>")
+  prepared = prepared.includes("</head>")
     ? prepared.replace("</head>", `${injection}</head>`)
     : `${injection}${prepared}`;
+
+  // WhatsApp / LinkedIn / Twitter read these from the HTML response (no JS).
+  return injectShareMetaIntoHtml(prepared, profile);
 }
 
 export function resolveTemplateFile(bundleRoot: string, requestPath: string): string | null {

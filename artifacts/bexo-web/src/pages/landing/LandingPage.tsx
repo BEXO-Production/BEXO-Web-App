@@ -117,7 +117,7 @@ const FEATURES = [
   {
     icon: HardDrive,
     title: "Storage that scales with you",
-    body: "10MB free · 100MB Yearly · 500MB Lifetime — stack Yearly on Lifetime for +100MB anytime.",
+    body: "10MB free · 100MB Yearly · 50MB Lifetime — stack Yearly on Lifetime for +100MB anytime.",
   },
   {
     icon: Briefcase,
@@ -133,8 +133,8 @@ function buildPlans(prices: { annual: number; lifetime: number }) {
       name: "Free",
       price: "₹0",
       period: "forever",
-      blurb: "Publish a clean Minimal portfolio and prove the flow.",
-      features: ["Minimal template", "10MB storage", "Path-based portfolio", "Hire Me page"],
+      blurb: "Publish a path-based portfolio and prove the flow.",
+      features: ["Path-based portfolio", "10MB storage", "Hire Me page", "Upgrade to Pro anytime"],
       cta: "Start free",
       promoted: false,
     },
@@ -144,9 +144,9 @@ function buildPlans(prices: { annual: number; lifetime: number }) {
       price: `₹${prices.annual.toLocaleString("en-IN")}`,
       period: "/year",
       note: "+ 18% GST",
-      blurb: "Best for students — full Pro templates and 100MB cloud storage.",
+      blurb: "Best for students & professionals — full Pro templates and 100MB cloud storage.",
       features: [
-        "Cura · Sierra · Nico templates",
+        "Premium templates",
         "100MB cloud storage base",
         "yourname.mybexo.cyou",
         "AI resume parses",
@@ -161,12 +161,11 @@ function buildPlans(prices: { annual: number; lifetime: number }) {
       price: `₹${prices.lifetime.toLocaleString("en-IN")}`,
       period: "once",
       note: "+ 18% GST",
-      blurb: "Pay once. Keep Pro access forever — stack Yearly for more storage.",
+      blurb: "Best for students & professionals — pay once, keep Pro access forever.",
       features: [
         "Everything in Yearly (templates & subdomain)",
-        "500MB storage base",
+        "50MB storage base",
         "No renewals for Pro access",
-        "Optional Yearly add-on = +100MB",
         "Forever hosting",
       ],
       cta: "Go Lifetime",
@@ -284,7 +283,7 @@ export default function LandingPage() {
         <div className="mt-12 grid gap-6 md:grid-cols-3">
           {[
             { n: "01", icon: Upload, t: "Sign in & upload", d: "WhatsApp OTP, link Google if you want, drop your resume." },
-            { n: "02", icon: Zap, t: "Review & design", d: "Edit every section. Start on Minimal free — or unlock Pro design systems." },
+            { n: "02", icon: Zap, t: "Review & design", d: "Edit every section. Preview Pro layouts on the BEXO demo — unlock to publish yours." },
             { n: "03", icon: Globe, t: "Publish & share", d: "Go live on your subdomain. Send Hire Me to recruiters." },
           ].map((step, i) => (
             <Reveal key={step.n} delay={i} lift>
@@ -348,11 +347,11 @@ export default function LandingPage() {
           <article className="overflow-hidden rounded-2xl border border-dashed border-white/15 bg-gradient-to-br from-white/[0.04] to-transparent p-6 sm:flex sm:items-center sm:gap-8 sm:p-8">
             <div className="flex-1">
               <span className="w-fit rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-300">
-                Free · Minimal
+                Free · Path URL
               </span>
               <h3 className="mt-3 font-serif text-2xl font-bold text-white">Start free, upgrade when ready</h3>
               <p className="landing-muted mt-2 text-sm leading-relaxed">
-                Every account begins on Minimal. Unlock Cura Futuri, Sierra Montana, and Nico Palmer anytime with Yearly or Lifetime.
+                Preview Cura Futuri, Sierra Montana, and Nico Palmer on the demo portfolio. Publish them on your subdomain with Yearly or Lifetime.
               </p>
             </div>
             <div className="mt-5 flex shrink-0 flex-col gap-2 sm:mt-0 sm:items-end">
@@ -378,15 +377,15 @@ export default function LandingPage() {
             <h2 className="mt-3 font-serif text-3xl font-bold text-slate-900 sm:text-5xl">Simple plans. Serious presence.</h2>
             <p className="mt-3 max-w-xl text-slate-600">
               Yearly is recommended for most students — ₹{prices.annual.toLocaleString("en-IN")}/year with 100MB.
-              Lifetime is ₹{prices.lifetime.toLocaleString("en-IN")} once with 500MB; stack Yearly anytime for +100MB.
+              Lifetime is ₹{prices.lifetime.toLocaleString("en-IN")} once with 50MB base; stack Yearly anytime for +100MB.
             </p>
           </Reveal>
 
           <Reveal lift className="mt-8 grid gap-3 sm:grid-cols-3">
             {[
-              { k: "Free", v: "10MB", d: "Minimal forever" },
+              { k: "Free", v: "10MB", d: "Path URL forever" },
               { k: "Yearly", v: "100MB", d: `₹${prices.annual.toLocaleString("en-IN")}/yr` },
-              { k: "Lifetime", v: "500MB+", d: `₹${prices.lifetime.toLocaleString("en-IN")} · stackable` },
+              { k: "Lifetime", v: "50MB+", d: `₹${prices.lifetime.toLocaleString("en-IN")} · stackable` },
             ].map((item) => (
               <div
                 key={item.k}
@@ -449,7 +448,7 @@ export default function LandingPage() {
             <Shield className="mt-0.5 h-5 w-5 shrink-0 text-[#2F6BFF]" />
             <p>
               Payments via Razorpay. Prices shown exclude 18% GST. Already on Yearly? Renew extends your date (storage stays 100MB).
-              On Lifetime? Buying Yearly adds +100MB on top of your 500MB base. See our{" "}
+              On Lifetime? Buying Yearly adds +100MB on top of your 50MB base. See our{" "}
               <Link href="/refund" className="font-semibold text-[#2F6BFF] underline-offset-2 hover:underline">
                 Refund Policy
               </Link>

@@ -56,6 +56,36 @@ app.use(
   }),
 );
 
+function resolveOgAssetsDir(): string {
+  const candidates = [
+    path.resolve(process.cwd(), "public", "og"),
+    path.resolve(process.cwd(), "artifacts", "api-server", "public", "og"),
+  ];
+  return candidates.find((dir) => existsSync(dir)) || candidates[0];
+}
+
+app.use(
+  "/api/og",
+  express.static(resolveOgAssetsDir(), {
+    maxAge: process.env.NODE_ENV === "production" ? "7d" : 0,
+  }),
+);
+
+function resolveClaimAssetsDir(): string {
+  const candidates = [
+    path.resolve(process.cwd(), "public", "claim"),
+    path.resolve(process.cwd(), "artifacts", "api-server", "public", "claim"),
+  ];
+  return candidates.find((dir) => existsSync(dir)) || candidates[0];
+}
+
+app.use(
+  "/api/claim-assets",
+  express.static(resolveClaimAssetsDir(), {
+    maxAge: process.env.NODE_ENV === "production" ? "7d" : 0,
+  }),
+);
+
 // Subdomain Gateway Router MUST come before other routes
 app.use(subdomainRouter);
 

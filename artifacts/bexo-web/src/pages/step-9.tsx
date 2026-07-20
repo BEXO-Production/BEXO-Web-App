@@ -9,7 +9,7 @@ import { useToast } from '../hooks/use-toast';
 import { buildMinimalPortfolioHTML } from '../lib/buildMinimalHTML';
 import { PENDING_TEMPLATE_KEY } from './step-7';
 import { JUST_ACTIVATED_KEY } from './welcome';
-import { PORTFOLIO_TEMPLATES } from '../lib/templates';
+import { PORTFOLIO_TEMPLATES, FREE_FALLBACK_TEMPLATE_ID } from '../lib/templates';
 import {
   ANNUAL_STORAGE_BYTES,
   LIFETIME_STORAGE_BYTES,
@@ -430,7 +430,7 @@ export default function Step9Plan() {
         headers,
         body: JSON.stringify({
           handle: freeHandle.trim().toLowerCase(),
-          templateId: 'minimal',
+          templateId: FREE_FALLBACK_TEMPLATE_ID,
           themeColor: freeTheme,
           themeBg: freeThemeBg
         })
@@ -454,7 +454,7 @@ export default function Step9Plan() {
       localStorage.removeItem(PENDING_TEMPLATE_KEY);
       updateData({
         handle: freeHandle.trim().toLowerCase(),
-        templateId: 'minimal',
+        templateId: FREE_FALLBACK_TEMPLATE_ID,
         themeColor: freeTheme,
         themeBg: freeThemeBg,
         plan: 'free',
@@ -597,7 +597,7 @@ export default function Step9Plan() {
             {
               pct: '90%',
               title: 'Less Storage Space',
-              desc: 'Your storage limit drops to 10MB (Pro offers 500MB lifetime / 100MB annual).',
+              desc: 'Your storage limit drops to 10MB (Pro offers 50MB Lifetime / 100MB Yearly).',
             },
             {
               icon: <X className="w-4 h-4 text-red-600" />,
@@ -607,7 +607,7 @@ export default function Step9Plan() {
             {
               icon: <X className="w-4 h-4 text-red-600" />,
               title: 'Locked Premium Templates',
-              desc: `Only Minimal is free. ${PORTFOLIO_TEMPLATES.filter((t) => t.isPro).map((t) => t.name).join(', ')} need Pro.`,
+              desc: `Free publishes a basic path URL. Pro unlocks ${PORTFOLIO_TEMPLATES.map((t) => t.name).join(', ')} on yourname.mybexo.cyou.`,
             },
             {
               icon: <X className="w-4 h-4 text-red-600" />,
@@ -1095,20 +1095,21 @@ export default function Step9Plan() {
                   ? [
                       '+100MB stacked cloud storage',
                       'Lifetime access unchanged',
-                      'Cura Futuri, Sierra Montana & Nico Palmer templates',
+                      'Premium templates',
                     ]
                   : renewalMode === 'renew'
                     ? [
                         'Extend access by 1 year from current expiry',
                         'Keep your current storage quota',
-                        'Personalized subdomain (yourname.mybexo.cyou)',
-                        'Cura Futuri, Sierra Montana & Nico Palmer templates',
+                        'yourname.mybexo.cyou',
+                        'Premium templates',
                       ]
                     : [
-                        '100MB Cloud Storage space capacity',
-                        '3 AI Resume Parses per month (resets every 30 days)',
-                        'Personalized subdomain (yourname.mybexo.cyou)',
-                        'Cura Futuri, Sierra Montana & Nico Palmer templates',
+                        'Premium templates',
+                        '100MB cloud storage base',
+                        'yourname.mybexo.cyou',
+                        'AI resume parses',
+                        'Renew extends access 1 year',
                       ]
                 ).map((feat, i) => (
                   <li key={i} className="flex items-center text-xs text-slate-600">
@@ -1137,7 +1138,7 @@ export default function Step9Plan() {
                   <h3 className="text-xl font-bold text-slate-900 flex items-center gap-1.5">
                     Lifetime Pro
                   </h3>
-                  <p className="text-xs text-indigo-600 font-bold mt-0.5">Expose your skills & profile forever</p>
+                  <p className="text-xs text-indigo-600 font-bold mt-0.5">Best for students & professionals</p>
                 </div>
                 <div className="text-right">
                   <span className="text-2xl font-bold text-slate-900">₹{prices.lifetime.toLocaleString('en-IN')}</span>
@@ -1147,12 +1148,11 @@ export default function Step9Plan() {
               <p className="text-xs text-slate-500 mb-4">Pay once, hosting & live portfolio is yours for life.</p>
               <ul className="space-y-2">
                 {[
-                  '500MB Premium Cloud Storage (photos & assets)',
-                  'Stack +100MB anytime with a Yearly add-on',
-                  '1 AI Resume Parse per month (resets every 30 days)',
-                  'Personalized subdomain (yourname.mybexo.cyou)',
-                  'Cura Futuri, Sierra Montana & Nico Palmer templates',
-                  'Portfolio visibility to placement cells'
+                  'Everything in Yearly (templates & subdomain)',
+                  '50MB storage base',
+                  'No renewals for Pro access',
+                  'Forever hosting',
+                  'Optional Yearly add-on = +100MB storage',
                 ].map((feat, i) => (
                   <li key={i} className="flex items-center text-xs text-slate-600">
                     <Check className="w-4 h-4 text-emerald-500 mr-2 shrink-0" /> {feat}

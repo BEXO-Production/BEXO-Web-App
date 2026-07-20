@@ -23,6 +23,15 @@
     "trailingSlash": false,
     "headers": [
       {
+        "source": "/og-*.jpg",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=604800"
+          }
+        ]
+      },
+      {
         "source": "/assets/**/*.@(js|css|svg|png|jpg|jpeg|gif|ico|woff|woff2|ttf|eot)",
         "headers": [
           {

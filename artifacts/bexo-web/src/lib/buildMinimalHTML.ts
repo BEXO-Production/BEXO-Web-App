@@ -302,12 +302,36 @@ export function buildMinimalPortfolioHTML(data: OnboardingData, themeColor: stri
     ? `<div class="contact-bar anim">${contactParts.join('')}</div>`
     : '';
 
+  const shareTitle = `${name || handleStr} — Portfolio on BEXO`;
+  const aboutBlurb = aboutEntries
+    .map((a: any) => a.description || '')
+    .filter(Boolean)
+    .join(' ')
+    .slice(0, 160);
+  const shareDesc = esc(headline || bio || aboutBlurb || `${name}'s professional portfolio on BEXO`);
+  const shareImage = photoUrl?.startsWith('http')
+    ? esc(photoUrl)
+    : 'https://mybexo.cyou/og-portfolio.jpg';
+  const shareUrl = `https://${handleStr}.mybexo.cyou`;
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${name} | mybexo.cyou/${handleStr}</title>
+  <title>${esc(shareTitle)}</title>
+  <meta name="description" content="${shareDesc}" />
+  <meta property="og:site_name" content="BEXO" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="${esc(shareTitle)}" />
+  <meta property="og:description" content="${shareDesc}" />
+  <meta property="og:url" content="${shareUrl}" />
+  <meta property="og:image" content="${shareImage}" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="${esc(shareTitle)}" />
+  <meta name="twitter:description" content="${shareDesc}" />
+  <meta name="twitter:image" content="${shareImage}" />
+  <link rel="canonical" href="${shareUrl}" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet" />

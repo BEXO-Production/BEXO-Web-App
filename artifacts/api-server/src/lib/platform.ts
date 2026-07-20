@@ -12,9 +12,32 @@ export const PLATFORM_APEX_HOSTS = new Set([
   `www.${PLATFORM_DOMAIN}`,
 ]);
 
-export function getRequestHost(hostname: string, forwardedHost?: string | null): string {
-  const raw = (forwardedHost || hostname || "").split(",")[0]?.trim() || hostname;
-  return raw.replace(/:\d+$/, "").toLowerCase();
+function cleanHost(value: string): string {
+  return value.replace(/:\d+$/, "").toLowerCase().trim();
+}
+
+/**
+ * Prefer visitor host from Worker/LB headers. Cloud Run often prepends its own
+ * *.run.app host to X-Forwarded-Host — pick the platform domain when present.
+ */
+export function getRequestHost(
+  hostname: string,
+  forwardedHost?: string | null,
+  bexoHost?: string | null,
+): string {
+  const candidates = [bexoHost, forwardedHost, hostname]
+    .filter(Boolean)
+    .flatMap((v) => String(v).split(","))
+    .map(cleanHost)
+    .filter(Boolean);
+
+  const platformMatch = candidates.find(
+    (h) => h === PLATFORM_DOMAIN || h.endsWith(`.${PLATFORM_DOMAIN}`),
+  );
+  if (platformMatch) return platformMatch;
+
+  const nonRunApp = candidates.find((h) => !h.endsWith(".run.app"));
+  return nonRunApp || cleanHost(hostname);
 }
 
 export function isPlatformApexHost(host: string): boolean {

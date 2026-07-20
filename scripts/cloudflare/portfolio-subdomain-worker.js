@@ -45,6 +45,7 @@ export default {
     const originUrl = new URL(url.pathname + url.search, originBase);
     const headers = new Headers(request.headers);
     headers.set("X-Forwarded-Host", visitorHost);
+    headers.set("X-Bexo-Host", visitorHost);
     headers.set("X-Forwarded-Proto", url.protocol.replace(":", ""));
     headers.delete("host");
 

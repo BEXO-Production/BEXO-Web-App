@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import logo from '../assets/bexo-logo.png';
 import { BUNDLED_PREMIUM_TEMPLATES } from '../lib/templates';
 import { PLATFORM_DOMAIN, portfolioHostname } from '../lib/platform';
+import { UnclaimedHandleBanner } from '../components/UnclaimedHandleBanner';
 
 interface PublicPortfolioProps {
   handleOverride?: string;
@@ -108,22 +109,7 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
   }
 
   if (error || !profileData) {
-    return (
-      <div className="flex h-screen w-screen flex-col items-center justify-center bg-slate-50 p-4">
-        <div className="text-center max-w-sm space-y-4">
-          <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto text-slate-400">
-            <Globe className="w-8 h-8" />
-          </div>
-          <h1 className="text-2xl font-serif font-bold text-slate-900">404 - Portfolio Not Found</h1>
-          <p className="text-sm text-slate-500">
-            The student digital portfolio you are trying to reach does not exist or has been deactivated.
-          </p>
-          <a href="/" className="inline-block text-xs font-bold text-indigo-650 hover:underline">
-            Go back to BEXO Home
-          </a>
-        </div>
-      </div>
-    );
+    return <UnclaimedHandleBanner handle={handle || handleOverride || 'yourname'} />;
   }
 
   const { user, profile, aboutEntries, educationEntries, experienceEntries, projectEntries, certificateEntries, achievementEntries, researchEntries, contactData, isPremium } = profileData;
@@ -138,7 +124,7 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
           <div className="space-y-2">
             <h1 className="text-2xl font-bold text-slate-900">Custom Subdomain Locked</h1>
             <p className="text-sm text-slate-550 leading-relaxed">
-              Custom subdomains (<strong>{portfolioHostname(handle)}</strong>) are a premium feature of Bexo.
+              Custom subdomains (<strong>{portfolioHostname(handle || '')}</strong>) are a premium feature of Bexo.
             </p>
           </div>
           <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-xs text-slate-650 text-left space-y-1">

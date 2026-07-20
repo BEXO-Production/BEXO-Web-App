@@ -20,10 +20,10 @@ function assert(cond: unknown, msg: string) {
 function main() {
   assert(planBaseQuota("free") === FREE_STORAGE_BYTES, "free base = 10MB");
   assert(planBaseQuota("annual") === ANNUAL_STORAGE_BYTES, "annual base = 100MB");
-  assert(planBaseQuota("lifetime") === LIFETIME_STORAGE_BYTES, "lifetime base = 500MB");
+  assert(planBaseQuota("lifetime") === LIFETIME_STORAGE_BYTES, "lifetime base = 50MB");
 
-  assert(effectiveQuota("lifetime", 0) === LIFETIME_STORAGE_BYTES, "lifetime alone = 500MB");
-  assert(effectiveQuota("lifetime", ANNUAL_STORAGE_BYTES) === LIFETIME_STORAGE_BYTES + ANNUAL_STORAGE_BYTES, "lifetime + yearly bonus = 600MB");
+  assert(effectiveQuota("lifetime", 0) === LIFETIME_STORAGE_BYTES, "lifetime alone = 50MB");
+  assert(effectiveQuota("lifetime", ANNUAL_STORAGE_BYTES) === LIFETIME_STORAGE_BYTES + ANNUAL_STORAGE_BYTES, "lifetime + yearly bonus = 150MB");
   assert(effectiveQuota("annual", 0) === ANNUAL_STORAGE_BYTES, "annual renew keeps 100MB");
   assert(effectiveQuota("free", ANNUAL_STORAGE_BYTES) === FREE_STORAGE_BYTES + ANNUAL_STORAGE_BYTES, "expired keeps bonus on free base");
 

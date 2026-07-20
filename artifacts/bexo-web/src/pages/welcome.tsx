@@ -16,6 +16,8 @@ import { useOnboarding } from "../context/OnboardingContext";
 import { useToast } from "../hooks/use-toast";
 import { cn } from "../design-system/primitives";
 import {
+  DEFAULT_TEMPLATE_ID,
+  FREE_FALLBACK_TEMPLATE_ID,
   getTemplatePreviewUrl,
   isPremiumTemplate,
   PORTFOLIO_TEMPLATES,
@@ -52,10 +54,19 @@ export default function WelcomeSuccess() {
   const [ready, setReady] = useState(false);
 
   const handle = (data.handle || "").trim().toLowerCase();
-  const templateId = data.templateId || "minimal";
+  const templateId = isPremiumTemplate(data.templateId)
+    ? (data.templateId as string)
+    : data.isPremium
+      ? DEFAULT_TEMPLATE_ID
+      : FREE_FALLBACK_TEMPLATE_ID;
   const templateMeta = PORTFOLIO_TEMPLATES.find((t) => t.id === templateId);
   const live = useMemo(() => (handle ? resolveLiveSiteUrl(handle) : null), [handle]);
-  const previewSrc = handle ? getTemplatePreviewUrl(templateId, handle) : null;
+  const previewSrc = handle
+    ? getTemplatePreviewUrl(
+        templateId === FREE_FALLBACK_TEMPLATE_ID ? DEFAULT_TEMPLATE_ID : templateId,
+        data.isPremium ? handle : undefined,
+      )
+    : null;
 
   useEffect(() => {
     const justActivated = sessionStorage.getItem(JUST_ACTIVATED_KEY) === "1";

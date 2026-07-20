@@ -30,35 +30,35 @@ VALUES
   (
     'free',
     'Free',
-    'Publish with the minimal template',
+    'Publish a path-based portfolio',
     0,
     10485760,
     true,
     0,
     false,
-    '["10MB storage","Minimal template","mybexo.cyou link"]'::jsonb
+    '["10MB storage","Path-based portfolio","mybexo.cyou link"]'::jsonb
   ),
   (
     'annual',
     'Yearly',
-    'Best for placements season',
+    'Best for students & professionals',
     1499,
     104857600,
     true,
     1,
     true,
-    '["100MB storage","Premium templates","Custom subdomain","Hire Me page"]'::jsonb
+    '["Premium templates","100MB cloud storage base","yourname.mybexo.cyou","AI resume parses","Renew extends access 1 year"]'::jsonb
   ),
   (
     'lifetime',
     'Lifetime',
-    'Pay once, keep forever',
+    'Best for students & professionals',
     2999,
-    524288000,
+    52428800,
     true,
     2,
     false,
-    '["500MB storage","Premium templates","Custom subdomain","Stack Yearly for +100MB"]'::jsonb
+    '["Everything in Yearly (templates & subdomain)","50MB storage base","No renewals for Pro access","Forever hosting"]'::jsonb
   )
 ON CONFLICT (id) DO UPDATE SET
   display_name = EXCLUDED.display_name,

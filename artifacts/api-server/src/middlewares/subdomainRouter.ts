@@ -23,6 +23,7 @@ import {
   PLATFORM_DOMAIN,
   portfolioHostname,
 } from "../lib/platform";
+import { buildUnclaimedHandleHtml } from "../lib/claimUnclaimedHandleHtml";
 
 // Map template IDs to their deployed URLs (or localhost for dev)
 const TEMPLATE_URLS: Record<string, string> = {
@@ -87,7 +88,11 @@ async function renderBundledTemplate(
 }
 
 export async function subdomainRouter(req: Request, res: Response, next: NextFunction): Promise<void> {
-  const host = getRequestHost(req.hostname, req.get("x-forwarded-host"));
+  const host = getRequestHost(
+    req.hostname,
+    req.get("x-forwarded-host"),
+    req.get("x-bexo-host"),
+  );
 
   // API calls from a rendered template must reach the API routes, not be
   // interpreted as template assets.
@@ -181,8 +186,11 @@ export async function renderPortfolioForHandle(
       .limit(1);
 
     if (profileMatch.length === 0) {
-      // If no profile found, maybe redirect to a "Not Found" page or continue
-      res.status(404).send("Portfolio not found.");
+      res
+        .status(404)
+        .type("html")
+        .set("Cache-Control", "public, max-age=60")
+        .send(buildUnclaimedHandleHtml(subdomain));
       return;
     }
 

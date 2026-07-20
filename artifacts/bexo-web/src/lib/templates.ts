@@ -7,21 +7,23 @@ export type PortfolioTemplate = {
   /** Live iframe preview available via /api/render/:handle/:id */
   previewable: boolean;
   /** Visual family for thumbnail mockups */
-  mockup: "minimal" | "cura" | "sierra" | "nico";
+  mockup: "cura" | "sierra" | "nico";
 };
 
-/** Reserved fictional handle for marketing landing previews — never a real user */
+/** Reserved fictional handle for marketing / onboarding / picker previews — never a real user */
 export const MARKETING_DEMO_HANDLE = "bexo-demo";
 
+/**
+ * Free-plan server fallback only — never shown in the UI template picker.
+ * Free users publish on path URLs; Pro templates require an active plan.
+ */
+export const FREE_FALLBACK_TEMPLATE_ID = "minimal";
+
+/** Default Pro layout when a user has no selection yet */
+export const DEFAULT_TEMPLATE_ID = "cura-futuri";
+
+/** Premium layouts only — Minimal is not selectable anywhere in the product UI. */
 export const PORTFOLIO_TEMPLATES: PortfolioTemplate[] = [
-  {
-    id: "minimal",
-    name: "Minimal",
-    description: "Clean, typography-driven layout perfect for developers.",
-    isPro: false,
-    previewable: true,
-    mockup: "minimal",
-  },
   {
     id: "cura-futuri",
     name: "Cura Futuri",
@@ -54,16 +56,49 @@ export const BUNDLED_PREMIUM_TEMPLATES = new Set(PREMIUM_TEMPLATE_IDS);
 
 export const THEMEABLE_TEMPLATE_IDS = new Set(PORTFOLIO_TEMPLATES.map((t) => t.id));
 
-/** Dashboard / onboarding live preview URL for a template + handle. */
-export function getTemplatePreviewUrl(templateId: string, handle: string): string {
-  const safeHandle = encodeURIComponent(handle || "portfolio");
-  if (templateId === "minimal") {
-    // In-app minimal layout (path-based public portfolio)
-    return `/${safeHandle}`;
+/**
+ * Templates shown in pickers.
+ * Premium users never see free/Minimal. Free users only see Pro layouts (locked until upgrade).
+ */
+export function getSelectableTemplates(_isPremium?: boolean): PortfolioTemplate[] {
+  return PORTFOLIO_TEMPLATES.filter((t) => t.isPro);
+}
+
+/** Demo portfolio preview — used across onboarding + dashboard template browsing. */
+export function getDemoPreviewUrl(templateId: string): string {
+  const id = templateId && templateId !== FREE_FALLBACK_TEMPLATE_ID
+    ? templateId
+    : DEFAULT_TEMPLATE_ID;
+  return `/api/render/${encodeURIComponent(MARKETING_DEMO_HANDLE)}/${encodeURIComponent(id)}/`;
+}
+
+/**
+ * Live preview for a specific handle + template.
+ * Free/Minimal falls back to the demo Pro layout so pickers never 404 on path URLs.
+ */
+export function getTemplatePreviewUrl(templateId: string, handle?: string | null): string {
+  const id =
+    !templateId || templateId === FREE_FALLBACK_TEMPLATE_ID
+      ? DEFAULT_TEMPLATE_ID
+      : templateId;
+
+  if (!handle || handle === MARKETING_DEMO_HANDLE) {
+    return getDemoPreviewUrl(id);
   }
-  return `/api/render/${safeHandle}/${encodeURIComponent(templateId)}/`;
+
+  return `/api/render/${encodeURIComponent(handle)}/${encodeURIComponent(id)}/`;
 }
 
 export function isPremiumTemplate(templateId: string | null | undefined): boolean {
   return !!templateId && BUNDLED_PREMIUM_TEMPLATES.has(templateId);
+}
+
+export function normalizeSelectableTemplateId(
+  templateId: string | null | undefined,
+  isPremium: boolean,
+): string {
+  if (isPremium && isPremiumTemplate(templateId)) return templateId as string;
+  if (isPremium) return DEFAULT_TEMPLATE_ID;
+  // Free users keep server fallback; UI never selects Minimal explicitly.
+  return FREE_FALLBACK_TEMPLATE_ID;
 }

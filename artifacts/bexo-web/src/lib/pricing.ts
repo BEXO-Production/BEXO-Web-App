@@ -2,7 +2,7 @@
 
 export const FREE_STORAGE_BYTES = 10 * 1024 * 1024; // 10MB
 export const ANNUAL_STORAGE_BYTES = 100 * 1024 * 1024; // 100MB base (Yearly)
-export const LIFETIME_STORAGE_BYTES = 500 * 1024 * 1024; // 500MB base (Lifetime) — stack Yearly for +100MB
+export const LIFETIME_STORAGE_BYTES = 50 * 1024 * 1024; // 50MB base (Lifetime) — stack Yearly for +100MB
 
 
 /** Prices in INR, exclusive of GST (18% added at checkout). Fallbacks if /api/pricing is unavailable. */

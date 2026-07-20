@@ -56,7 +56,14 @@ export default function Step3Info() {
 
   const initialDob = parseInitialDob();
 
-  const [handle, setHandle] = useState(data.handle || '');
+  const [handle, setHandle] = useState(() => {
+    if (data.handle) return data.handle;
+    try {
+      return localStorage.getItem('bexo_claim_handle') || '';
+    } catch {
+      return '';
+    }
+  });
   const [handleAvailability, setHandleAvailability] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle');
   const [firstName, setFirstName] = useState(data.firstName || '');
   const [lastName, setLastName] = useState(data.lastName || '');

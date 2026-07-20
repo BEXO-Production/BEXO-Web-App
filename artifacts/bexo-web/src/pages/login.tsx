@@ -30,6 +30,16 @@ export default function Login() {
     return () => clearInterval(timer);
   }, [cooldown]);
 
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const claim = (params.get('claim') || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 48);
+      if (claim) localStorage.setItem('bexo_claim_handle', claim);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (phone.length < 10) {
