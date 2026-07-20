@@ -4,37 +4,38 @@ Production domain: **https://mybexo.cyou**
 
 ## 1. Submit sitemap
 
-In [Google Search Console](https://search.google.com/search-console) → **Sitemaps**, add:
+In [Google Search Console](https://search.google.com/search-console) → **Sitemaps**, submit **only**:
 
 ```text
 https://mybexo.cyou/sitemap.xml
 ```
 
-That index includes:
+If child sitemaps show **Couldn't fetch**, delete those rows and use the index (or submit `sitemap-all.xml` instead). Sitemaps are **static files on Firebase Hosting** (not Cloud Run), which Googlebot can fetch reliably.
 
 | URL | Contents |
 |-----|----------|
-| `https://mybexo.cyou/sitemap-static.xml` | Home, legal pages, demo showcase |
-| `https://mybexo.cyou/sitemap-portfolios.xml` | All completed public portfolios + Hire Me pages (auto-updated from DB) |
+| `https://mybexo.cyou/sitemap.xml` | Index → static + portfolios |
+| `https://mybexo.cyou/sitemap-static.xml` | Home, legal, demo |
+| `https://mybexo.cyou/sitemap-portfolios.xml` | Public portfolios + Hire Me |
+| `https://mybexo.cyou/sitemap-all.xml` | Everything in one urlset |
 
-Verify in the browser:
+Regenerate before hosting deploys (`node scripts/generate-sitemaps.mjs` — also runs in `bexo-web` build).
+
+Verify:
 
 - https://mybexo.cyou/sitemap.xml  
-- https://mybexo.cyou/sitemap-portfolios.xml  
+- https://mybexo.cyou/sitemap-all.xml  
+- https://mybexo.cyou/robots.txt  
 
-**robots.txt:** https://mybexo.cyou/robots.txt  
-
-If you use **Cloudflare Managed robots.txt**, the dashboard may prepend AI-bot rules. Ensure the final file still includes:
+If Cloudflare Managed robots.txt is on, keep:
 
 ```text
 Sitemap: https://mybexo.cyou/sitemap.xml
 ```
 
-Add that line under **Cloudflare → Scrape Shield / Bots** or upload a custom robots snippet if needed.
-
 ## 2. robots.txt
 
-Served dynamically from the API (Firebase rewrite). Blocks private app routes (`/dashboard`, `/login`, `/step/`, `/api/`) and points crawlers to the sitemap.
+Static file in Firebase Hosting (`public/robots.txt`). Blocks `/dashboard`, `/login`, `/step/`, `/api/` and points to the sitemap.
 
 ## 3. Meta tags by page type
 

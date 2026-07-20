@@ -17,19 +17,31 @@ export function registerSitemapRoutes(app: Express) {
       `${origin}/sitemap-static.xml`,
       `${origin}/sitemap-portfolios.xml`,
     ]);
-    res.type("application/xml").set("Cache-Control", CACHE).send(xml);
+    res
+      .status(200)
+      .set("Content-Type", "application/xml; charset=utf-8")
+      .set("Cache-Control", CACHE)
+      .send(xml);
   });
 
   app.get("/sitemap-static.xml", (_req, res) => {
     const xml = renderSitemapXml(getStaticSitemapEntries(origin));
-    res.type("application/xml").set("Cache-Control", CACHE).send(xml);
+    res
+      .status(200)
+      .set("Content-Type", "application/xml; charset=utf-8")
+      .set("Cache-Control", CACHE)
+      .send(xml);
   });
 
   app.get("/sitemap-portfolios.xml", async (_req, res) => {
     try {
       const entries = await getPortfolioSitemapEntries();
       const xml = renderSitemapXml(entries);
-      res.type("application/xml").set("Cache-Control", CACHE).send(xml);
+      res
+        .status(200)
+        .set("Content-Type", "application/xml; charset=utf-8")
+        .set("Cache-Control", CACHE)
+        .send(xml);
     } catch (err) {
       res.status(500).type("text/plain").send("Sitemap generation failed.");
     }
@@ -39,6 +51,10 @@ export function registerSitemapRoutes(app: Express) {
     const body = `# BEXO — ${origin}
 User-agent: *
 Allow: /
+Allow: /sitemap.xml
+Allow: /sitemap-static.xml
+Allow: /sitemap-portfolios.xml
+Allow: /sitemap-all.xml
 Disallow: /dashboard
 Disallow: /billing
 Disallow: /welcome
@@ -47,7 +63,12 @@ Disallow: /step/
 Disallow: /api/
 
 Sitemap: ${origin}/sitemap.xml
+Sitemap: ${origin}/sitemap-all.xml
 `;
-    res.type("text/plain").set("Cache-Control", CACHE).send(body);
+    res
+      .status(200)
+      .set("Content-Type", "text/plain; charset=utf-8")
+      .set("Cache-Control", CACHE)
+      .send(body);
   });
 }
