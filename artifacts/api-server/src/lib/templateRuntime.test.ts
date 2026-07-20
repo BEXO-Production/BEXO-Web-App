@@ -115,4 +115,7 @@ test("injects Open Graph tags for portfolio sharing", () => {
   assert.match(result, /property="og:image" content="https:\/\/cdn\.example\/photo\.jpg"/);
   assert.match(result, /property="og:url" content="https:\/\/kavin\.mybexo\.cyou"/);
   assert.match(result, /name="twitter:card" content="summary_large_image"/);
+  assert.match(result, /name="robots" content="index, follow, max-image-preview:large"/);
+  assert.match(result, /application\/ld\+json/);
+  assert.match(result, /"@type":"Person"/);
 });

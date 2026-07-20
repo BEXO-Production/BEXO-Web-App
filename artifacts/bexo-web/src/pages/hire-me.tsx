@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useRoute } from "wouter";
+import { applyPageSeo, buildPortfolioPageJsonLd } from "@/lib/seo";
 
 type PublicProfile = {
   profile: {
@@ -86,6 +87,37 @@ export default function HireMePage({ handleOverride }: { handleOverride?: string
       cancelled = true;
     };
   }, [handle]);
+
+  useEffect(() => {
+    if (!data?.user || !handle) return;
+    const name = String(data.user.name || handle).trim();
+    const headline =
+      String(data.profile?.headline || "").trim() ||
+      String(data.profile?.careerGoal || "").trim();
+    const origin = window.location.origin.replace(/\/$/, "");
+    const canonical = `${origin}/hire-me/${encodeURIComponent(handle)}`;
+    const photo = String(data.user.photoUrl || "").trim();
+    const ogImage =
+      photo.startsWith("http://") || photo.startsWith("https://")
+        ? photo
+        : `${origin}/og-portfolio.jpg`;
+
+    applyPageSeo({
+      title: `Hire ${name} — BEXO`,
+      description:
+        headline ||
+        `${name} is open to opportunities. View skills, experience, and contact on BEXO Hire Me.`,
+      canonical,
+      ogImage,
+      ogType: "profile",
+      jsonLd: buildPortfolioPageJsonLd({
+        name,
+        headline: headline || "Open to hire",
+        url: canonical,
+        image: ogImage,
+      }),
+    });
+  }, [data, handle]);
 
   const skills = useMemo(() => {
     if (!data) return [] as string[];

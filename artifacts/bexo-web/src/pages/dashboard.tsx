@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Checkbox } from '../components/ui/checkbox';
 
 import { useToast } from '../hooks/use-toast';
+import { usePageSeo } from '../hooks/use-page-seo';
 import {
   User,
   FileText,
@@ -95,6 +96,13 @@ type BillingStatus = {
 export default function Dashboard() {
   const { data, updateData, setToken } = useOnboarding();
   const { toast } = useToast();
+
+  usePageSeo({
+    title: "Dashboard — BEXO",
+    description: "Manage your BEXO portfolio, templates, and settings.",
+    noindex: true,
+  });
+
   const [currentView, setCurrentView] = useState<'overview' | 'edit-profile' | 'updates' | 'settings'>('overview');
   const [updatesTab, setUpdatesTab] = useState<'parse' | 'post'>('parse');
   const [settingsSubTab, setSettingsSubTab] = useState<'profile' | 'design' | 'storage' | 'billing'>('profile');
@@ -1509,7 +1517,12 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 py-8 md:py-12">
+      <main
+        className={cn(
+          "mx-auto px-4 py-8 md:px-6 md:py-12",
+          currentView === "settings" ? "max-w-[min(100%,96rem)]" : "max-w-5xl",
+        )}
+      >
         {/* Main Dashboard Overview */}
         {currentView === 'overview' && (
           <div className="space-y-8 animate-in fade-in duration-300">
@@ -2954,9 +2967,9 @@ export default function Dashboard() {
             </div>
 
             {/* Premium Tabbed Layout */}
-            <div className="grid md:grid-cols-4 gap-4 md:gap-6 items-start">
+            <div className="grid gap-4 md:gap-6 items-start md:grid-cols-[minmax(11rem,13.5rem)_minmax(0,1fr)]">
               {/* Tab Navigation — horizontal scroll pills on mobile, stacked card on desktop */}
-              <Card className="p-1.5 md:p-2.5 bg-white border border-slate-200 shadow-sm flex flex-row md:flex-col gap-1 md:col-span-1 overflow-x-auto md:overflow-visible [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sticky top-[72px] md:static z-10">
+              <Card className="p-1.5 md:p-2.5 bg-white border border-slate-200 shadow-sm flex flex-row md:flex-col gap-1 overflow-x-auto md:overflow-visible [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sticky top-[72px] md:static z-10 md:w-full">
                 <button
                   onClick={() => setSettingsSubTab('profile')}
                   className={cn(
@@ -3007,7 +3020,7 @@ export default function Dashboard() {
               </Card>
 
               {/* Tab Content Cards */}
-              <div className="md:col-span-3">
+              <div className="min-w-0">
                 {settingsSubTab === 'profile' && (
                   <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-6 animate-in fade-in duration-200">
                     <div>
@@ -3174,10 +3187,10 @@ export default function Dashboard() {
                     )}
 
                     {/* Visual Page Template + Live Preview — split layout */}
-                    <div className="grid grid-cols-1 gap-5 items-start lg:grid-cols-5">
+                    <div className="grid grid-cols-1 gap-5 items-stretch lg:grid-cols-12">
                       
                       {/* Template Selector */}
-                      <Card className="p-5 bg-white border border-slate-200 shadow-sm space-y-4 lg:col-span-2">
+                      <Card className="p-5 bg-white border border-slate-200 shadow-sm space-y-4 lg:col-span-4 xl:col-span-3">
                         <div>
                           <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                             <Layout className="w-4 h-4 text-indigo-500" /> Page Template
@@ -3278,7 +3291,7 @@ export default function Dashboard() {
                       </Card>
 
                       {/* Right: Live iframe Preview */}
-                      <div className="lg:col-span-3 flex flex-col gap-2">
+                      <div className="lg:col-span-8 xl:col-span-9 flex flex-col gap-2 min-w-0">
                         <div className="flex items-center justify-between px-1">
                           <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Live Preview</span>
                           <span className="text-[11px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full font-medium truncate max-w-[55%]">
@@ -3306,7 +3319,7 @@ export default function Dashboard() {
                           </div>
 
                           {/* Responsive scaled iframe */}
-                          <div className="relative w-full overflow-hidden h-[380px] md:h-[520px]">
+                          <div className="relative w-full overflow-hidden h-[400px] sm:h-[480px] md:h-[540px] lg:h-[min(68vh,720px)] xl:h-[min(72vh,820px)]">
                             <iframe
                               key={`${activeTemplateId}-${data.themeColor || 'indigo'}-${data.themeBg || 'grid'}-demo`}
                               src={getDemoPreviewUrl(activeTemplateId)}

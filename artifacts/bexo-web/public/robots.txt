@@ -1,2 +1,13 @@
+# BEXO — https://mybexo.cyou
+# (If Cloudflare "Managed robots" is enabled, add the Sitemap line in the Cloudflare dashboard too.)
+
 User-agent: *
 Allow: /
+Disallow: /dashboard
+Disallow: /billing
+Disallow: /welcome
+Disallow: /login
+Disallow: /step/
+Disallow: /api/
+
+Sitemap: https://mybexo.cyou/sitemap.xml

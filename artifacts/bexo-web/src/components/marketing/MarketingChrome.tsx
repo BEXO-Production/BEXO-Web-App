@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { BEXO_FOOTER_COPYRIGHT } from "@/lib/brand";
 import logo from "@/assets/bexo-logo.png";
 import type { LegalDoc } from "@/content/legal/types";
+import { usePageSeo } from "@/hooks/use-page-seo";
 
 const LEGAL_LINKS = [
   { href: "/terms", label: "Terms", slug: "terms" },
@@ -199,6 +200,15 @@ export function MarketingFooter({ light = false }: { light?: boolean }) {
 }
 
 export function LegalDocument({ doc, slug }: { doc: LegalDoc; slug: string }) {
+  const origin =
+    typeof window !== "undefined" ? window.location.origin.replace(/\/$/, "") : "https://mybexo.cyou";
+  usePageSeo({
+    title: `${doc.title} — BEXO`,
+    description: doc.lead || `${doc.title} for BEXO (Ace Digital).`,
+    canonical: `${origin}/${slug}`,
+    ogImage: `${origin}/og-default.jpg`,
+  });
+
   return (
     <div className="min-h-screen bg-[#F7F4EF] text-slate-800">
       <MarketingNav solid />

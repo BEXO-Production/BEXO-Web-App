@@ -8,6 +8,34 @@
     ],
     "rewrites": [
       {
+        "source": "/robots.txt",
+        "run": {
+          "serviceId": "bexo-api",
+          "region": "asia-south1"
+        }
+      },
+      {
+        "source": "/sitemap.xml",
+        "run": {
+          "serviceId": "bexo-api",
+          "region": "asia-south1"
+        }
+      },
+      {
+        "source": "/sitemap-static.xml",
+        "run": {
+          "serviceId": "bexo-api",
+          "region": "asia-south1"
+        }
+      },
+      {
+        "source": "/sitemap-portfolios.xml",
+        "run": {
+          "serviceId": "bexo-api",
+          "region": "asia-south1"
+        }
+      },
+      {
         "source": "/api/**",
         "run": {
           "serviceId": "bexo-api",

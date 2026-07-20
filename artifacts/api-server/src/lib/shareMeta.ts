@@ -1,6 +1,7 @@
 import { appOrigin, PLATFORM_DOMAIN, portfolioPublicUrl } from "./platform";
 
 type ShareProfileLike = {
+  isPremium?: boolean;
   profile?: { handle?: string; headline?: string; bio?: string; careerGoal?: string };
   user?: { name?: string; photoUrl?: string };
 };
@@ -11,6 +12,13 @@ function escapeAttr(value: string): string {
     .replace(/"/g, "&quot;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+}
+
+function escapeJsonForHtml(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026");
 }
 
 function truncate(value: string, max = 160): string {
@@ -40,34 +48,74 @@ export function resolvePortfolioShareMeta(profile: unknown) {
 
   const photo = String(data.user?.photoUrl || "").trim();
   const origin = appOrigin();
-  const image = isAbsoluteHttpUrl(photo)
-    ? photo
-    : `${origin}/og-portfolio.jpg`;
+  const image = isAbsoluteHttpUrl(photo) ? photo : `${origin}/og-portfolio.jpg`;
 
   const url = handle
-    ? portfolioPublicUrl(handle)
+    ? data.isPremium
+      ? portfolioPublicUrl(handle)
+      : `${origin}/${encodeURIComponent(handle)}`
     : `https://${PLATFORM_DOMAIN}/`;
 
-  return { title, description, image, url, siteName: "BEXO" };
+  return { title, description, image, url, siteName: "BEXO", name, headline };
 }
 
-export function buildOpenGraphMetaTags(meta: {
-  title: string;
-  description: string;
-  image: string;
-  url: string;
-  siteName?: string;
-}): string {
+export function buildPortfolioJsonLd(meta: ReturnType<typeof resolvePortfolioShareMeta>) {
+  const origin = appOrigin();
+  return {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": `${origin}/#website`,
+        name: "BEXO",
+        url: origin,
+      },
+      {
+        "@type": "ProfilePage",
+        "@id": `${meta.url}#webpage`,
+        url: meta.url,
+        name: meta.title,
+        description: meta.description,
+        isPartOf: { "@id": `${origin}/#website` },
+        inLanguage: "en-IN",
+      },
+      {
+        "@type": "Person",
+        name: meta.name,
+        url: meta.url,
+        image: meta.image,
+        ...(meta.headline ? { jobTitle: meta.headline } : {}),
+      },
+    ],
+  };
+}
+
+export function buildOpenGraphMetaTags(
+  meta: {
+    title: string;
+    description: string;
+    image: string;
+    url: string;
+    siteName?: string;
+  },
+  options?: { ogType?: "website" | "profile"; robots?: string },
+): string {
   const site = meta.siteName || "BEXO";
+  const ogType = options?.ogType || "website";
+  const robots = options?.robots || "index, follow, max-image-preview:large";
+
   return [
+    `<meta name="robots" content="${escapeAttr(robots)}" />`,
     `<meta property="og:site_name" content="${escapeAttr(site)}" />`,
-    `<meta property="og:type" content="website" />`,
+    `<meta property="og:locale" content="en_IN" />`,
+    `<meta property="og:type" content="${escapeAttr(ogType)}" />`,
     `<meta property="og:title" content="${escapeAttr(meta.title)}" />`,
     `<meta property="og:description" content="${escapeAttr(meta.description)}" />`,
     `<meta property="og:url" content="${escapeAttr(meta.url)}" />`,
     `<meta property="og:image" content="${escapeAttr(meta.image)}" />`,
     `<meta property="og:image:width" content="1200" />`,
     `<meta property="og:image:height" content="630" />`,
+    `<meta property="og:image:alt" content="${escapeAttr(meta.title)}" />`,
     `<meta name="twitter:card" content="summary_large_image" />`,
     `<meta name="twitter:title" content="${escapeAttr(meta.title)}" />`,
     `<meta name="twitter:description" content="${escapeAttr(meta.description)}" />`,
@@ -79,7 +127,8 @@ export function buildOpenGraphMetaTags(meta: {
 
 export function injectShareMetaIntoHtml(html: string, profile: unknown): string {
   const meta = resolvePortfolioShareMeta(profile);
-  const tags = buildOpenGraphMetaTags(meta);
+  const tags = buildOpenGraphMetaTags(meta, { ogType: "profile" });
+  const jsonLd = `<script type="application/ld+json" id="bexo-portfolio-jsonld">${escapeJsonForHtml(buildPortfolioJsonLd(meta))}</script>`;
   const titleTag = `<title>${escapeAttr(meta.title)}</title>`;
 
   let prepared = html;
@@ -89,15 +138,18 @@ export function injectShareMetaIntoHtml(html: string, profile: unknown): string 
     prepared = prepared.replace("</head>", `${titleTag}\n</head>`);
   }
 
-  // Strip existing OG/Twitter tags so crawlers see one clean set.
   prepared = prepared.replace(
-    /<meta\s+(?:property|name)=["'](?:og:[^"']+|twitter:[^"']+|description)["'][^>]*>\s*/gi,
+    /<meta\s+(?:property|name)=["'](?:og:[^"']+|twitter:[^"']+|description|robots)["'][^>]*>\s*/gi,
     "",
   );
   prepared = prepared.replace(/<link\s+rel=["']canonical["'][^>]*>\s*/gi, "");
+  prepared = prepared.replace(
+    /<script\s+type=["']application\/ld\+json["'][^>]*id=["']bexo-portfolio-jsonld["'][^>]*>[\s\S]*?<\/script>\s*/gi,
+    "",
+  );
 
   if (prepared.includes("</head>")) {
-    return prepared.replace("</head>", `${tags}\n</head>`);
+    return prepared.replace("</head>", `${tags}\n${jsonLd}\n</head>`);
   }
-  return `${tags}\n${prepared}`;
+  return `${tags}\n${jsonLd}\n${prepared}`;
 }

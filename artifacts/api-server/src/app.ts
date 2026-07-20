@@ -8,6 +8,7 @@ import router from "./routes";
 import { logger } from "./lib/logger";
 import { subdomainRouter, marketingDemoStatic } from "./middlewares/subdomainRouter";
 import { renderPortfolioForHandle } from "./middlewares/subdomainRouter";
+import { registerSitemapRoutes } from "./routes/sitemap";
 
 const app: Express = express();
 
@@ -85,6 +86,8 @@ app.use(
     maxAge: process.env.NODE_ENV === "production" ? "7d" : 0,
   }),
 );
+
+registerSitemapRoutes(app);
 
 // Subdomain Gateway Router MUST come before other routes
 app.use(subdomainRouter);

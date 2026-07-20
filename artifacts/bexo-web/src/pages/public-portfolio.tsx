@@ -8,6 +8,7 @@ import logo from '../assets/bexo-logo.png';
 import { BUNDLED_PREMIUM_TEMPLATES } from '../lib/templates';
 import { PLATFORM_DOMAIN, portfolioHostname } from '../lib/platform';
 import { UnclaimedHandleBanner } from '../components/UnclaimedHandleBanner';
+import { applyPageSeo, buildPortfolioPageJsonLd } from '../lib/seo';
 
 interface PublicPortfolioProps {
   handleOverride?: string;
@@ -70,6 +71,48 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
     };
     fetchPublicProfile();
   }, [handle]);
+
+  useEffect(() => {
+    if (!profileData || !handle) return;
+    const name = String(profileData.user?.name || handle).trim();
+    const headline =
+      String(profileData.profile?.headline || "").trim() ||
+      String(profileData.profile?.careerGoal || "").trim() ||
+      String(profileData.profile?.bio || "").trim();
+    const origin = window.location.origin.replace(/\/$/, "");
+    const canonical = profileData.isPremium
+      ? `https://${portfolioHostname(handle)}`
+      : `${origin}/${encodeURIComponent(handle)}`;
+    const photo = String(profileData.user?.photoUrl || "").trim();
+    const ogImage =
+      photo.startsWith("http://") || photo.startsWith("https://")
+        ? photo
+        : `${origin}/og-portfolio.jpg`;
+    const description =
+      headline ||
+      `${name}'s professional portfolio on BEXO — projects, experience, and contact.`;
+
+    applyPageSeo({
+      title: `${name} — Portfolio on BEXO`,
+      description,
+      canonical,
+      ogImage,
+      ogType: "profile",
+      jsonLd: buildPortfolioPageJsonLd({
+        name,
+        headline: headline || undefined,
+        url: canonical,
+        image: ogImage,
+      }),
+    });
+  }, [profileData, handle]);
+
+  useEffect(() => {
+    if (profileData && profileData.isPremium && !isSubdomainAccess) {
+      const cleanHost = window.location.host.replace(/^www\./, '');
+      window.location.href = `${window.location.protocol}//${profileData.profile?.handle}.${cleanHost}`;
+    }
+  }, [profileData, isSubdomainAccess]);
 
   useEffect(() => {
     if (profileData && profileData.isPremium && !isSubdomainAccess) {

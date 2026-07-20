@@ -5,6 +5,7 @@ import { Input, Label, Card } from '../design-system/primitives';
 import { Loader2, ArrowRight, ShieldCheck } from 'lucide-react';
 import { FaWhatsapp } from 'react-icons/fa';
 import logo from '../assets/bexo-logo.png';
+import { usePageSeo } from '../hooks/use-page-seo';
 
 export default function Login() {
   const { updateData, setToken } = useOnboarding();
@@ -21,6 +22,12 @@ export default function Login() {
   const [isSwooshingSend, setIsSwooshingSend] = useState(false);
   const [isSwooshingVerify, setIsSwooshingVerify] = useState(false);
   const isSubmittingOtp = useRef(false);
+
+  usePageSeo({
+    title: "Sign in to BEXO",
+    description: "Sign in to BEXO to edit your portfolio, templates, and subdomain on mybexo.cyou.",
+    noindex: true,
+  });
 
   useEffect(() => {
     let timer: number;

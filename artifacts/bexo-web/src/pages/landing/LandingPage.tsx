@@ -20,6 +20,8 @@ import { LandingCursor, LandingScrollProgress, HeroPublishStage } from "@/compon
 import { PORTFOLIO_TEMPLATES, type PortfolioTemplate } from "@/lib/templates";
 import { usePricing } from "@/hooks/use-pricing";
 import { BEXO_APP_TAGLINE, BEXO_FOOTER_COPYRIGHT } from "@/lib/brand";
+import { buildMarketingJsonLd } from "@/lib/seo";
+import { usePageSeo } from "@/hooks/use-page-seo";
 import logo from "@/assets/bexo-logo.png";
 
 const fadeUp: Variants = {
@@ -188,9 +190,14 @@ export default function LandingPage({
   const PLANS = React.useMemo(() => buildPlans(prices), [prices.annual, prices.lifetime]);
   const [previewTemplate, setPreviewTemplate] = useState<PortfolioTemplate | null>(null);
 
-  useEffect(() => {
-    document.title = "BEXO — Professional portfolios for students";
-  }, []);
+  usePageSeo({
+    title: "BEXO — Professional portfolios for students",
+    description:
+      "Upload your resume, pick a premium template, and publish on mybexo.cyou. Built by Ace Digital for placements and hiring.",
+    canonical: "https://mybexo.cyou/",
+    ogImage: "https://mybexo.cyou/og-default.jpg",
+    jsonLd: buildMarketingJsonLd(),
+  });
 
   return (
     <div className="landing-root landing-cursor-root">
