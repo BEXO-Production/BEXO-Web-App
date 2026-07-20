@@ -20,7 +20,9 @@ export const MARKETING_DEMO_ASSETS_DIR = (() => {
   return candidates.find((dir) => existsSync(dir)) || candidates[0];
 })();
 
-const asset = (file: string) => `/api/marketing-demo/${file}`;
+const DEMO_ASSET_VERSION = "20260720";
+const asset = (file: string) =>
+  `/api/marketing-demo/${file}?v=${DEMO_ASSET_VERSION}`;
 
 /**
  * Fictional showcase profile used exclusively for marketing iframes.
