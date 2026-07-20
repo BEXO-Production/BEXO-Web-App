@@ -194,10 +194,11 @@ export default function Login() {
         <div className="flex flex-col items-center gap-3">
           <img src={logo} alt="BEXO" className="h-10 object-contain select-none" />
           <h2 className="text-xl font-bold font-serif text-slate-900 tracking-tight text-center">
-            Digital Portfolios for Students
+            Sign in to BEXO
           </h2>
           <p className="text-xs text-slate-500 text-center max-w-xs">
-            Authenticate to manage your custom design subdomains, edit projects, and update layouts.
+            BEXO by Ace Digital — sign in to edit your portfolio, templates, and subdomain.{" "}
+            <a href="/" className="text-indigo-600 hover:underline">Return to public home</a>.
           </p>
         </div>
 

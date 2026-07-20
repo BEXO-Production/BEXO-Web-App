@@ -3,6 +3,7 @@ import { useRoute } from 'wouter';
 import { Loader2, Mail, Phone, Globe, Linkedin, Github, GraduationCap, Briefcase, Award, BookOpen, ExternalLink, Calendar, MapPin, Sparkles, FileText, Download } from 'lucide-react';
 import { Card } from '../design-system/primitives';
 import { cn } from '@/lib/utils';
+import { BEXO_FOOTER_COPYRIGHT } from '../lib/brand';
 import logo from '../assets/bexo-logo.png';
 import { BUNDLED_PREMIUM_TEMPLATES } from '../lib/templates';
 import { PLATFORM_DOMAIN, portfolioHostname } from '../lib/platform';
@@ -1195,7 +1196,7 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
       <div className="max-w-4xl mx-auto px-4 pt-16 border-t border-slate-200/80 text-center space-y-2 relative z-10">
         <p className="text-xs font-bold uppercase tracking-wider" style={{ color: accentHex }}>Student Portfolio Network</p>
         <p className="text-xs text-slate-450">
-          &copy; {new Date().getFullYear()} BEXO FROM Ace Digital. All rights reserved.
+          {BEXO_FOOTER_COPYRIGHT}
         </p>
         <div className="flex justify-center gap-4 pt-2 text-[11px] font-bold text-slate-400">
           <a href="/" className="hover:opacity-80 transition-colors" style={{ color: 'inherit' }}>About Bexo</a>

@@ -1,5 +1,6 @@
 import React from "react";
 import { Link } from "wouter";
+import { BEXO_FOOTER_COPYRIGHT } from "@/lib/brand";
 import logo from "@/assets/bexo-logo.png";
 import type { LegalDoc } from "@/content/legal/types";
 
@@ -37,8 +38,17 @@ function LegalPageSwitcher({ current }: { current: string }) {
   );
 }
 
-export function MarketingNav({ solid = false }: { solid?: boolean }) {
+export function MarketingNav({
+  solid = false,
+  signedIn = false,
+  dashboardReady = false,
+}: {
+  solid?: boolean;
+  signedIn?: boolean;
+  dashboardReady?: boolean;
+}) {
   const links = [
+    { href: "/#about", label: "About" },
     { href: "/#how", label: "How it works" },
     { href: "/#features", label: "Features" },
     { href: "/#pricing", label: "Pricing" },
@@ -92,6 +102,16 @@ export function MarketingNav({ solid = false }: { solid?: boolean }) {
         </nav>
 
         <div className="flex items-center gap-2 sm:gap-3">
+          {signedIn && dashboardReady && (
+            <Link
+              href="/dashboard"
+              className={`hidden text-sm font-semibold sm:inline ${
+                solid ? "text-slate-700 hover:text-slate-900" : "text-white/80 hover:text-white"
+              }`}
+            >
+              Dashboard
+            </Link>
+          )}
           <Link
             href="/login"
             className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
@@ -172,7 +192,7 @@ export function MarketingFooter({ light = false }: { light?: boolean }) {
         </div>
       </div>
       <div className={`border-t px-4 py-4 text-center text-xs ${light ? "border-slate-200" : "border-white/10"}`}>
-        © {new Date().getFullYear()} BEXO FROM Ace Digital. All rights reserved.
+        {BEXO_FOOTER_COPYRIGHT}
       </div>
     </footer>
   );

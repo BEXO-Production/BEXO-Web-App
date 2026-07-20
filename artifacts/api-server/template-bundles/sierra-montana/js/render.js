@@ -477,7 +477,7 @@
       if (el.tagName === "SPAN" || el.classList.contains("copyright")) {
         el.textContent =
           global.BexoProfile?.getFooterCopyright?.() ||
-          `© ${new Date().getFullYear()} BEXO FROM Ace Digital. All rights reserved.`;
+          `© 2026 BEXO From Ace Digital. All rights reserved.`;
       }
     });
 

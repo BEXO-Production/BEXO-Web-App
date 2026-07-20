@@ -163,11 +163,17 @@ function Router() {
   return (
     <Switch>
       <Route path="/">
-        {hasToken ? (
-          data.hasCompletedOnboarding ? <Redirect to="/dashboard" /> : <Redirect to={`/step/${maxAllowedStep}`} />
-        ) : (
-          <LandingPage />
-        )}
+        <LandingPage
+          signedIn={hasToken}
+          dashboardReady={!!data.hasCompletedOnboarding}
+          continueHref={
+            hasToken
+              ? data.hasCompletedOnboarding
+                ? "/dashboard"
+                : `/step/${maxAllowedStep}`
+              : undefined
+          }
+        />
       </Route>
       <Route path="/login">
         {hasToken ? (

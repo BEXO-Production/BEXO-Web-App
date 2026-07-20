@@ -605,8 +605,9 @@ export function buildMinimalPortfolioHTML(data: OnboardingData, themeColor: stri
     ${achieveHTML}
 
     <div class="watermark">
-      Powered by <a href="https://mybexo.cyou" target="_blank">mybexo.cyou</a>
-      &nbsp;·&nbsp; <strong>mybexo.cyou/${handleStr}</strong>
+      Powered by <a href="https://mybexo.cyou" target="_blank">BEXO</a>
+      <br />
+      <span style="font-size:11px;opacity:0.85">© 2026 BEXO From Ace Digital. All rights reserved.</span>
     </div>
   </div>
 

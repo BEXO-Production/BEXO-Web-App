@@ -475,6 +475,7 @@ export function buildUnclaimedHandleHtml(handle: string): string {
       </div>
 
       <div class="foot">
+        <span>© 2026 BEXO From Ace Digital. All rights reserved.</span>
         <span>A product of Ace Digital</span>
         <a href="${escapeHtml(loginUrl)}">Already have an account? Sign in →</a>
       </div>

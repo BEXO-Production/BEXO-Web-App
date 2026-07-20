@@ -1,5 +1,6 @@
 import { existsSync, statSync } from "node:fs";
 import path from "node:path";
+import { BEXO_FOOTER_COPYRIGHT } from "./brand";
 import { injectShareMetaIntoHtml } from "./shareMeta";
 
 const EXTENSION_PATTERN = /\.[a-z0-9]+$/i;
@@ -32,10 +33,32 @@ export function injectPortfolioBootstrap(
   const baseHref = normalizedBase === "/" ? "/" : `${normalizedBase}/`;
   const baseTag = isSpaShell ? `<base href=${serializeForInlineScript(baseHref)} />` : "";
 
+  const footerSync = `<script>
+window.__BEXO_FOOTER_COPYRIGHT__ = ${serializeForInlineScript(BEXO_FOOTER_COPYRIGHT)};
+(function () {
+  var copy = window.__BEXO_FOOTER_COPYRIGHT__;
+  if (!window.BexoProfile) window.BexoProfile = {};
+  window.BexoProfile.getFooterCopyright = function () { return copy; };
+  function apply() {
+    document.querySelectorAll(
+      ".footer-copy, .footer-copyright p, .footer-copyright-line p, .project-footer .copyright span, .copyright"
+    ).forEach(function (el) {
+      if (!el || el.tagName === "A") return;
+      if (el.classList && el.classList.contains("copyright") && el.tagName !== "SPAN" && el.tagName !== "P" && el.tagName !== "DIV") return;
+      var t = (el.textContent || "").trim();
+      if (t && /BEXO|Ace Digital|rights reserved/i.test(t)) el.textContent = copy;
+    });
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", apply);
+  else apply();
+  setTimeout(apply, 2000);
+})();
+</script>`;
+
   const injection = `${baseTag}<script>
 window.__BEXO_PROFILE__ = ${serializeForInlineScript(profile)};
 window.__BEXO_BASE_PATH__ = ${serializeForInlineScript(normalizedBase)};
-</script>`;
+</script>${footerSync}`;
 
   prepared = prepared.includes("</head>")
     ? prepared.replace("</head>", `${injection}</head>`)

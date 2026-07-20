@@ -304,7 +304,7 @@
   }
 
   function getFooterCopyright() {
-    return `© ${new Date().getFullYear()} BEXO FROM Ace Digital. All rights reserved.`;
+    return `© 2026 BEXO From Ace Digital. All rights reserved.`;
   }
 
   global.BexoProfile = {

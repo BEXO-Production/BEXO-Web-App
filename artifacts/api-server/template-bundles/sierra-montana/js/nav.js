@@ -146,7 +146,7 @@
           .join("")}
       </div>
       <div class="footer-copyright">
-        <p>&copy; ${new Date().getFullYear()} BEXO FROM Ace Digital. All rights reserved.</p>
+        <p>&copy; 2026 BEXO From Ace Digital. All rights reserved.</p>
         <a class="footer-bexo" href="https://mybexo.cyou" target="_blank" rel="noopener noreferrer" aria-label="Built with BEXO">
           <img src="${global.BexoProfile?.resolvePath?.("assets/bexo-logo.png") || `${depth}assets/bexo-logo.png`}" alt="" width="14" height="14" loading="lazy" />
           <span>Built with BEXO</span>

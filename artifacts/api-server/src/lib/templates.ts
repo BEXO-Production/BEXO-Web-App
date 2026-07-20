@@ -1,3 +1,4 @@
+import { BEXO_FOOTER_COPYRIGHT } from "./brand";
 import { appOrigin } from "./platform";
 
 const BRAND_BLUE = "#2F6BFF";
@@ -206,7 +207,7 @@ function wrapHtml(options: EmailLayoutOptions): string {
                       <a href="${APP_URL}/refund" style="color:#64748B;text-decoration:none;">Refunds</a>
                     </p>
                     <p style="margin:14px 0 0;font-family:'Segoe UI', Inter, Arial, sans-serif;font-size:11px;color:#CBD5E1;">
-                      © ${new Date().getFullYear()} BEXO FROM Ace Digital
+                      ${BEXO_FOOTER_COPYRIGHT}
                     </p>
                   </td>
                 </tr>

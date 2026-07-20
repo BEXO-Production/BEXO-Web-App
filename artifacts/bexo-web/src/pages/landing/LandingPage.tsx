@@ -19,6 +19,7 @@ import { TemplatePreviewModal } from "@/components/marketing/TemplatePreviewModa
 import { LandingCursor, LandingScrollProgress, HeroPublishStage } from "@/components/marketing/LandingMotion";
 import { PORTFOLIO_TEMPLATES, type PortfolioTemplate } from "@/lib/templates";
 import { usePricing } from "@/hooks/use-pricing";
+import { BEXO_APP_TAGLINE, BEXO_FOOTER_COPYRIGHT } from "@/lib/brand";
 import logo from "@/assets/bexo-logo.png";
 
 const fadeUp: Variants = {
@@ -174,7 +175,15 @@ function buildPlans(prices: { annual: number; lifetime: number }) {
   ];
 }
 
-export default function LandingPage() {
+export default function LandingPage({
+  signedIn = false,
+  dashboardReady = false,
+  continueHref,
+}: {
+  signedIn?: boolean;
+  dashboardReady?: boolean;
+  continueHref?: string;
+}) {
   const { prices } = usePricing();
   const PLANS = React.useMemo(() => buildPlans(prices), [prices.annual, prices.lifetime]);
   const [previewTemplate, setPreviewTemplate] = useState<PortfolioTemplate | null>(null);
@@ -187,7 +196,28 @@ export default function LandingPage() {
     <div className="landing-root landing-cursor-root">
       <LandingScrollProgress />
       <LandingCursor />
-      <MarketingNav />
+      <MarketingNav signedIn={signedIn} dashboardReady={dashboardReady} />
+
+      {signedIn && (
+        <div className="landing-surface-dark border-b border-white/10 px-4 py-2.5 text-center text-xs text-white/80">
+          You&apos;re signed in to <strong className="text-white">BEXO</strong>.
+          {dashboardReady ? (
+            <>
+              {" "}
+              <a href="/dashboard" className="font-bold text-[#7BA0FF] hover:underline">
+                Open dashboard
+              </a>
+            </>
+          ) : continueHref ? (
+            <>
+              {" "}
+              <a href={continueHref} className="font-bold text-[#7BA0FF] hover:underline">
+                Continue onboarding
+              </a>
+            </>
+          ) : null}
+        </div>
+      )}
 
       {/* HERO */}
       <section className="landing-surface-dark relative overflow-hidden">
@@ -271,6 +301,32 @@ export default function LandingPage() {
       </section>
 
       <Marquee />
+
+      {/* ABOUT — public app purpose (Google OAuth / trust) */}
+      <section
+        id="about"
+        className="landing-surface-darker border-b border-white/10 py-16 sm:py-20"
+        aria-labelledby="about-bexo-heading"
+      >
+        <div className="mx-auto max-w-3xl px-4 text-center sm:px-6">
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#7BA0FF]">About the app</p>
+          <h2
+            id="about-bexo-heading"
+            className="mt-3 font-serif text-3xl font-bold text-white sm:text-4xl"
+          >
+            BEXO — professional portfolio builder
+          </h2>
+          <p className="landing-muted mx-auto mt-5 text-[15px] leading-relaxed sm:text-base">
+            {BEXO_APP_TAGLINE} Creating or editing a portfolio requires sign-in; this marketing home page,
+            pricing, and legal policies are always public at{" "}
+            <a href="https://mybexo.cyou" className="text-[#7BA0FF] hover:underline">
+              mybexo.cyou
+            </a>
+            .
+          </p>
+          <p className="mt-4 text-xs text-white/40">{BEXO_FOOTER_COPYRIGHT}</p>
+        </div>
+      </section>
 
       {/* HOW IT WORKS */}
       <section id="how" className="landing-surface-dark mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-28">
