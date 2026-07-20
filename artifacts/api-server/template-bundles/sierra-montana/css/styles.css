@@ -33,19 +33,21 @@ body {
   overflow-x: hidden;
 }
 
-/* container */
+/* container — never use 100vw (causes horizontal scroll on mobile) */
 .container {
-  width: 100vw;
+  width: 100%;
+  max-width: 100%;
 }
 
 .site-content {
-  width: 75%;
+  width: min(92%, 1200px);
   margin: 0 auto;
 }
 
 @media (max-width: 900px) {
   .site-content {
-    width: 80%;
+    width: min(94%, 100%);
+    padding-inline: 0;
   }
 }
 
@@ -364,7 +366,7 @@ a {
 }
 
 .partners .partners-container {
-  width: 100vw;
+  width: 100%;
   position: relative;
   top: 50%;
   left: 50%;

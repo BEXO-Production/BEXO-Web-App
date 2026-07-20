@@ -70,19 +70,19 @@ export default function Step7Theme() {
   };
 
   return (
-    <div className="flex flex-col h-full max-w-4xl w-full mx-auto pb-10">
-      <div className="mb-8 text-center md:text-left flex flex-col md:flex-row justify-between items-end gap-6">
-        <div>
-          <h1 className="font-serif text-3xl md:text-4xl font-bold text-slate-900 mb-3 tracking-tight">
+    <div className="flex flex-col h-full max-w-4xl w-full mx-auto pb-10 min-w-0">
+      <div className="mb-6 sm:mb-8 text-center md:text-left flex flex-col md:flex-row justify-between items-stretch md:items-end gap-4 md:gap-6 min-w-0">
+        <div className="min-w-0">
+          <h1 className="font-serif text-2xl sm:text-3xl md:text-4xl font-bold text-slate-900 mb-2 sm:mb-3 tracking-tight">
             Template & Theme
           </h1>
-          <p className="text-slate-500 text-base md:text-lg">
+          <p className="text-slate-500 text-sm sm:text-base md:text-lg">
             Preview every Pro layout with the BEXO demo portfolio, then pick yours.
           </p>
         </div>
         
         {showThemeOptions ? (
-          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-3 shrink-0 animate-in slide-in-from-right-3 duration-300 max-w-sm">
+          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-3 w-full md:w-auto md:max-w-sm shrink-0 animate-in slide-in-from-right-3 duration-300 min-w-0">
             <div>
               <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider px-1">Accent Color</span>
               <div className="flex gap-2 mt-2">

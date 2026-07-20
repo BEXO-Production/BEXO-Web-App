@@ -391,7 +391,7 @@ export default function Step3Info() {
       {/* Left Column: Heading + Illustration */}
       <div className="lg:w-2/5 flex flex-col justify-start pt-2">
         <p className="font-serif italic text-indigo-500 text-lg mb-2">Nice to meet you,</p>
-        <h1 className="font-serif text-3xl md:text-4xl lg:text-[2.6rem] font-bold text-slate-900 mb-4 leading-tight tracking-tight">
+        <h1 className="font-serif text-2xl sm:text-3xl md:text-4xl lg:text-[2.6rem] font-bold text-slate-900 mb-4 leading-tight tracking-tight">
           Let's tell the world who you are.
         </h1>
         <p className="text-slate-500 text-sm leading-relaxed mb-8">

@@ -199,10 +199,10 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center p-4">
-      <div className="w-full max-w-md space-y-8 animate-in fade-in slide-in-from-bottom duration-300">
+    <div className="min-h-[100dvh] w-full overflow-x-hidden bg-slate-50 flex flex-col justify-center items-center px-3 py-6 sm:p-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+      <div className="w-full max-w-md space-y-6 sm:space-y-8 animate-in fade-in slide-in-from-bottom duration-300 min-w-0">
         <div className="text-center">
-          <a href="/" className="text-xs font-semibold text-slate-400 hover:text-slate-700 transition-colors">
+          <a href="/" className="text-xs font-semibold text-slate-400 hover:text-slate-700 transition-colors inline-flex min-h-11 items-center">
             ← Back to BEXO
           </a>
         </div>
@@ -212,14 +212,14 @@ export default function Login() {
           <h2 className="text-xl font-bold font-serif text-slate-900 tracking-tight text-center">
             Sign in to BEXO
           </h2>
-          <p className="text-xs text-slate-500 text-center max-w-xs">
+          <p className="text-xs text-slate-500 text-center max-w-xs px-1">
             BEXO by Ace Digital — sign in to edit your portfolio, templates, and subdomain.{" "}
             <a href="/" className="text-indigo-600 hover:underline">Return to public home</a>.
           </p>
         </div>
 
         {/* Login Card */}
-        <Card className="p-6 bg-white border border-slate-200/80 shadow-lg rounded-2xl relative overflow-hidden">
+        <Card className="p-4 sm:p-6 bg-white border border-slate-200/80 shadow-lg rounded-2xl relative overflow-hidden min-w-0">
           {step === 'phone' ? (
             <form onSubmit={handleSendOtp} className="space-y-6">
               <div className="space-y-2">

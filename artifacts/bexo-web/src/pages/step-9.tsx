@@ -899,7 +899,7 @@ export default function Step9Plan() {
           <ArrowLeft className="w-4 h-4 mr-1" /> Back to Dashboard
         </button>
 
-        <h2 className="font-serif text-3xl md:text-4xl font-bold text-slate-900 mb-2">Billing & Plan</h2>
+        <h2 className="font-serif text-2xl sm:text-3xl md:text-4xl font-bold text-slate-900 mb-2">Billing & Plan</h2>
         <p className="text-slate-500 text-sm mb-6">Manage your subscription and view your current limits.</p>
 
         {portfolioUrl && (
@@ -1003,7 +1003,7 @@ export default function Step9Plan() {
   return (
     <div className="flex flex-col h-full max-w-lg w-full mx-auto justify-center pb-10">
       <div className="mb-8 text-center">
-        <h1 className="font-serif text-3xl md:text-4xl font-bold text-slate-900 mb-3 tracking-tight">
+        <h1 className="font-serif text-2xl sm:text-3xl md:text-4xl font-bold text-slate-900 mb-3 tracking-tight">
           {isBillingManagement
             ? renewalMode === 'renew'
               ? 'Renew Your Plan'

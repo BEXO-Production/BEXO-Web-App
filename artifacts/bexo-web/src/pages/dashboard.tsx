@@ -1381,7 +1381,7 @@ export default function Dashboard() {
   );
 
   return (
-    <div className="min-h-[100dvh] w-full max-w-[100vw] overflow-x-hidden flex flex-col transition-colors duration-300 bg-slate-50 text-slate-800">
+    <div className="min-h-[100dvh] w-full overflow-x-hidden flex flex-col transition-colors duration-300 bg-slate-50 text-slate-800 bexo-mobile-shell">
       {/* Premium custom top-right "Successfully Logged In" toast */}
       {showLoginToast && (
         <div className="fixed left-3 right-3 top-[max(0.75rem,env(safe-area-inset-top))] z-[100] sm:left-auto sm:right-6 sm:top-6 animate-in slide-in-from-top-4 md:slide-in-from-right-4 duration-500">
@@ -2962,14 +2962,14 @@ export default function Dashboard() {
             </button>
 
             <div>
-              <h1 className="text-2xl md:text-3xl font-serif font-bold text-slate-900 tracking-tight">Appearance & Settings</h1>
-              <p className="text-slate-500 text-sm mt-0.5">Customize template designs, color theme accents, and personal settings.</p>
+              <h1 className="text-xl sm:text-2xl md:text-3xl font-serif font-bold text-slate-900 tracking-tight">Appearance & Settings</h1>
+              <p className="text-slate-500 text-sm mt-0.5 leading-relaxed">Customize template designs, color theme accents, and personal settings.</p>
             </div>
 
             {/* Premium Tabbed Layout */}
-            <div className="grid gap-4 md:gap-6 items-start md:grid-cols-[minmax(11rem,13.5rem)_minmax(0,1fr)]">
+            <div className="grid gap-4 md:gap-6 items-start md:grid-cols-[minmax(11rem,13.5rem)_minmax(0,1fr)] min-w-0">
               {/* Tab Navigation — horizontal scroll pills on mobile, stacked card on desktop */}
-              <Card className="p-1.5 md:p-2.5 bg-white border border-slate-200 shadow-sm flex flex-row md:flex-col gap-1 overflow-x-auto md:overflow-visible [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sticky top-[72px] md:static z-10 md:w-full">
+              <Card className="p-1.5 md:p-2.5 bg-white border border-slate-200 shadow-sm flex flex-row md:flex-col gap-1 overflow-x-auto md:overflow-visible hide-scrollbar sticky top-[calc(3.5rem+env(safe-area-inset-top))] md:static z-10 w-full min-w-0">
                 <button
                   onClick={() => setSettingsSubTab('profile')}
                   className={cn(

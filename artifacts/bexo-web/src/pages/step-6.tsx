@@ -670,10 +670,10 @@ export default function Step6Review() {
   const allTabsVisited = visitedTabs.size === TABS.length;
 
   return (
-    <div className="flex flex-col h-full w-full max-w-4xl mx-auto pb-20 md:pb-0">
+    <div className="flex flex-col h-full w-full max-w-4xl mx-auto pb-20 md:pb-0 min-w-0">
       <div className="mb-6 text-center md:text-left flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h1 className="font-serif text-3xl md:text-4xl font-bold text-slate-900 mb-2 tracking-tight">
+          <h1 className="font-serif text-2xl sm:text-3xl md:text-4xl font-bold text-slate-900 mb-2 tracking-tight">
             Review & Verify
           </h1>
           <p className="text-slate-500 text-base">

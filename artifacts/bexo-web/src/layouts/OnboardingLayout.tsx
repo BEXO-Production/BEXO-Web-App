@@ -87,34 +87,34 @@ export function OnboardingLayout({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <div className="flex min-h-[100dvh] bg-slate-50 flex-col md:flex-row">
+    <div className="flex min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-slate-50 flex-col md:flex-row bexo-mobile-shell">
       {/* Mobile Top Progress — z-40 so scrolled content never paints above it */}
-      <div className="md:hidden flex flex-col bg-slate-900 text-white px-4 py-3 sticky top-0 z-40 shadow-lg shadow-slate-900/20">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <img src={logo} alt="BEXO" className="w-6 h-6 object-contain" />
-            <span className="font-serif font-semibold text-lg tracking-tight">BEXO</span>
+      <div className="md:hidden flex flex-col bg-slate-900 text-white px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 sticky top-0 z-40 shadow-lg shadow-slate-900/20 w-full">
+        <div className="flex items-center justify-between mb-2 gap-2 min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <img src={logo} alt="BEXO" className="w-6 h-6 object-contain shrink-0" />
+            <span className="font-serif font-semibold text-lg tracking-tight truncate">BEXO</span>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-400 bg-emerald-950/40 px-2 py-1 rounded-full">
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-1.5 text-[11px] font-medium text-emerald-400 bg-emerald-950/40 px-2 py-1 rounded-full">
               <Cloud className="w-3.5 h-3.5" /> Saved
             </div>
             <button
               type="button"
               onClick={handleLogout}
               disabled={isLoggingOut}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/10 text-white transition-colors hover:bg-white/20 disabled:opacity-60"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/10 text-white transition-colors hover:bg-white/20 disabled:opacity-60"
               aria-label="Logout"
             >
               {isLoggingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
             </button>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="text-xs font-medium text-indigo-300 w-16">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="text-[11px] font-medium text-indigo-300 w-[4.25rem] shrink-0 tabular-nums">
             {currentStep >= 3 ? `${progressPercentage}%` : `Step ${currentStep}/9`}
           </div>
-          <div className="flex-1 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+          <div className="flex-1 h-1.5 bg-slate-700 rounded-full overflow-hidden min-w-0">
             <div 
               className="h-full bg-indigo-500 rounded-full transition-all duration-500 ease-out"
               style={{ width: `${progressPercentage}%` }}
@@ -210,7 +210,7 @@ export function OnboardingLayout({ children }: { children: React.ReactNode }) {
       </div>
 
       {/* Main Content Area — document scroll on mobile to avoid nested rubber-banding */}
-      <main className="flex-1 flex flex-col relative bg-slate-50 md:overflow-hidden">
+      <main className="flex-1 flex flex-col relative bg-slate-50 md:overflow-hidden min-w-0 w-full max-w-full">
         {/* Dynamic Background Image (desktop only to reduce mobile scroll weight) */}
         <div className="absolute inset-0 z-0 hidden md:block">
           <img 
@@ -222,11 +222,11 @@ export function OnboardingLayout({ children }: { children: React.ReactNode }) {
           <div className="absolute inset-0 bg-white/85 backdrop-blur-xl" />
         </div>
         
-        <div className="w-full flex-1 md:overflow-y-auto px-4 py-3 md:px-8 md:py-6 lg:px-12 lg:py-8 z-10 flex flex-col">
-          <div className="w-full max-w-5xl mx-auto flex flex-col flex-1 relative pb-[env(safe-area-inset-bottom)]">
+        <div className="w-full flex-1 md:overflow-y-auto px-3 py-3 sm:px-4 md:px-8 md:py-6 lg:px-12 lg:py-8 z-10 flex flex-col min-w-0">
+          <div className="w-full max-w-5xl mx-auto flex flex-col flex-1 relative min-w-0 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
             
             {/* Top Bar: Back Button + Step Label */}
-            <div className="flex items-center justify-between mb-3 md:mb-4">
+            <div className="flex items-center justify-between mb-3 md:mb-4 gap-2 min-w-0">
               {currentStep > 1 && currentStep < 9 ? (
                 <button 
                   onClick={() => prevStep(currentStep)}
@@ -243,7 +243,7 @@ export function OnboardingLayout({ children }: { children: React.ReactNode }) {
                 </span>
                 {logoutButton}
               </div>
-              <span className="md:hidden text-xs font-semibold text-slate-500 uppercase tracking-widest">
+              <span className="md:hidden text-[11px] font-semibold text-slate-500 uppercase tracking-widest shrink-0">
                 Step {currentStep}/9
               </span>
             </div>

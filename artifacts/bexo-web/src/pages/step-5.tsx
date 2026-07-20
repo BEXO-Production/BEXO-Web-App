@@ -254,7 +254,7 @@ export default function Step5Resume() {
   return (
     <div className="flex flex-col h-full justify-center max-w-lg w-full mx-auto">
       <div className="mb-10 text-center md:text-left">
-        <h1 className="font-serif text-3xl md:text-4xl font-bold text-slate-900 mb-3 tracking-tight">
+        <h1 className="font-serif text-2xl sm:text-3xl md:text-4xl font-bold text-slate-900 mb-3 tracking-tight">
           Upload Your Resume
         </h1>
         <p className="text-slate-500 text-base md:text-lg">

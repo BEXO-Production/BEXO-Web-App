@@ -43,7 +43,7 @@ body {
 /* overlay  */
 .overlay {
   position: fixed !important;
-  width: 100vw;
+  width: 100%;
   height: 102vh;
   overflow: hidden;
   top: -2vh;
@@ -70,6 +70,19 @@ svg path {
   margin: 2em;
   z-index: 1200;
   cursor: pointer;
+}
+
+@media (max-width: 900px) {
+  #toggle-btn {
+    width: 64px;
+    height: 64px;
+    margin: max(0.75rem, env(safe-area-inset-top)) max(0.75rem, env(safe-area-inset-right)) 0.75rem 0.75rem;
+  }
+
+  .btn-outline {
+    width: 64px;
+    height: 64px;
+  }
 }
 
 .btn-outline {
@@ -169,7 +182,7 @@ body.menu-fallback-open .menu a {
   position: fixed;
   top: 0;
   left: 0;
-  width: 100vw;
+  width: 100%;
   height: 100dvh;
   display: flex;
   z-index: 950;

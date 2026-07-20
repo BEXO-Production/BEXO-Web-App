@@ -251,7 +251,7 @@ export default function Step4Photo() {
       </span>
 
       <div className="mb-8 text-left">
-        <h1 className="font-serif text-3xl md:text-4xl font-bold text-slate-900 mb-2.5 tracking-tight">
+        <h1 className="font-serif text-2xl sm:text-3xl md:text-4xl font-bold text-slate-900 mb-2.5 tracking-tight">
           Profile Photo
         </h1>
         <p className="text-slate-500 text-sm md:text-base">
