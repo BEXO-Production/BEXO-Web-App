@@ -77,6 +77,7 @@ export default function Step3Info() {
   const [firstNameError, setFirstNameError] = useState('');
   const [lastNameError, setLastNameError] = useState('');
   const [handleError, setHandleError] = useState('');
+  const [emailError, setEmailError] = useState('');
   const [dobError, setDobError] = useState('');
   const [pronounsError, setPronounsError] = useState('');
   const [isSwooshing, setIsSwooshing] = useState(false);
@@ -122,16 +123,13 @@ export default function Step3Info() {
 
         let fName = '';
         let lName = '';
-        let dDay = '';
-        let dMonth = '';
-        let dYear = '';
-        let extractedPronouns = '';
 
-        // 1. Try to fetch details from Google People API
+        // 1. Try to fetch the display name from Google People API.
+        //    Basic details only — we never request birthdays or genders.
         if (session.provider_token) {
           try {
             const response = await fetch(
-              'https://people.googleapis.com/v1/people/me?personFields=names,birthdays,genders',
+              'https://people.googleapis.com/v1/people/me?personFields=names',
               {
                 headers: {
                   Authorization: `Bearer ${session.provider_token}`,
@@ -141,33 +139,10 @@ export default function Step3Info() {
 
             if (response.ok) {
               const personData = await response.json();
-              
-              // Extract Names
               const nameObj = personData.names?.[0];
               if (nameObj) {
                 fName = nameObj.givenName || '';
                 lName = nameObj.familyName || '';
-              }
-
-              // Extract Birthday
-              const birthdayObj = personData.birthdays?.find((b: any) => b.date);
-              if (birthdayObj?.date) {
-                const { day, month, year } = birthdayObj.date;
-                if (day) dDay = String(day);
-                if (month && month >= 1 && month <= 12) dMonth = MONTHS[month - 1];
-                if (year) dYear = String(year);
-              }
-
-              // Extract Gender/Pronouns
-              const genderObj = personData.genders?.[0];
-              if (genderObj?.value) {
-                if (genderObj.value === 'female') {
-                  extractedPronouns = 'She/Her';
-                } else if (genderObj.value === 'male') {
-                  extractedPronouns = 'He/Him';
-                } else {
-                  extractedPronouns = 'They/Them';
-                }
               }
             }
           } catch (apiErr) {
@@ -183,29 +158,11 @@ export default function Step3Info() {
           if (!lName) lName = nameParts.slice(1).join(' ') || '';
         }
 
-        // 3. Deduce/guess pronouns based on First Name if empty
-        if (!extractedPronouns && fName) {
-          const nameLower = fName.toLowerCase();
-          const femaleNames = ['priya', 'sharma', 'ananya', 'sneha', 'pooja', 'aditi', 'rachel', 'sarah', 'emily', 'jessica', 'kavya', 'divya', 'neha'];
-          const maleNames = ['kavin', 'balaji', 'amit', 'rahul', 'rohit', 'sanjay', 'john', 'david', 'michael', 'james', 'arun', 'vijay'];
-          if (femaleNames.some(n => nameLower.includes(n))) {
-            extractedPronouns = 'She/Her';
-          } else if (maleNames.some(n => nameLower.includes(n))) {
-            extractedPronouns = 'He/Him';
-          } else {
-            extractedPronouns = 'They/Them';
-          }
-        }
-
-        // 4. Set state only if not already set by user/db
+        // 3. Set state only if not already set by user/db (pronouns + DOB stay manual)
         setFirstName(prev => prev || fName);
         setLastName(prev => prev || lName);
-        setDobDay(prev => (prev === '14' || !prev) && dDay ? dDay : prev);
-        setDobMonth(prev => (prev === 'March' || !prev) && dMonth ? dMonth : prev);
-        setDobYear(prev => (prev === '2001' || !prev) && dYear ? dYear : prev);
-        setPronouns(prev => (prev === 'She/Her' || !prev) && extractedPronouns ? extractedPronouns : prev);
 
-        // 5. Query suggested handle from backend
+        // 4. Query suggested handle from backend
         if (fName && !handle) {
           await fetchSuggestedHandle(fName, lName);
         }
@@ -314,17 +271,23 @@ export default function Step3Info() {
       setPronounsError('');
     }
 
-    if (!validateDate(dobDay, dobMonth, dobYear)) {
-      setDobError('Please select a valid date of birth');
-      valid = false;
-    } else {
-      const age = calculateAge(dobDay, dobMonth, dobYear);
-      if (age < 16 || age > 100) {
-        setDobError('Please enter a valid date of birth (must be at least 16 years old)');
+    // DOB is optional — only validate when the user filled in any part of it
+    const dobProvided = Boolean(dobDay || dobMonth || dobYear);
+    if (dobProvided) {
+      if (!validateDate(dobDay, dobMonth, dobYear)) {
+        setDobError('Please select a valid date of birth, or leave all three fields empty');
         valid = false;
       } else {
-        setDobError('');
+        const age = calculateAge(dobDay, dobMonth, dobYear);
+        if (age < 16 || age > 100) {
+          setDobError('Please enter a valid date of birth (must be at least 16 years old)');
+          valid = false;
+        } else {
+          setDobError('');
+        }
       }
+    } else {
+      setDobError('');
     }
 
     if (!handle.trim()) {
@@ -339,7 +302,8 @@ export default function Step3Info() {
 
     setIsSwooshing(true);
 
-    // Save and check uniqueness of handle
+    // Save handle (+ Google email if we have one) and check uniqueness first
+    let emailToSave = email;
     try {
       const token = localStorage.getItem('token');
       const res = await fetch('/api/profile', {
@@ -348,28 +312,52 @@ export default function Step3Info() {
           'Content-Type': 'application/json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
-        body: JSON.stringify({ handle })
+        body: JSON.stringify({ handle, ...(email ? { email } : {}) })
       });
       if (!res.ok) {
-        const errData = await res.json();
-        setHandleError(errData.error || 'Handle already taken');
-        setIsSwooshing(false);
-        return;
+        const errData = await res.json().catch(() => ({}));
+        if (res.status === 409) {
+          // Email belongs to another account — keep going without it.
+          setEmailError(errData.error || 'This email is already linked to another BEXO account, so we left it blank.');
+          setEmail('');
+          emailToSave = '';
+          const retry = await fetch('/api/profile', {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+            },
+            body: JSON.stringify({ handle })
+          });
+          if (!retry.ok) {
+            const retryErr = await retry.json().catch(() => ({}));
+            setHandleError(retryErr.error || 'Handle already taken');
+            setIsSwooshing(false);
+            return;
+          }
+        } else {
+          setHandleError(errData.error || 'Handle already taken');
+          setIsSwooshing(false);
+          return;
+        }
       }
     } catch (e) {
       console.error(e);
     }
 
-    const monthNum = String(MONTHS.indexOf(dobMonth) + 1).padStart(2, '0');
-    const dayNum = String(parseInt(dobDay, 10)).padStart(2, '0');
-    const dobString = `${dobYear}-${monthNum}-${dayNum}`;
+    let dobString: string | undefined;
+    if (dobProvided) {
+      const monthNum = String(MONTHS.indexOf(dobMonth) + 1).padStart(2, '0');
+      const dayNum = String(parseInt(dobDay, 10)).padStart(2, '0');
+      dobString = `${dobYear}-${monthNum}-${dayNum}`;
+    }
 
     updateData({
       handle,
       firstName: firstName.trim(),
       lastName: lastName.trim(),
       name: `${firstName.trim()} ${lastName.trim()}`,
-      email: email || undefined,
+      email: emailToSave || undefined,
       dob: dobString,
       nationality,
       pronouns
@@ -395,7 +383,7 @@ export default function Step3Info() {
           Let's tell the world who you are.
         </h1>
         <p className="text-slate-500 text-sm leading-relaxed mb-8">
-          This information appears on your public BEXO profile. You can always edit it later.
+          Just the basics — your name, email and BEXO URL. Everything else is optional and you can edit it later.
         </p>
       </div>
 
@@ -487,7 +475,7 @@ export default function Step3Info() {
           {/* Date of Birth Field */}
           <div className="space-y-2">
             <Label className={dobError ? "text-red-500 font-semibold text-xs" : "text-slate-700 font-semibold text-xs"}>
-              Date of birth <span className="text-indigo-500">*</span>
+              Date of birth <span className="text-slate-400 font-normal">(optional)</span>
             </Label>
             <div className="grid grid-cols-3 gap-3">
               {/* Day */}
@@ -548,7 +536,7 @@ export default function Step3Info() {
               </div>
             </div>
             <p className="text-xs text-slate-400 mt-1">
-              Used to verify academic eligibility. Not shown publicly.
+              Optional — used to verify academic eligibility. Never shown publicly.
             </p>
             {dobError && <p className="text-red-500 text-xs mt-1">{dobError}</p>}
           </div>
@@ -605,6 +593,12 @@ export default function Step3Info() {
             </div>
             {pronounsError && <p className="text-red-500 text-xs mt-1">{pronounsError}</p>}
           </div>
+
+          {emailError && (
+            <p className="text-amber-600 text-xs bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              {emailError}
+            </p>
+          )}
 
           {/* Dark Submit Button */}
           <div className="pt-4 onboarding-cta">

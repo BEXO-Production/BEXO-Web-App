@@ -134,8 +134,8 @@ function Router() {
     // Step 2: Google Link
     if (!hasGoogleSession) return 2;
 
-    // Step 3: Profile Info (Name, DOB, Handle required)
-    if (!data.name?.trim() || !data.dob || !data.handle?.trim()) {
+    // Step 3: Profile Info (Name + Handle required; DOB is optional)
+    if (!data.name?.trim() || !data.handle?.trim()) {
       return 3;
     }
 

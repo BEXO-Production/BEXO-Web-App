@@ -7,8 +7,8 @@ export const LIFETIME_STORAGE_BYTES = 50 * 1024 * 1024; // 50MB base (Lifetime) 
 
 /** Prices in INR, exclusive of GST (18% added at checkout). Fallbacks if /api/pricing is unavailable. */
 export const PLAN_PRICES_INR = {
-  annual: 1499,
-  lifetime: 2999,
+  annual: 799,
+  lifetime: 1999,
 } as const;
 
 export type PlanPricesInr = {

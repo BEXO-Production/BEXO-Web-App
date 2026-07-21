@@ -35,7 +35,15 @@ app.use(
   }),
 );
 app.use(cors());
-app.use(express.json());
+// Keep the raw body around for Razorpay webhook signature verification —
+// signatures are computed over the exact bytes, not re-serialized JSON.
+app.use(
+  express.json({
+    verify: (req, _res, buf) => {
+      (req as express.Request & { rawBody?: Buffer }).rawBody = buf;
+    },
+  }),
+);
 app.use(cookieParser());
 app.use(express.urlencoded({ extended: true }));
 

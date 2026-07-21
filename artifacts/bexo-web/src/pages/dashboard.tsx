@@ -87,6 +87,13 @@ type BillingStatus = {
   storageBonusBytes?: number;
   canBuy?: { annual: boolean; lifetime: boolean };
   renewalMode?: 'purchase' | 'renew' | 'addon';
+  subscription?: {
+    plan: string;
+    status: string;
+    expiresAt: string | null;
+    createdAt: string | null;
+    autopay?: boolean;
+  } | null;
   latestPayment?: {
     amount: number;
     status: string;
@@ -377,12 +384,12 @@ export default function Dashboard() {
   const planName = billingStatus?.plan === 'lifetime'
     ? 'Lifetime Pro'
     : billingStatus?.plan === 'annual'
-      ? 'Annual Pro'
+      ? 'Yearly Pro'
       : data.isPremium
         ? 'Pro'
         : 'Free';
   const planRenewal = billingStatus?.expiresAt
-    ? new Date(billingStatus.expiresAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+    ? `${billingStatus?.subscription?.autopay ? 'Renews' : 'Expires'} ${new Date(billingStatus.expiresAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`
     : billingStatus?.plan === 'lifetime'
       ? 'Never expires'
       : 'Upgrade available';
@@ -2362,9 +2369,10 @@ export default function Dashboard() {
                   let limitParses = 0;
                   let planDisplay = "Free";
 
+                  // Keep in sync with the API limits in profile.ts (free: 2/30d, lifetime: 3/30d, annual: 10/30d)
                   if (!data.plan || data.plan === "free") {
-                    limitDays = 50;
-                    limitParses = 1;
+                    limitDays = 30;
+                    limitParses = 2;
                   } else if (data.plan === "lifetime") {
                     limitDays = 30;
                     limitParses = 3;
@@ -2372,7 +2380,7 @@ export default function Dashboard() {
                   } else if (data.plan === "annual") {
                     limitDays = 30;
                     limitParses = 10;
-                    planDisplay = "Annual";
+                    planDisplay = "Yearly";
                   }
 
                   const actualParsesCount = diffDays >= limitDays ? 0 : data.resumeParsesThisMonth;
@@ -3413,10 +3421,16 @@ export default function Dashboard() {
                               <div key={payment.id} className="py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                                 <div>
                                   <p className="text-sm font-semibold text-slate-900 capitalize">
-                                    Bexo Pro {payment.amount === 299900 || payment.amount === 353882 || payment.amount === 353900 ? 'Lifetime Membership' : payment.amount === 149900 || payment.amount === 176882 || payment.amount === 99900 ? 'Annual Support Plan' : 'Subscription'}
+                                    Bexo Pro {payment.plan === 'lifetime'
+                                      ? 'Lifetime Membership'
+                                      : payment.plan === 'annual'
+                                        ? (payment.kind === 'subscription' ? 'Yearly Plan (Auto-renew)' : 'Yearly Plan')
+                                        : payment.amount === 299900 || payment.amount === 353882 || payment.amount === 353900 || payment.amount === 235882
+                                          ? 'Lifetime Membership'
+                                          : 'Yearly Plan'}
                                   </p>
                                   <p className="text-xs text-slate-555 mt-0.5">
-                                    Paid on {dateStr}  |  Order ID: <span className="font-mono text-slate-400">{payment.razorpayOrderId}</span>
+                                    Paid on {dateStr}  |  Ref: <span className="font-mono text-slate-400">{payment.razorpayOrderId || payment.razorpaySubscriptionId || payment.razorpayPaymentId}</span>
                                   </p>
                                 </div>
                                 <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto">

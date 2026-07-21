@@ -158,7 +158,7 @@ function buildPlans(prices: { annual: number; lifetime: number }) {
         "100MB cloud storage base",
         "yourname.atbexo.com",
         "AI resume parses",
-        "Renew extends access 1 year",
+        "Auto-renews yearly via Razorpay Autopay",
       ],
       cta: "Get Yearly",
       promoted: true,
@@ -173,7 +173,7 @@ function buildPlans(prices: { annual: number; lifetime: number }) {
       features: [
         "Everything in Yearly (templates & subdomain)",
         "50MB storage base",
-        "No renewals for Pro access",
+        "One-time payment — no auto-renewal",
         "Forever hosting",
       ],
       cta: "Go Lifetime",
@@ -528,7 +528,7 @@ export default function LandingPage({
           <Reveal lift className="mt-10 flex items-start gap-3 rounded-2xl border border-slate-200 bg-white/80 p-5 text-sm text-slate-600">
             <Shield className="mt-0.5 h-5 w-5 shrink-0 text-[#2F6BFF]" />
             <p>
-              Payments via Razorpay. Prices shown exclude 18% GST. Already on Yearly? Renew extends your date (storage stays 100MB).
+              Payments via Razorpay. Prices shown exclude 18% GST. Yearly auto-renews via Razorpay Autopay (cancel anytime); Lifetime is a one-time payment.
               On Lifetime? Buying Yearly adds +100MB on top of your 50MB base. See our{" "}
               <Link href="/refund" className="font-semibold text-[#2F6BFF] underline-offset-2 hover:underline">
                 Refund Policy

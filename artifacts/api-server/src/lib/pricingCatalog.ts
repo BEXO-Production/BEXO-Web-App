@@ -43,7 +43,7 @@ const FALLBACK_PLANS: PricingPlanRow[] = [
     id: "annual",
     displayName: "Yearly",
     subtitle: "Best for students & professionals",
-    priceInrExGst: 1499,
+    priceInrExGst: 799,
     storageBytes: 100 * 1024 * 1024,
     isPurchasable: true,
     sortOrder: 1,
@@ -53,14 +53,14 @@ const FALLBACK_PLANS: PricingPlanRow[] = [
       "100MB cloud storage base",
       "yourname.atbexo.com",
       "AI resume parses",
-      "Renew extends access 1 year",
+      "Auto-renews yearly via Razorpay Autopay",
     ],
   },
   {
     id: "lifetime",
     displayName: "Lifetime",
     subtitle: "Best for students & professionals",
-    priceInrExGst: 2999,
+    priceInrExGst: 1999,
     storageBytes: 50 * 1024 * 1024,
     isPurchasable: true,
     sortOrder: 2,
@@ -68,7 +68,7 @@ const FALLBACK_PLANS: PricingPlanRow[] = [
     features: [
       "Everything in Yearly (templates & subdomain)",
       "50MB storage base",
-      "No renewals for Pro access",
+      "One-time payment — no renewals",
       "Forever hosting",
     ],
   },
@@ -146,7 +146,7 @@ export async function getPlanById(planId: PublicPlanId | PaidPlan | "free"): Pro
 
 export async function getPlanPriceInr(plan: PaidPlan): Promise<number> {
   const row = await getPlanById(plan);
-  return row?.priceInrExGst ?? (plan === "annual" ? 1499 : 2999);
+  return row?.priceInrExGst ?? (plan === "annual" ? 799 : 1999);
 }
 
 export async function getPlanStorageBytes(plan: PublicPlanId): Promise<number> {
@@ -245,7 +245,16 @@ export async function validateCouponForPlan(
   }
 
   const pricing = await calculatePlanAmount(plan, normalized);
-  if (pricing.discount <= 0) {
+
+  // plan_prices coupons lock an explicit price; they stay valid even when the
+  // list price already matches (discount 0), e.g. EARLYBIRD at launch pricing.
+  const locksPlanPrice =
+    couponRow.discountType === "plan_prices" &&
+    couponRow.planPrices &&
+    typeof couponRow.planPrices === "object" &&
+    Number.isFinite(Number((couponRow.planPrices as Record<string, number>)[plan]));
+
+  if (pricing.discount <= 0 && !locksPlanPrice) {
     return { valid: false, message: "This coupon does not apply to the selected plan." };
   }
 

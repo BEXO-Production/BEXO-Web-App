@@ -110,6 +110,7 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<voi
       canBuy: subscriptionState.canBuy,
       renewalMode: subscriptionState.renewalMode,
       expiresAt: subscriptionState.expiresAt,
+      autopay: !!subscriptionState.subscription?.razorpaySubscriptionId,
       aboutEntries: getEntries("about"),
       educationEntries: getEntries("education"),
       experienceEntries: getEntries("experience"),
@@ -153,7 +154,23 @@ router.patch("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<v
       if (name !== undefined) userUpdates.name = name;
       if (dob !== undefined) userUpdates.dob = dob;
       if (email !== undefined) {
-        userUpdates.email = email;
+        const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : email;
+        if (normalizedEmail) {
+          // Enforce email uniqueness with a friendly 409 instead of a DB constraint error
+          const [emailOwner] = await db
+            .select({ id: users.id })
+            .from(users)
+            .where(eq(users.email, normalizedEmail))
+            .limit(1);
+          if (emailOwner && emailOwner.id !== userId) {
+            res.status(409).json({
+              error: "This email is already linked to another BEXO account. Sign in with that account or use a different email.",
+              code: "EMAIL_TAKEN",
+            });
+            return;
+          }
+        }
+        userUpdates.email = normalizedEmail;
       }
       if (photoUrl !== undefined) userUpdates.photoUrl = photoUrl;
       if (resumeUrl !== undefined) userUpdates.resumeUrl = resumeUrl;
@@ -238,6 +255,15 @@ router.patch("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<v
 
     res.json({ success: true, message: "Profile updated successfully" });
   } catch (err) {
+    // Unique-constraint race (e.g. two requests claiming the same email/phone)
+    if ((err as { code?: string })?.code === "23505") {
+      logger.warn({ err, userId }, "Unique constraint conflict on profile update");
+      res.status(409).json({
+        error: "That email or phone number is already linked to another BEXO account.",
+        code: "DUPLICATE_CONTACT",
+      });
+      return;
+    }
     logger.error({ err, userId }, "Error updating profile");
     res.status(500).json({ error: "Internal server error" });
   }

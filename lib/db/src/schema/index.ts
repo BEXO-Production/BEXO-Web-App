@@ -113,6 +113,8 @@ export const subscriptions = pgTable("subscriptions", {
   plan: text("plan").notNull(), // 'annual' | 'lifetime'
   status: text("status").notNull(), // 'active' | 'expired'
   expiresAt: timestamp("expires_at", { withTimezone: true }),
+  razorpaySubscriptionId: text("razorpay_subscription_id").unique(), // set for autopay (annual) subscriptions
+  razorpayPlanId: text("razorpay_plan_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });
 
@@ -120,8 +122,11 @@ export const subscriptions = pgTable("subscriptions", {
 export const payments = pgTable("payments", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: uuid("user_id").references(() => users.id).notNull(),
-  razorpayOrderId: text("razorpay_order_id").unique().notNull(),
+  razorpayOrderId: text("razorpay_order_id").unique(), // null for subscription-kind payments until charged
   razorpayPaymentId: text("razorpay_payment_id").unique(),
+  razorpaySubscriptionId: text("razorpay_subscription_id"),
+  plan: text("plan"), // 'annual' | 'lifetime' | null (legacy rows)
+  kind: text("kind").notNull().default("order"), // 'order' | 'subscription'
   amount: integer("amount").notNull(), // in paise
   status: text("status").notNull(), // 'pending' | 'success' | 'failed'
   invoiceUrl: text("invoice_url"),

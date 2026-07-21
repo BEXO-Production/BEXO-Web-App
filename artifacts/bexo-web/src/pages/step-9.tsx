@@ -204,6 +204,32 @@ export default function Step9Plan() {
     );
   };
 
+  const verifySubscription = async (token: string | null, payload: any) => {
+    const verifyRes = await fetch("/api/payments/verify-subscription", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        ...payload,
+        couponCode: appliedCoupon,
+      })
+    });
+
+    const verifyData = await verifyRes.json();
+    if (!verifyRes.ok) {
+      throw new Error(verifyData.error || "Subscription verification failed");
+    }
+
+    await finishPremiumActivation('annual', {
+      storageQuotaBytes: verifyData.storageQuotaBytes,
+      storageBonusBytes: verifyData.storageBonusBytes,
+      stacked: verifyData.stacked,
+      expiresAt: verifyData.expiresAt,
+    });
+  };
+
   const validateCode = () => {
     const pattern = /^BEXO-[A-Z0-9-]+$/i;
     if (!pattern.test(code)) {
@@ -238,78 +264,149 @@ export default function Step9Plan() {
     }
   };
 
+  const openRazorpayModal = (options: any) => {
+    if (window.Razorpay) {
+      const rzp = new window.Razorpay(options);
+      rzp.on('payment.failed', function (response: any) {
+        toast({ title: 'Payment Failed', description: response.error?.description || 'Payment failed', variant: 'destructive' });
+        setIsProcessing(false);
+      });
+      rzp.open();
+      // Keep processing=true while the checkout modal is open (cleared on dismiss / fail / success)
+    } else {
+      toast({ title: 'Error', description: 'Razorpay SDK failed to load. Refresh and try again.', variant: 'destructive' });
+      setIsProcessing(false);
+    }
+  };
+
+  const baseRazorpayOptions = (token: string | null) => ({
+    name: "Bexo",
+    modal: {
+      ondismiss: function () {
+        setIsProcessing(false);
+      },
+    },
+    prefill: {
+      name: data.name,
+      email: data.contactData?.email || "",
+      contact: data.phone || ""
+    },
+    theme: { color: "#4f46e5" }
+  });
+
+  // Yearly = auto-renewing Razorpay Subscription (autopay)
+  const startSubscriptionCheckout = async (token: string | null): Promise<void> => {
+    const subRes = await fetch("/api/payments/create-subscription", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      },
+      body: JSON.stringify({ couponCode: appliedCoupon })
+    });
+
+    const subData = await subRes.json();
+
+    if (!subRes.ok) {
+      if (subData.code === 'USE_ORDER' || subRes.status === 503) {
+        // Lifetime add-on case, or autopay not configured yet — fall back to a
+        // one-time order so checkout keeps working.
+        await startOrderCheckout(token);
+        return;
+      }
+      throw new Error(subData.error || "Failed to start subscription");
+    }
+
+    if (subData.mock) {
+      await verifySubscription(token, {
+        razorpay_payment_id: `mock_payment_${Date.now()}`,
+        razorpay_subscription_id: subData.subscriptionId,
+        razorpay_signature: 'mock_signature'
+      });
+      return;
+    }
+
+    openRazorpayModal({
+      ...baseRazorpayOptions(token),
+      key: subData.key || 'rzp_test_YourKeyIdHere',
+      subscription_id: subData.subscriptionId,
+      description: "Yearly Plan — auto-renews via Razorpay Autopay",
+      handler: async function (response: any) {
+        setIsProcessing(true);
+        try {
+          toast({ title: 'Processing Payment', description: 'Please wait while we activate your subscription...' });
+          await verifySubscription(token, response);
+        } catch (err: any) {
+          console.error("Verification error:", err);
+          toast({ title: 'Verification Failed', description: err.message, variant: 'destructive' });
+          setIsProcessing(false);
+        }
+      },
+    });
+  };
+
+  // Lifetime (and annual add-on on lifetime) = one-time Razorpay Order
+  const startOrderCheckout = async (token: string | null): Promise<void> => {
+    const orderRes = await fetch("/api/payments/create-order", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      },
+      body: JSON.stringify({ plan, couponCode: appliedCoupon })
+    });
+
+    const orderData = await orderRes.json();
+
+    if (!orderRes.ok) {
+      if (orderData.code === 'USE_SUBSCRIPTION') {
+        await startSubscriptionCheckout(token);
+        return;
+      }
+      throw new Error(orderData.error || "Failed to create order");
+    }
+
+    if (orderData.mock) {
+      await verifyPayment(token, {
+        razorpay_payment_id: `mock_payment_${Date.now()}`,
+        razorpay_order_id: orderData.orderId,
+        razorpay_signature: 'mock_signature'
+      });
+      return;
+    }
+
+    openRazorpayModal({
+      ...baseRazorpayOptions(token),
+      key: orderData.key || 'rzp_test_YourKeyIdHere',
+      amount: orderData.amount,
+      currency: orderData.currency,
+      order_id: orderData.orderId,
+      description: plan === 'annual' ? "Yearly Storage Add-on" : "Lifetime Access — one-time payment",
+      handler: async function (response: any) {
+        setIsProcessing(true);
+        try {
+          toast({ title: 'Processing Payment', description: 'Please wait while we verify your payment...' });
+          await verifyPayment(token, response);
+        } catch (err: any) {
+          console.error("Verification error:", err);
+          toast({ title: 'Verification Failed', description: err.message, variant: 'destructive' });
+          setIsProcessing(false);
+        }
+      },
+    });
+  };
+
   const handleRazorpayCheckout = async () => {
     setIsProcessing(true);
     try {
       const token = localStorage.getItem('token');
-      const orderRes = await fetch("/api/payments/create-order", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify({ plan, couponCode: appliedCoupon })
-      });
-      
-      const orderData = await orderRes.json();
-      
-      if (!orderRes.ok) {
-        throw new Error(orderData.error || "Failed to create order");
-      }
-
-      if (orderData.mock) {
-        await verifyPayment(token, {
-          razorpay_payment_id: `mock_payment_${Date.now()}`,
-          razorpay_order_id: orderData.orderId,
-          razorpay_signature: 'mock_signature'
-        });
-        return;
-      }
-
-      const options = {
-        key: orderData.key || 'rzp_test_YourKeyIdHere',
-        amount: orderData.amount,
-        currency: orderData.currency,
-        name: "Bexo",
-        description: plan === 'annual' ? "Annual Support Plan" : "Lifetime Access",
-        order_id: orderData.orderId,
-        handler: async function (response: any) {
-          setIsProcessing(true);
-          try {
-            toast({ title: 'Processing Payment', description: 'Please wait while we verify your payment...' });
-            await verifyPayment(token, response);
-          } catch (err: any) {
-            console.error("Verification error:", err);
-            toast({ title: 'Verification Failed', description: err.message, variant: 'destructive' });
-            setIsProcessing(false);
-          }
-        },
-        modal: {
-          ondismiss: function () {
-            setIsProcessing(false);
-          },
-        },
-        prefill: {
-          name: data.name,
-          email: data.contactData?.email || "",
-          contact: data.phone || ""
-        },
-        theme: { color: "#4f46e5" }
-      };
-
-      if (window.Razorpay) {
-        const rzp = new window.Razorpay(options);
-        rzp.on('payment.failed', function (response: any){
-           toast({ title: 'Payment Failed', description: response.error?.description || 'Payment failed', variant: 'destructive' });
-           setIsProcessing(false);
-        });
-        rzp.open();
-        // Keep processing=true while the checkout modal is open (cleared on dismiss / fail / success)
+      // Yearly purchases/renewals auto-renew via subscription; the lifetime
+      // storage add-on and Lifetime itself stay one-time orders.
+      if (plan === 'annual' && renewalMode !== 'addon') {
+        await startSubscriptionCheckout(token);
       } else {
-        toast({ title: 'Error', description: 'Razorpay SDK failed to load. Refresh and try again.', variant: 'destructive' });
-        setIsProcessing(false);
+        await startOrderCheckout(token);
       }
-
     } catch (err: any) {
       console.error("Checkout error:", err);
       toast({ title: 'Checkout Error', description: err.message, variant: 'destructive' });
@@ -489,12 +586,18 @@ export default function Step9Plan() {
         <h2 className="font-serif text-2xl font-bold text-slate-900 mb-6">Checkout</h2>
 
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 mb-6">
-          <div className="flex justify-between items-center mb-6 pb-6 border-b border-slate-100">
-            <div>
-              <h3 className="font-bold text-slate-900 text-lg">{plan === 'annual' ? 'Annual Support Plan' : 'Lifetime Access'}</h3>
-              <p className="text-slate-500 text-sm">Bexo Premium Plan</p>
+          <div className="flex justify-between items-center gap-3 mb-6 pb-6 border-b border-slate-100">
+            <div className="min-w-0">
+              <h3 className="font-bold text-slate-900 text-lg">{plan === 'annual' ? 'Yearly Plan' : 'Lifetime Access'}</h3>
+              <p className="text-slate-500 text-sm">
+                {plan === 'annual'
+                  ? renewalMode === 'addon'
+                    ? 'One-time storage add-on'
+                    : 'Auto-renews yearly via Razorpay Autopay'
+                  : 'One-time payment — yours forever'}
+              </p>
             </div>
-            <div className="text-xl font-bold text-slate-900">₹{basePrice}</div>
+            <div className="text-xl font-bold text-slate-900 shrink-0">₹{basePrice}</div>
           </div>
 
           <div className="space-y-4 mb-6 pb-6 border-b border-slate-100">
@@ -566,9 +669,14 @@ export default function Step9Plan() {
           {isProcessing ? (
             <Loader2 className="w-5 h-5 animate-spin" />
           ) : (
-            <>Pay ₹{total} Securely</>
+            <>{plan === 'annual' && renewalMode !== 'addon' ? `Subscribe — ₹${total}/year` : `Pay ₹${total} Securely`}</>
           )}
         </button>
+        {plan === 'annual' && renewalMode !== 'addon' && (
+          <p className="text-center text-xs text-slate-500 mt-3">
+            Renews automatically every year at the same price. Cancel anytime.
+          </p>
+        )}
         <p className="text-center text-xs text-slate-400 mt-4 flex items-center justify-center gap-1">
           <ShieldCheck className="w-3.5 h-3.5" /> Payments are processed securely by Razorpay
         </p>
@@ -920,15 +1028,20 @@ export default function Step9Plan() {
               </div>
               <div>
                 <h3 className="font-bold text-slate-900 text-lg">
-                  {data.plan === 'lifetime' ? 'Lifetime Pro' : data.plan === 'annual' ? 'Annual Support Plan' : 'Pro Plan'}
+                  {data.plan === 'lifetime' ? 'Lifetime Pro' : data.plan === 'annual' ? 'Yearly Plan' : 'Pro Plan'}
                 </h3>
                 <p className="text-sm text-slate-500 mt-0.5">
                   {data.plan === 'lifetime'
-                    ? 'Lifetime premium access — forever.'
+                    ? 'Lifetime premium access — one-time payment, forever.'
                     : expiryLabel
                       ? `Active until ${expiryLabel}.`
-                      : 'You are currently on the annual premium tier.'}
+                      : 'You are currently on the yearly premium tier.'}
                 </p>
+                {data.plan === 'annual' && data.autopay && (
+                  <span className="inline-flex items-center gap-1 mt-2 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-bold">
+                    <Check className="w-3 h-3" /> Auto-renew on
+                  </span>
+                )}
               </div>
             </div>
 
@@ -953,13 +1066,24 @@ export default function Step9Plan() {
             </div>
           </Card>
 
-          {data.plan === 'annual' && canBuyAnnual && (
+          {data.plan === 'annual' && data.autopay && (
+            <Card className="p-6 bg-white border border-slate-200 shadow-sm">
+              <h3 className="font-bold text-slate-900 text-base mb-1.5">Auto-renew is on</h3>
+              <p className="text-sm text-slate-500">
+                {expiryLabel
+                  ? `Your Yearly plan renews automatically on ${expiryLabel} via Razorpay Autopay. To cancel auto-renew, contact support@mybexo.cyou.`
+                  : 'Your Yearly plan renews automatically via Razorpay Autopay. To cancel auto-renew, contact support@mybexo.cyou.'}
+              </p>
+            </Card>
+          )}
+
+          {data.plan === 'annual' && canBuyAnnual && !data.autopay && (
             <Card className="p-6 bg-indigo-600 border border-indigo-700 shadow-md text-white text-center">
               <h3 className="font-bold text-xl mb-2">Renew Yearly</h3>
               <p className="text-indigo-100 text-sm mb-6">
                 {expiryLabel
-                  ? `Extend your Annual plan past ${expiryLabel} by another year.`
-                  : 'Extend your Annual plan by another year.'}
+                  ? `Extend your Yearly plan past ${expiryLabel} — renewals continue automatically via Razorpay Autopay.`
+                  : 'Extend your Yearly plan — renewals continue automatically via Razorpay Autopay.'}
               </p>
               <Button
                 onClick={() => {
@@ -1074,14 +1198,14 @@ export default function Step9Plan() {
               <div className="flex justify-between items-start mb-2">
                 <div>
                   <h3 className="text-xl font-bold text-slate-900">
-                    {renewalMode === 'addon' ? 'Yearly Storage Add-on' : 'Annual Support Plan'}
+                    {renewalMode === 'addon' ? 'Yearly Storage Add-on' : 'Yearly Plan'}
                   </h3>
                   <p className="text-xs text-slate-500 mt-0.5 font-medium">
                     {renewalMode === 'renew'
                       ? 'Extends your current Yearly access by 1 year.'
                       : renewalMode === 'addon'
                         ? 'Adds +100MB on top of Lifetime storage.'
-                        : 'Billed annually. Help Bexo run & grow.'}
+                        : 'Auto-renews yearly via Razorpay Autopay. Cancel anytime.'}
                   </p>
                 </div>
                 <div className="text-right">
@@ -1109,7 +1233,7 @@ export default function Step9Plan() {
                         '100MB cloud storage base',
                         'yourname.atbexo.com',
                         'AI resume parses',
-                        'Renew extends access 1 year',
+                        'Auto-renews yearly via Razorpay Autopay',
                       ]
                 ).map((feat, i) => (
                   <li key={i} className="flex items-center text-xs text-slate-600">
@@ -1150,7 +1274,7 @@ export default function Step9Plan() {
                 {[
                   'Everything in Yearly (templates & subdomain)',
                   '50MB storage base',
-                  'No renewals for Pro access',
+                  'One-time payment — no auto-renewal',
                   'Forever hosting',
                   'Optional Yearly add-on = +100MB storage',
                 ].map((feat, i) => (

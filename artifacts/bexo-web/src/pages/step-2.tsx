@@ -43,7 +43,9 @@ export default function Step2Auth() {
         provider: 'google',
         options: {
           redirectTo: `${window.location.origin}/step/2`,
-          scopes: 'openid email profile https://www.googleapis.com/auth/user.birthday.read'
+          // Basic details only — name, email, avatar. We intentionally do NOT
+          // request birthday/gender scopes (Google OAuth verification + privacy).
+          scopes: 'openid email profile'
         }
       });
       if (error) throw error;

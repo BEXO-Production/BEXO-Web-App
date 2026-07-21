@@ -150,6 +150,7 @@ export async function activatePaidPlan(
   userId: string,
   purchasedPlan: PaidPlan,
   expiresAt: Date | null,
+  razorpayLink?: { subscriptionId?: string | null; planId?: string | null },
 ): Promise<ActivateResult> {
   const state = await resolveSubscriptionState(userId);
   let bonusBytes = state.storageBonusBytes;
@@ -183,11 +184,21 @@ export async function activatePaidPlan(
 
   const quotaBytes = effectiveQuota(nextPlan, bonusBytes);
 
+  // Only annual autopay purchases carry a Razorpay subscription id. A lifetime
+  // purchase (or annual add-on on lifetime) must not clobber an existing link.
+  const linkUpdates: Partial<typeof subscriptions.$inferInsert> = {};
+  if (razorpayLink?.subscriptionId !== undefined) {
+    linkUpdates.razorpaySubscriptionId = razorpayLink.subscriptionId;
+  }
+  if (razorpayLink?.planId !== undefined) {
+    linkUpdates.razorpayPlanId = razorpayLink.planId;
+  }
+
   const existing = await db.select().from(subscriptions).where(eq(subscriptions.userId, userId)).limit(1);
   if (existing.length > 0) {
     await db
       .update(subscriptions)
-      .set({ plan: nextPlan, status: "active", expiresAt: nextExpires })
+      .set({ plan: nextPlan, status: "active", expiresAt: nextExpires, ...linkUpdates })
       .where(eq(subscriptions.userId, userId));
   } else {
     await db.insert(subscriptions).values({
@@ -195,6 +206,7 @@ export async function activatePaidPlan(
       plan: nextPlan,
       status: "active",
       expiresAt: nextExpires,
+      ...linkUpdates,
     });
   }
 

@@ -242,6 +242,28 @@ router.post("/phone/otp/verify", async (req, res): Promise<void> => {
     let isNewUser = false;
     let hasCompletedOnboarding = false;
 
+    // If an already-signed-in user verifies a phone that belongs to a
+    // different account, refuse with a clear 409 instead of silently
+    // switching sessions or colliding on the unique phone column.
+    const authHeader = req.headers.authorization;
+    if (user && authHeader?.startsWith("Bearer ")) {
+      try {
+        const secretForCheck = process.env.JWT_SECRET;
+        if (secretForCheck) {
+          const decoded = jwt.verify(authHeader.slice(7), secretForCheck) as { id?: string };
+          if (decoded?.id && decoded.id !== user.id) {
+            res.status(409).json({
+              error: "This number is already registered to another BEXO account. Log out and sign in with that number instead.",
+              code: "PHONE_TAKEN",
+            });
+            return;
+          }
+        }
+      } catch {
+        // Expired/invalid token — treat as a normal unauthenticated sign-in.
+      }
+    }
+
     if (!user) {
       isNewUser = true;
       try {

@@ -73,6 +73,7 @@ export type OnboardingData = {
   canBuy: { annual: boolean; lifetime: boolean };
   renewalMode: 'purchase' | 'renew' | 'addon';
   expiresAt?: string | Date | null;
+  autopay?: boolean;
 };
 
 interface OnboardingContextType {
@@ -301,6 +302,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
             canBuy: result.canBuy || prev.canBuy,
             renewalMode: result.renewalMode || prev.renewalMode,
             expiresAt: result.expiresAt !== undefined ? result.expiresAt : prev.expiresAt,
+            autopay: result.autopay !== undefined ? !!result.autopay : prev.autopay,
           }));
         }
       })
