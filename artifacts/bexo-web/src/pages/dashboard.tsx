@@ -772,65 +772,89 @@ export default function Dashboard() {
 
   const handleUpdateFileUpload = (type: 'images' | 'pdfs') => {
     if (isStorageFull) return;
+    const maxSlots = type === 'images' ? 5 : 2;
     const current = updateForm.assets?.[type] || [];
-    if (type === 'images' && current.length >= 5) return;
-    if (type === 'pdfs' && current.length >= 2) return;
+    if (current.length >= maxSlots) return;
 
     const input = document.createElement('input');
     input.type = 'file';
+    input.multiple = true;
     input.accept = type === 'images' ? 'image/*' : 'application/pdf';
     input.onchange = (e: any) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
+      const picked: File[] = Array.from(e.target.files || []);
+      if (picked.length === 0) return;
 
-      const sizeBytes = file.size;
-      if (usedStorage + sizeBytes > storageLimit) {
-        toast({ title: 'Quota Exceeded', description: 'Not enough storage.', variant: 'destructive' });
-        return;
+      const slotsLeft = maxSlots - (updateForm.assets?.[type]?.length || 0);
+      if (picked.length > slotsLeft) {
+        toast({
+          title: 'Too many files',
+          description: `Only ${slotsLeft} more ${type === 'images' ? 'image' : 'PDF'} slot(s) available — uploading the first ${slotsLeft}.`,
+        });
       }
+      const files = picked.slice(0, slotsLeft);
+
+      // Enforce the quota across the whole batch, not per file
+      let projectedUsage = usedStorage;
+      const accepted: File[] = [];
+      for (const file of files) {
+        if (projectedUsage + file.size > storageLimit) {
+          toast({ title: 'Quota Exceeded', description: `"${file.name}" skipped — not enough storage.`, variant: 'destructive' });
+          continue;
+        }
+        projectedUsage += file.size;
+        accepted.push(file);
+      }
+      if (accepted.length === 0) return;
 
       setIsUpdateUploading(true);
-      const localUrl = URL.createObjectURL(file);
-      const tempId = `temp-${Date.now()}`;
-      const newAsset: FileAsset = { id: tempId, name: file.name, url: localUrl, sizeBytes, isUploading: true };
-
-      setUpdateForm((prev: any) => ({
-        ...prev,
-        assets: {
-          ...prev.assets,
-          [type]: [...(prev.assets?.[type] || []), newAsset]
-        }
-      }));
-
-      const formData = new FormData();
-      formData.append("file", file);
       const token = localStorage.getItem('token');
+      let pending = accepted.length;
+      const finishOne = () => {
+        pending -= 1;
+        if (pending <= 0) setIsUpdateUploading(false);
+      };
 
-      fetch("/api/profile/upload", {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${token}` },
-        body: formData
-      })
-      .then(r => r.json())
-      .then(res => {
-        if(res.error) throw new Error(res.error);
+      accepted.forEach((file, idx) => {
+        const localUrl = URL.createObjectURL(file);
+        const tempId = `temp-${Date.now()}-${idx}`;
+        const newAsset: FileAsset = { id: tempId, name: file.name, url: localUrl, sizeBytes: file.size, isUploading: true };
+
         setUpdateForm((prev: any) => ({
           ...prev,
           assets: {
             ...prev.assets,
-            [type]: prev.assets[type].map((a: any) => a.id === tempId ? { ...a, id: res.file.id, url: res.file.url, isUploading: false } : a)
+            [type]: [...(prev.assets?.[type] || []), newAsset]
           }
         }));
-      })
-      .catch(err => {
-        toast({ title: 'Upload Failed', description: err.message, variant: 'destructive' });
-        setUpdateForm((prev: any) => ({
-          ...prev,
-          assets: { ...prev.assets, [type]: prev.assets[type].filter((a: any) => a.id !== tempId) }
-        }));
-      })
-      .finally(() => {
-        setIsUpdateUploading(false);
+
+        const formData = new FormData();
+        formData.append("file", file);
+
+        fetch("/api/profile/upload", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${token}` },
+          body: formData
+        })
+        .then(r => r.json())
+        .then(res => {
+          if (res.error) throw new Error(res.error);
+          if (!res.url) throw new Error("Upload failed");
+          setUpdateForm((prev: any) => ({
+            ...prev,
+            assets: {
+              ...prev.assets,
+              [type]: prev.assets[type].map((a: any) => a.id === tempId ? { ...a, url: res.url, isUploading: false } : a)
+            }
+          }));
+        })
+        .catch(err => {
+          toast({ title: 'Upload Failed', description: `"${file.name}": ${err.message}`, variant: 'destructive' });
+          setUpdateForm((prev: any) => ({
+            ...prev,
+            assets: { ...prev.assets, [type]: prev.assets[type].filter((a: any) => a.id !== tempId) }
+          }));
+        })
+        .finally(finishOne);
       });
     };
     input.click();
@@ -869,105 +893,115 @@ export default function Dashboard() {
 
   const handleFileUpload = (type: 'images' | 'pdfs') => {
     if (isStorageFull) return;
+    const maxSlots = type === 'images' ? 5 : 2;
     const current = editForm.assets[type] || [];
-    if (type === 'images' && current.length >= 5) return;
-    if (type === 'pdfs' && current.length >= 2) return;
+    if (current.length >= maxSlots) return;
 
     const input = document.createElement('input');
     input.type = 'file';
+    input.multiple = true;
     input.accept = type === 'images' ? 'image/*' : 'application/pdf';
     input.onchange = (e: any) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
+      const picked: File[] = Array.from(e.target.files || []);
+      if (picked.length === 0) return;
 
-      const sizeBytes = file.size;
-      if (usedStorage + sizeBytes > storageLimit) {
+      const slotsLeft = maxSlots - (editForm.assets[type]?.length || 0);
+      if (picked.length > slotsLeft) {
         toast({
-          title: 'Quota Exceeded',
-          description: 'Not enough storage. Clear space or review your plan in billing.',
-          variant: 'destructive'
+          title: 'Too many files',
+          description: `Only ${slotsLeft} more ${type === 'images' ? 'image' : 'PDF'} slot(s) available — uploading the first ${slotsLeft}.`,
         });
-        return;
       }
+      const files = picked.slice(0, slotsLeft);
 
-      // Generate a temporary local preview URL immediately
-      const localUrl = URL.createObjectURL(file);
-      const tempId = `temp-${Date.now()}`;
-
-      const newAsset: FileAsset = {
-        id: tempId,
-        name: file.name,
-        url: localUrl,
-        sizeBytes,
-        isUploading: true
-      };
-
-      // Add to state immediately
-      setEditForm((prev: any) => ({
-        ...prev,
-        assets: {
-          ...prev.assets,
-          [type]: [...(prev.assets[type] || []), newAsset]
+      // Enforce the quota across the whole batch, not per file
+      let projectedUsage = usedStorage;
+      const accepted: File[] = [];
+      for (const file of files) {
+        if (projectedUsage + file.size > storageLimit) {
+          toast({
+            title: 'Quota Exceeded',
+            description: `"${file.name}" skipped — not enough storage. Clear space or review your plan in billing.`,
+            variant: 'destructive'
+          });
+          continue;
         }
-      }));
+        projectedUsage += file.size;
+        accepted.push(file);
+      }
+      if (accepted.length === 0) return;
 
-      // Background upload
-      const formData = new FormData();
-      formData.append("file", file);
       const token = localStorage.getItem('token');
 
-      fetch("/api/profile/upload", {
-        method: "POST",
-        headers: {
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        },
-        body: formData
-      })
-        .then(async (res) => {
-          if (!res.ok) {
-            const errData = await res.json().catch(() => ({}));
-            throw new Error(errData.error || "Upload failed");
+      accepted.forEach((file, idx) => {
+        // Temporary local preview shown immediately while uploading
+        const localUrl = URL.createObjectURL(file);
+        const tempId = `temp-${Date.now()}-${idx}`;
+
+        const newAsset: FileAsset = {
+          id: tempId,
+          name: file.name,
+          url: localUrl,
+          sizeBytes: file.size,
+          isUploading: true
+        };
+
+        setEditForm((prev: any) => ({
+          ...prev,
+          assets: {
+            ...prev.assets,
+            [type]: [...(prev.assets[type] || []), newAsset]
           }
-          return res.json();
+        }));
+
+        const formData = new FormData();
+        formData.append("file", file);
+
+        fetch("/api/profile/upload", {
+          method: "POST",
+          headers: {
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          body: formData
         })
-        .then((result) => {
-          if (result.url) {
-            // Replace temporary asset with the live R2 URL
-            setEditForm((prev: any) => {
-              const list = prev.assets[type] || [];
-              const updatedList = list.map((item: any) =>
-                item.id === tempId ? { ...item, url: result.url, isUploading: false } : item
-              );
-              return {
+          .then(async (res) => {
+            if (!res.ok) {
+              const errData = await res.json().catch(() => ({}));
+              throw new Error(errData.error || "Upload failed");
+            }
+            return res.json();
+          })
+          .then((result) => {
+            if (result.url) {
+              // Replace temporary asset with the live R2 URL
+              setEditForm((prev: any) => ({
                 ...prev,
                 assets: {
                   ...prev.assets,
-                  [type]: updatedList
+                  [type]: (prev.assets[type] || []).map((item: any) =>
+                    item.id === tempId ? { ...item, url: result.url, isUploading: false } : item
+                  )
                 }
-              };
+              }));
+            }
+          })
+          .catch((err) => {
+            console.error("Failed to upload file to R2 in background:", err);
+            toast({
+              title: 'Upload Failed',
+              description: `"${file.name}": ${err.message || 'An error occurred during file upload.'}`,
+              variant: 'destructive'
             });
-          }
-        })
-        .catch((err) => {
-          console.error("Failed to upload file to R2 in background:", err);
-          toast({
-            title: 'Upload Failed',
-            description: err.message || 'An error occurred during file upload.',
-            variant: 'destructive'
-          });
-          // Remove the temporary asset on failure
-          setEditForm((prev: any) => {
-            const list = prev.assets[type] || [];
-            const updatedList = list.filter((item: any) => item.id !== tempId);
-            return {
+            // Remove the temporary asset on failure
+            setEditForm((prev: any) => ({
               ...prev,
               assets: {
                 ...prev.assets,
-                [type]: updatedList
+                [type]: (prev.assets[type] || []).filter((item: any) => item.id !== tempId)
               }
-            };
+            }));
           });
-        });
+      });
     };
     input.click();
   };

@@ -247,97 +247,104 @@ export default function Step6Review() {
 
   const handleFileUpload = (type: 'images' | 'pdfs') => {
     if (isStorageFull) return;
+    const maxSlots = type === 'images' ? 5 : 2;
     const current = editForm.assets[type] || [];
-    if (type === 'images' && current.length >= 5) return;
-    if (type === 'pdfs' && current.length >= 2) return;
+    if (current.length >= maxSlots) return;
 
     const input = document.createElement('input');
     input.type = 'file';
+    input.multiple = true;
     input.accept = type === 'images' ? 'image/*' : 'application/pdf';
     input.onchange = (e: any) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
+      const picked: File[] = Array.from(e.target.files || []);
+      if (picked.length === 0) return;
 
-      const sizeBytes = file.size;
-      if (usedStorage + sizeBytes > storageLimit) {
-        alert(`Uploading this file exceeds your ${(storageLimit / 1024 / 1024).toFixed(0)}MB storage quota.`);
-        return;
+      const slotsLeft = maxSlots - (editForm.assets[type]?.length || 0);
+      if (picked.length > slotsLeft) {
+        alert(`Only ${slotsLeft} more ${type === 'images' ? 'image' : 'PDF'} slot(s) available — uploading the first ${slotsLeft}.`);
       }
+      const files = picked.slice(0, slotsLeft);
 
-      // Generate a temporary local preview URL immediately
-      const localUrl = URL.createObjectURL(file);
-      const tempId = `temp-${Date.now()}`;
-
-      const newAsset: FileAsset = {
-        id: tempId,
-        name: file.name,
-        url: localUrl,
-        sizeBytes,
-        isUploading: true
-      };
-
-      // Add to state immediately
-      setEditForm((prev: any) => ({
-        ...prev,
-        assets: {
-          ...prev.assets,
-          [type]: [...(prev.assets[type] || []), newAsset]
+      // Enforce the quota across the whole batch, not per file
+      let projectedUsage = usedStorage;
+      const accepted: File[] = [];
+      for (const file of files) {
+        if (projectedUsage + file.size > storageLimit) {
+          alert(`"${file.name}" would exceed your ${(storageLimit / 1024 / 1024).toFixed(0)}MB storage quota and was skipped.`);
+          continue;
         }
-      }));
+        projectedUsage += file.size;
+        accepted.push(file);
+      }
+      if (accepted.length === 0) return;
 
-      // Background upload
-      const formData = new FormData();
-      formData.append("file", file);
       const token = localStorage.getItem('token');
 
-      fetch("/api/profile/upload", {
-        method: "POST",
-        headers: {
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        },
-        body: formData
-      })
-        .then(async (res) => {
-          if (!res.ok) {
-            const errData = await res.json().catch(() => ({}));
-            throw new Error(errData.error || "Upload failed");
+      accepted.forEach((file, idx) => {
+        // Temporary local preview shown immediately while uploading
+        const localUrl = URL.createObjectURL(file);
+        const tempId = `temp-${Date.now()}-${idx}`;
+
+        const newAsset: FileAsset = {
+          id: tempId,
+          name: file.name,
+          url: localUrl,
+          sizeBytes: file.size,
+          isUploading: true
+        };
+
+        setEditForm((prev: any) => ({
+          ...prev,
+          assets: {
+            ...prev.assets,
+            [type]: [...(prev.assets[type] || []), newAsset]
           }
-          return res.json();
+        }));
+
+        const formData = new FormData();
+        formData.append("file", file);
+
+        fetch("/api/profile/upload", {
+          method: "POST",
+          headers: {
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          body: formData
         })
-        .then((result) => {
-          if (result.url) {
-            // Replace temporary asset with the live R2 URL
-            setEditForm((prev: any) => {
-              const list = prev.assets[type] || [];
-              const updatedList = list.map((item: any) =>
-                item.id === tempId ? { ...item, url: result.url, isUploading: false } : item
-              );
-              return {
+          .then(async (res) => {
+            if (!res.ok) {
+              const errData = await res.json().catch(() => ({}));
+              throw new Error(errData.error || "Upload failed");
+            }
+            return res.json();
+          })
+          .then((result) => {
+            if (result.url) {
+              // Replace temporary asset with the live R2 URL
+              setEditForm((prev: any) => ({
                 ...prev,
                 assets: {
                   ...prev.assets,
-                  [type]: updatedList
+                  [type]: (prev.assets[type] || []).map((item: any) =>
+                    item.id === tempId ? { ...item, url: result.url, isUploading: false } : item
+                  )
                 }
-              };
-            });
-          }
-        })
-        .catch((err) => {
-          console.error("Failed to upload file to R2 in background:", err);
-          alert(`Background upload failed: ${err.message || err}`);
-          // Remove the temporary asset on failure
-          setEditForm((prev: any) => {
-            const list = prev.assets[type] || [];
-            const updatedList = list.filter((item: any) => item.id !== tempId);
-            return {
+              }));
+            }
+          })
+          .catch((err) => {
+            console.error("Failed to upload file to R2 in background:", err);
+            alert(`Upload failed for "${file.name}": ${err.message || err}`);
+            // Remove the temporary asset on failure
+            setEditForm((prev: any) => ({
               ...prev,
               assets: {
                 ...prev.assets,
-                [type]: updatedList
+                [type]: (prev.assets[type] || []).filter((item: any) => item.id !== tempId)
               }
-            };
+            }));
           });
-        });
+      });
     };
     input.click();
   };
