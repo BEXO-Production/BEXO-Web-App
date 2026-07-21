@@ -87,7 +87,7 @@ export function OnboardingLayout({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <div className="flex min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-slate-50 flex-col md:flex-row bexo-mobile-shell">
+    <div className="flex min-h-[100dvh] md:h-[100dvh] w-full max-w-full overflow-x-hidden md:overflow-hidden bg-slate-50 flex-col md:flex-row bexo-mobile-shell">
       {/* Mobile Top Progress — z-40 so scrolled content never paints above it */}
       <div className="md:hidden flex flex-col bg-slate-900 text-white px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 sticky top-0 z-40 shadow-lg shadow-slate-900/20 w-full">
         <div className="flex items-center justify-between mb-2 gap-2 min-w-0">
@@ -123,16 +123,16 @@ export function OnboardingLayout({ children }: { children: React.ReactNode }) {
         </div>
       </div>
 
-      {/* Desktop Dark Sidebar */}
-      <div className="hidden md:flex w-56 lg:w-64 flex-col bg-slate-900 px-6 py-8 sticky top-0 h-[100dvh] dark-sidebar overflow-y-auto">
+      {/* Desktop Dark Sidebar — fixed column, never scrolls the page */}
+      <div className="hidden md:flex w-56 lg:w-64 shrink-0 flex-col bg-slate-900 px-5 lg:px-6 py-6 h-full dark-sidebar overflow-y-auto">
         {/* Logo */}
-        <div className="flex items-center gap-2.5 mb-10">
+        <div className="flex items-center gap-2.5 mb-6 shrink-0">
           <img src={logo} alt="BEXO" className="w-8 h-8 object-contain" />
           <span className="font-serif font-bold text-xl text-white tracking-tight">BEXO</span>
         </div>
         
         {/* Step Navigation */}
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-0.5">
           {STEPS.map((step) => {
             const isCompleted = currentStep > step.id;
             const isCurrent = currentStep === step.id;
@@ -141,7 +141,7 @@ export function OnboardingLayout({ children }: { children: React.ReactNode }) {
               <div 
                 key={step.id} 
                 className={cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200",
+                  "flex items-center gap-3 px-3 py-2 rounded-xl transition-all duration-200",
                   isCurrent ? "bg-indigo-600/20 border border-indigo-500/30" : "hover:bg-white/5"
                 )}
               >
@@ -167,7 +167,7 @@ export function OnboardingLayout({ children }: { children: React.ReactNode }) {
         </div>
         
         {/* Bottom Section */}
-        <div className="mt-auto pt-6 flex flex-col gap-3">
+        <div className="mt-auto pt-4 flex flex-col gap-2.5 shrink-0">
           {/* Saved Indicator */}
           <div className="flex items-center gap-2 text-xs font-medium text-emerald-400 bg-emerald-950/30 px-3 py-2 rounded-lg border border-emerald-800/30">
             <Cloud className="w-3.5 h-3.5" /> Your progress is saved
@@ -182,8 +182,8 @@ export function OnboardingLayout({ children }: { children: React.ReactNode }) {
             Logout
           </button>
           
-          {/* Motivational Card with Illustration */}
-          <div className="relative rounded-2xl overflow-hidden shadow-lg h-44 bg-slate-900 shrink-0">
+          {/* Motivational Card with Illustration — hidden on short viewports so the stepper always fits */}
+          <div className="relative rounded-2xl overflow-hidden shadow-lg h-40 bg-slate-900 shrink-0 [@media(max-height:800px)]:hidden">
             {CAROUSEL_IMAGES.map((img, idx) => (
               <img 
                 key={`desk-car-${idx}`}
@@ -210,7 +210,7 @@ export function OnboardingLayout({ children }: { children: React.ReactNode }) {
       </div>
 
       {/* Main Content Area — document scroll on mobile to avoid nested rubber-banding */}
-      <main className="flex-1 flex flex-col relative bg-slate-50 md:overflow-hidden min-w-0 w-full max-w-full">
+      <main className="flex-1 flex flex-col relative bg-slate-50 md:h-full md:overflow-hidden min-w-0 w-full max-w-full">
         {/* Dynamic Background Image (desktop only to reduce mobile scroll weight) */}
         <div className="absolute inset-0 z-0 hidden md:block">
           <img 
@@ -222,7 +222,7 @@ export function OnboardingLayout({ children }: { children: React.ReactNode }) {
           <div className="absolute inset-0 bg-white/85 backdrop-blur-xl" />
         </div>
         
-        <div className="w-full flex-1 md:overflow-y-auto px-3 py-3 sm:px-4 md:px-8 md:py-6 lg:px-12 lg:py-8 z-10 flex flex-col min-w-0">
+        <div className="w-full flex-1 md:min-h-0 md:overflow-y-auto px-3 py-3 sm:px-4 md:px-8 md:py-6 lg:px-12 lg:py-8 z-10 flex flex-col min-w-0">
           <div className="w-full max-w-5xl mx-auto flex flex-col flex-1 relative min-w-0 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
             
             {/* Top Bar: Back Button + Step Label */}
