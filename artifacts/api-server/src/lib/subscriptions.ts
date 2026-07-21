@@ -1,35 +1,94 @@
-import { db, subscriptions, users } from "@workspace/db";
+import { addonSubscriptions, db, subscriptions, users } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 
 export const FREE_STORAGE_BYTES = 10 * 1024 * 1024;
-export const ANNUAL_STORAGE_BYTES = 100 * 1024 * 1024; // Yearly base
-export const LIFETIME_STORAGE_BYTES = 50 * 1024 * 1024; // Lifetime base — Yearly add-on stacks +100MB
+export const STORAGE_BLOCK_BYTES = 50 * 1024 * 1024; // storage add-on block size
 
+// Fallback base quotas when the pricing catalog row is unavailable.
+const PLAN_BASE_QUOTA: Record<string, number> = {
+  free: FREE_STORAGE_BYTES,
+  identity: 50 * 1024 * 1024,
+  essential: 100 * 1024 * 1024,
+  growth: 100 * 1024 * 1024,
+  studentplus: 50 * 1024 * 1024,
+};
 
+// Autopay renewals extend expiry through webhooks; allow a short grace window
+// so a slow webhook does not bounce a paying user back to Free mid-cycle.
+const AUTOPAY_GRACE_MS = 48 * 60 * 60 * 1000;
 
 type SubscriptionRecord = typeof subscriptions.$inferSelect;
-export type PaidPlan = "annual" | "lifetime";
-export type RenewalMode = "purchase" | "renew" | "addon";
+type AddonRecord = typeof addonSubscriptions.$inferSelect;
+
+export type PaidPlan = "identity" | "essential" | "growth" | "studentplus";
+export type PlanId = PaidPlan | "free";
+export type BillingPeriod = "free" | "monthly" | "yearly" | "lifetime";
+export type RenewalMode = "purchase" | "renew";
+
+export const PAID_PLANS: PaidPlan[] = ["identity", "essential", "growth", "studentplus"];
+export const SUBSCRIPTION_PLANS: PaidPlan[] = ["identity", "essential", "growth"]; // Razorpay autopay
+export const ORDER_PLANS: PaidPlan[] = ["studentplus"]; // one-time payment
+
+export function isPaidPlan(value: unknown): value is PaidPlan {
+  return typeof value === "string" && (PAID_PLANS as string[]).includes(value);
+}
+
+/** Map legacy plan ids (annual/lifetime) onto the new catalog. */
+export function normalizePlanId(plan: string | null | undefined): PlanId | null {
+  if (!plan) return null;
+  if (plan === "annual") return "growth";
+  if (plan === "lifetime") return "studentplus";
+  if (plan === "free") return "free";
+  return isPaidPlan(plan) ? plan : null;
+}
+
+export function planBillingPeriod(plan: PlanId | null | undefined): BillingPeriod {
+  if (plan === "identity" || plan === "essential") return "monthly";
+  if (plan === "growth") return "yearly";
+  if (plan === "studentplus") return "lifetime";
+  return "free";
+}
+
+export type CanBuy = {
+  identity: boolean;
+  essential: boolean;
+  growth: boolean;
+  studentplus: boolean;
+  storage: boolean;
+  /** Legacy aliases kept for older clients during rollout */
+  annual: boolean;
+  lifetime: boolean;
+};
 
 export type SubscriptionState = {
   subscription: SubscriptionRecord | null;
-  plan: "annual" | "lifetime" | "free" | null;
+  plan: PlanId | null;
   status: "free" | "active" | "expired";
   isPremium: boolean;
   expiresAt: Date | null;
+  billingPeriod: BillingPeriod;
   storageQuotaBytes: number;
   storageBonusBytes: number;
-  canBuy: { annual: boolean; lifetime: boolean };
+  addonBlocks: number;
+  addonBytes: number;
+  addon: AddonRecord | null;
+  canBuy: CanBuy;
   renewalMode: RenewalMode;
 };
 
 export type ActivateResult = {
-  plan: "annual" | "lifetime";
+  plan: PaidPlan;
   expiresAt: Date | null;
   storageQuotaBytes: number;
   storageBonusBytes: number;
   stacked: boolean;
   renewalMode: RenewalMode;
+};
+
+export const addMonthlyTerm = (from: Date = new Date()) => {
+  const next = new Date(from);
+  next.setMonth(next.getMonth() + 1);
+  return next;
 };
 
 export const addAnnualTerm = (from: Date = new Date()) => {
@@ -38,29 +97,35 @@ export const addAnnualTerm = (from: Date = new Date()) => {
   return next;
 };
 
-export function planBaseQuota(plan: "annual" | "lifetime" | "free" | null | undefined): number {
-  if (plan === "annual") return ANNUAL_STORAGE_BYTES;
-  if (plan === "lifetime") return LIFETIME_STORAGE_BYTES;
-  return FREE_STORAGE_BYTES;
+export function planTermEnd(plan: PaidPlan, from: Date = new Date()): Date | null {
+  const period = planBillingPeriod(plan);
+  if (period === "monthly") return addMonthlyTerm(from);
+  if (period === "yearly") return addAnnualTerm(from);
+  return null; // lifetime
 }
 
-export function effectiveQuota(plan: "annual" | "lifetime" | "free" | null | undefined, bonusBytes: number): number {
-  return planBaseQuota(plan) + Math.max(0, Number(bonusBytes) || 0);
+export function planBaseQuota(plan: PlanId | null | undefined): number {
+  const normalized = normalizePlanId(plan ?? null) || "free";
+  return PLAN_BASE_QUOTA[normalized] ?? FREE_STORAGE_BYTES;
 }
 
-export function getCanBuy(isPremium: boolean, plan: SubscriptionState["plan"]): { annual: boolean; lifetime: boolean } {
-  // Annual is always available: purchase, renew, or lifetime storage add-on.
-  // Lifetime only when not already on an active paid plan.
+export function effectiveQuota(plan: PlanId | null | undefined, bonusBytes: number, addonBytes = 0): number {
+  return planBaseQuota(plan) + Math.max(0, Number(bonusBytes) || 0) + Math.max(0, Number(addonBytes) || 0);
+}
+
+export function getCanBuy(isPremium: boolean): CanBuy {
+  // Base plans are purchasable while not on an active paid plan; autopay plans
+  // renew automatically so there is no manual "renew" purchase to expose.
+  // The storage add-on requires an active paid base plan.
   return {
-    annual: true,
+    identity: !isPremium,
+    essential: !isPremium,
+    growth: !isPremium,
+    studentplus: !isPremium,
+    storage: isPremium,
+    annual: !isPremium,
     lifetime: !isPremium,
   };
-}
-
-export function getRenewalMode(isPremium: boolean, plan: SubscriptionState["plan"]): RenewalMode {
-  if (isPremium && plan === "annual") return "renew";
-  if (isPremium && plan === "lifetime") return "addon";
-  return "purchase";
 }
 
 async function readBonusBytes(userId: string): Promise<number> {
@@ -72,6 +137,26 @@ async function readBonusBytes(userId: string): Promise<number> {
   return Math.max(0, Number(user?.storageBonusBytes) || 0);
 }
 
+/** Latest storage add-on row that still grants blocks (active, or cancelled but inside its paid period). */
+export async function getActiveAddon(userId: string): Promise<AddonRecord | null> {
+  const rows = await db
+    .select()
+    .from(addonSubscriptions)
+    .where(and(eq(addonSubscriptions.userId, userId), eq(addonSubscriptions.addon, "storage")));
+
+  const now = Date.now();
+  let best: AddonRecord | null = null;
+  for (const row of rows) {
+    const withinPeriod = !row.currentEnd || row.currentEnd.getTime() + AUTOPAY_GRACE_MS > now;
+    const grants =
+      (row.status === "active" && withinPeriod) ||
+      (row.status === "cancelled" && row.currentEnd !== null && row.currentEnd.getTime() > now);
+    if (!grants) continue;
+    if (!best || (row.updatedAt?.getTime() || 0) > (best.updatedAt?.getTime() || 0)) best = row;
+  }
+  return best;
+}
+
 export async function resolveSubscriptionState(userId: string): Promise<SubscriptionState> {
   const [subscription] = await db
     .select()
@@ -80,14 +165,20 @@ export async function resolveSubscriptionState(userId: string): Promise<Subscrip
     .limit(1);
 
   const bonusBytes = await readBonusBytes(userId);
+  const addon = await getActiveAddon(userId);
+  const addonBlocks = addon ? Math.max(0, Number(addon.blocks) || 0) : 0;
+  const addonBytes = addonBlocks * STORAGE_BLOCK_BYTES;
+
   const now = new Date();
+  const normalizedPlan = normalizePlanId(subscription?.plan);
+  const graceMs = subscription?.razorpaySubscriptionId ? AUTOPAY_GRACE_MS : 0;
   const hasExpired =
     subscription?.status === "active" &&
     subscription.expiresAt !== null &&
-    subscription.expiresAt.getTime() <= now.getTime();
+    subscription.expiresAt.getTime() + graceMs <= now.getTime();
 
   if (hasExpired) {
-    const quota = effectiveQuota("free", bonusBytes);
+    const quota = effectiveQuota("free", bonusBytes, addonBytes);
     await db
       .update(subscriptions)
       .set({ status: "expired" })
@@ -100,21 +191,24 @@ export async function resolveSubscriptionState(userId: string): Promise<Subscrip
       status: "expired",
       isPremium: false,
       expiresAt: subscription.expiresAt,
+      billingPeriod: "free",
       storageQuotaBytes: quota,
       storageBonusBytes: bonusBytes,
-      canBuy: getCanBuy(false, null),
+      addonBlocks,
+      addonBytes,
+      addon,
+      canBuy: getCanBuy(false),
       renewalMode: "purchase",
     };
   }
 
-  const isPremium =
-    subscription?.status === "active" && (subscription.plan === "annual" || subscription.plan === "lifetime");
-  const plan: SubscriptionState["plan"] = isPremium
-    ? (subscription.plan as "annual" | "lifetime")
-    : subscription?.plan === "free"
+  const isPremium = subscription?.status === "active" && isPaidPlan(normalizedPlan);
+  const plan: PlanId | null = isPremium
+    ? (normalizedPlan as PaidPlan)
+    : normalizedPlan === "free"
       ? "free"
       : null;
-  const storageQuotaBytes = effectiveQuota(isPremium ? plan : "free", bonusBytes);
+  const storageQuotaBytes = effectiveQuota(isPremium ? plan : "free", bonusBytes, addonBytes);
   const status: SubscriptionState["status"] = isPremium
     ? "active"
     : subscription?.status === "expired"
@@ -127,10 +221,14 @@ export async function resolveSubscriptionState(userId: string): Promise<Subscrip
     status,
     isPremium: !!isPremium,
     expiresAt: subscription?.expiresAt || null,
+    billingPeriod: planBillingPeriod(isPremium ? plan : "free"),
     storageQuotaBytes,
     storageBonusBytes: bonusBytes,
-    canBuy: getCanBuy(!!isPremium, plan),
-    renewalMode: getRenewalMode(!!isPremium, plan),
+    addonBlocks,
+    addonBytes,
+    addon,
+    canBuy: getCanBuy(!!isPremium),
+    renewalMode: isPremium && plan && normalizedPlan === plan ? "renew" : "purchase",
   };
 }
 
@@ -139,53 +237,34 @@ export async function syncStorageQuota(userId: string, quotaBytes: number, curre
   await db.update(users).set({ storageQuotaBytes: quotaBytes }).where(eq(users.id, userId));
 }
 
+/** Recompute and persist the user's total quota (base + bonus + addon blocks). */
+export async function recomputeUserQuota(userId: string): Promise<number> {
+  const state = await resolveSubscriptionState(userId);
+  await db.update(users).set({ storageQuotaBytes: state.storageQuotaBytes }).where(eq(users.id, userId));
+  return state.storageQuotaBytes;
+}
+
 /**
- * Apply a paid plan with renew / stack rules:
- * - Free/expired → annual|lifetime: set base plan quota
- * - Active annual → annual: extend expiry only (no storage change)
- * - Active lifetime → annual: keep lifetime, add annual storage as bonus
- * - Lifetime purchase: set lifetime base (bonus preserved)
+ * Apply a paid plan purchase or renewal.
+ * - Same plan active → extend expiry (renew)
+ * - Different plan / free / expired → switch to the purchased plan
+ * Legacy stacked bonus bytes are preserved; add-on storage is tracked separately.
  */
 export async function activatePaidPlan(
   userId: string,
-  purchasedPlan: PaidPlan,
+  purchasedPlanRaw: PaidPlan | "annual" | "lifetime",
   expiresAt: Date | null,
   razorpayLink?: { subscriptionId?: string | null; planId?: string | null },
 ): Promise<ActivateResult> {
+  const purchasedPlan = (normalizePlanId(purchasedPlanRaw) || "growth") as PaidPlan;
   const state = await resolveSubscriptionState(userId);
-  let bonusBytes = state.storageBonusBytes;
-  let nextPlan: "annual" | "lifetime" = purchasedPlan;
-  let nextExpires = expiresAt;
-  let stacked = false;
-  let renewalMode: RenewalMode = "purchase";
+  const renewalMode: RenewalMode = state.isPremium && state.plan === purchasedPlan ? "renew" : "purchase";
+  const nextExpires = planBillingPeriod(purchasedPlan) === "lifetime" ? null : expiresAt;
 
-  if (purchasedPlan === "annual" && state.isPremium && state.plan === "lifetime") {
-    // Storage add-on on top of lifetime
-    nextPlan = "lifetime";
-    nextExpires = null;
-    bonusBytes += ANNUAL_STORAGE_BYTES;
-    stacked = true;
-    renewalMode = "addon";
-  } else if (purchasedPlan === "annual" && state.isPremium && state.plan === "annual") {
-    // Renew: keep plan + bonus; expiry already computed by caller
-    nextPlan = "annual";
-    nextExpires = expiresAt;
-    renewalMode = "renew";
-  } else if (purchasedPlan === "lifetime") {
-    nextPlan = "lifetime";
-    nextExpires = null;
-    renewalMode = "purchase";
-  } else {
-    // Free / expired → annual (restore annual base)
-    nextPlan = "annual";
-    nextExpires = expiresAt;
-    renewalMode = "purchase";
-  }
+  const quotaBytes = effectiveQuota(purchasedPlan, state.storageBonusBytes, state.addonBytes);
 
-  const quotaBytes = effectiveQuota(nextPlan, bonusBytes);
-
-  // Only annual autopay purchases carry a Razorpay subscription id. A lifetime
-  // purchase (or annual add-on on lifetime) must not clobber an existing link.
+  // Only autopay purchases carry a Razorpay subscription id; a one-time order
+  // (Student+) must not clobber an existing link.
   const linkUpdates: Partial<typeof subscriptions.$inferInsert> = {};
   if (razorpayLink?.subscriptionId !== undefined) {
     linkUpdates.razorpaySubscriptionId = razorpayLink.subscriptionId;
@@ -198,12 +277,12 @@ export async function activatePaidPlan(
   if (existing.length > 0) {
     await db
       .update(subscriptions)
-      .set({ plan: nextPlan, status: "active", expiresAt: nextExpires, ...linkUpdates })
+      .set({ plan: purchasedPlan, status: "active", expiresAt: nextExpires, ...linkUpdates })
       .where(eq(subscriptions.userId, userId));
   } else {
     await db.insert(subscriptions).values({
       userId,
-      plan: nextPlan,
+      plan: purchasedPlan,
       status: "active",
       expiresAt: nextExpires,
       ...linkUpdates,
@@ -212,36 +291,31 @@ export async function activatePaidPlan(
 
   await db
     .update(users)
-    .set({
-      storageQuotaBytes: quotaBytes,
-      storageBonusBytes: bonusBytes,
-    })
+    .set({ storageQuotaBytes: quotaBytes })
     .where(eq(users.id, userId));
 
   return {
-    plan: nextPlan,
+    plan: purchasedPlan,
     expiresAt: nextExpires,
     storageQuotaBytes: quotaBytes,
-    storageBonusBytes: bonusBytes,
-    stacked,
+    storageBonusBytes: state.storageBonusBytes,
+    stacked: false,
     renewalMode,
   };
 }
 
-export async function getRenewalExpiry(userId: string, plan: PaidPlan): Promise<Date | null> {
-  if (plan === "lifetime") return null;
+export async function getRenewalExpiry(userId: string, planRaw: PaidPlan | "annual" | "lifetime"): Promise<Date | null> {
+  const plan = (normalizePlanId(planRaw) || "growth") as PaidPlan;
+  if (planBillingPeriod(plan) === "lifetime") return null;
 
   const state = await resolveSubscriptionState(userId);
-  // Lifetime add-on does not set an expiry on the subscription
-  if (state.isPremium && state.plan === "lifetime") return null;
-
   const start =
-    state.subscription?.plan === "annual" &&
-    state.subscription.status === "active" &&
-    state.subscription.expiresAt &&
+    state.isPremium &&
+    state.plan === plan &&
+    state.subscription?.expiresAt &&
     state.subscription.expiresAt.getTime() > Date.now()
       ? state.subscription.expiresAt
       : new Date();
 
-  return addAnnualTerm(start);
+  return planTermEnd(plan, start);
 }

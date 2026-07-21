@@ -11,7 +11,9 @@ export const users = pgTable("users", {
   name: text("name"),
   dob: date("dob"),
   photoUrl: text("photo_url"),
-  resumeUrl: text("resume_url"),
+  resumeUrl: text("resume_url"), // user-uploaded resume only
+  generatedResumeUrl: text("generated_resume_url"), // system-generated ATS resume
+  defaultResume: text("default_resume").notNull().default("generated"), // 'generated' | 'uploaded'
   profilePhotoAssetId: uuid("profile_photo_asset_id"),
   storageUsedBytes: bigint("storage_used_bytes", { mode: "number" }).default(0),
   storageQuotaBytes: bigint("storage_quota_bytes", { mode: "number" }).default(10485760), // 10MB free tier default
@@ -22,6 +24,8 @@ export const users = pgTable("users", {
   themeBg: text("theme_bg").default("grid"),
   resumeParsesThisMonth: integer("resume_parses_this_month").default(0),
   lastResumeParseReset: timestamp("last_resume_parse_reset", { withTimezone: true }).defaultNow(),
+  updatesThisMonth: integer("updates_this_month").notNull().default(0),
+  lastUpdatesReset: timestamp("last_updates_reset", { withTimezone: true }).defaultNow(),
   onboardingSuccessfulParses: integer("onboarding_successful_parses").default(0),
   onboardingCompletedAt: timestamp("onboarding_completed_at", { withTimezone: true }),
   lastOnboardingActivityAt: timestamp("last_onboarding_activity_at", { withTimezone: true }),
@@ -118,6 +122,20 @@ export const subscriptions = pgTable("subscriptions", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });
 
+// 9b. Add-on Subscriptions (storage blocks; concurrent with the base plan)
+export const addonSubscriptions = pgTable("addon_subscriptions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").references(() => users.id).notNull(),
+  addon: text("addon").notNull().default("storage"),
+  blocks: integer("blocks").notNull().default(1),
+  razorpaySubscriptionId: text("razorpay_subscription_id").unique(),
+  razorpayPlanId: text("razorpay_plan_id"),
+  status: text("status").notNull().default("pending"), // 'pending' | 'active' | 'cancelled' | 'expired'
+  currentEnd: timestamp("current_end", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
 // 10. Payments Table
 export const payments = pgTable("payments", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -208,6 +226,10 @@ export const pricingPlans = pgTable("pricing_plans", {
   isHighlighted: boolean("is_highlighted").notNull().default(false),
   features: jsonb("features").notNull().default([]),
   isActive: boolean("is_active").notNull().default(true),
+  billingPeriod: text("billing_period").notNull().default("yearly"), // 'free' | 'monthly' | 'yearly' | 'lifetime'
+  razorpayPlanId: text("razorpay_plan_id"),
+  parsesPerMonth: integer("parses_per_month").notNull().default(0),
+  updatesPerMonth: integer("updates_per_month").notNull().default(1),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
 

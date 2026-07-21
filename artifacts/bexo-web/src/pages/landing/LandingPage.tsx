@@ -125,7 +125,7 @@ const FEATURES = [
   {
     icon: HardDrive,
     title: "Storage that scales with you",
-    body: "10MB free · 100MB Yearly · 50MB Lifetime — stack Yearly on Lifetime for +100MB anytime.",
+    body: "10MB free · 50MB Identity & Student+ · 100MB Essential & Growth — add +50MB blocks for ₹25/month anytime.",
   },
   {
     icon: Briefcase,
@@ -134,7 +134,13 @@ const FEATURES = [
   },
 ];
 
-function buildPlans(prices: { annual: number; lifetime: number }) {
+function buildPlans(prices: {
+  identity: number;
+  essential: number;
+  growth: number;
+  studentplus: number;
+  storage_addon: number;
+}) {
   return [
     {
       id: "free",
@@ -142,41 +148,73 @@ function buildPlans(prices: { annual: number; lifetime: number }) {
       price: "₹0",
       period: "forever",
       blurb: "Publish a path-based portfolio and prove the flow.",
-      features: ["Path-based portfolio", "10MB storage", "Hire Me page", "Upgrade to Pro anytime"],
+      features: ["Basic template, path URL", "10MB storage", "1 update / month", "Upgrade anytime"],
       cta: "Start free",
       promoted: false,
     },
     {
-      id: "annual",
-      name: "Yearly",
-      price: `₹${prices.annual.toLocaleString("en-IN")}`,
-      period: "/year",
+      id: "identity",
+      name: "Identity",
+      price: `₹${prices.identity.toLocaleString("en-IN")}`,
+      period: "/month",
       note: "+ 18% GST",
-      blurb: "Best for students & professionals — full Pro templates and 100MB cloud storage.",
+      blurb: "Your professional identity, live on your own subdomain.",
       features: [
-        "Premium templates",
-        "100MB cloud storage base",
         "yourname.atbexo.com",
-        "AI resume parses",
-        "Auto-renews yearly via Razorpay Autopay",
+        "Premium templates",
+        "50MB cloud storage",
+        "1 AI resume parse / month",
+        "3 updates / month",
       ],
-      cta: "Get Yearly",
+      cta: "Get Identity",
+      promoted: false,
+    },
+    {
+      id: "essential",
+      name: "Essential",
+      price: `₹${prices.essential.toLocaleString("en-IN")}`,
+      period: "/month",
+      note: "+ 18% GST",
+      blurb: "Everything in Identity with more storage, parses, and updates.",
+      features: [
+        "Everything in Identity",
+        "100MB cloud storage",
+        "3 AI resume parses / month",
+        "10 updates / month",
+      ],
+      cta: "Get Essential",
       promoted: true,
     },
     {
-      id: "lifetime",
-      name: "Lifetime",
-      price: `₹${prices.lifetime.toLocaleString("en-IN")}`,
+      id: "growth",
+      name: "Growth",
+      price: `₹${prices.growth.toLocaleString("en-IN")}`,
+      period: "/year",
+      note: "+ 18% GST",
+      blurb: "All Essential features, billed once a year.",
+      features: [
+        "Everything in Essential",
+        "Billed yearly — one renewal a year",
+        "100MB cloud storage",
+        "10 updates / month",
+      ],
+      cta: "Get Growth",
+      promoted: false,
+    },
+    {
+      id: "studentplus",
+      name: "Student+",
+      price: `₹${prices.studentplus.toLocaleString("en-IN")}`,
       period: "once",
       note: "+ 18% GST",
-      blurb: "Best for students & professionals — pay once, keep Pro access forever.",
+      blurb: "Identity-level access forever — one payment, no renewals.",
       features: [
-        "Everything in Yearly (templates & subdomain)",
-        "50MB storage base",
-        "One-time payment — no auto-renewal",
-        "Forever hosting",
+        "Everything in Identity, for life",
+        "One-time payment",
+        "50MB cloud storage",
+        "No auto-renewal ever",
       ],
-      cta: "Go Lifetime",
+      cta: "Go Student+",
       promoted: false,
     },
   ];
@@ -192,7 +230,10 @@ export default function LandingPage({
   continueHref?: string;
 }) {
   const { prices } = usePricing();
-  const PLANS = React.useMemo(() => buildPlans(prices), [prices.annual, prices.lifetime]);
+  const PLANS = React.useMemo(
+    () => buildPlans(prices),
+    [prices.identity, prices.essential, prices.growth, prices.studentplus, prices.storage_addon],
+  );
   const [previewTemplate, setPreviewTemplate] = useState<PortfolioTemplate | null>(null);
 
   usePageSeo({
@@ -457,16 +498,19 @@ export default function LandingPage({
             <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#2F6BFF]">Pricing</p>
             <h2 className="mt-3 font-serif text-3xl font-bold text-slate-900 sm:text-5xl">Simple plans. Serious presence.</h2>
             <p className="mt-3 max-w-xl text-slate-600">
-              Yearly is recommended for most students — ₹{prices.annual.toLocaleString("en-IN")}/year with 100MB.
-              Lifetime is ₹{prices.lifetime.toLocaleString("en-IN")} once with 50MB base; stack Yearly anytime for +100MB.
+              Start monthly from ₹{prices.identity.toLocaleString("en-IN")}, go yearly with Growth at ₹
+              {prices.growth.toLocaleString("en-IN")}/year, or pay once with Student+ at ₹
+              {prices.studentplus.toLocaleString("en-IN")}. Need more room? Add +50MB blocks for ₹
+              {prices.storage_addon.toLocaleString("en-IN")}/month.
             </p>
           </Reveal>
 
-          <Reveal lift className="mt-8 grid gap-3 sm:grid-cols-3">
+          <Reveal lift className="mt-8 grid gap-3 grid-cols-2 sm:grid-cols-4">
             {[
               { k: "Free", v: "10MB", d: "Path URL forever" },
-              { k: "Yearly", v: "100MB", d: `₹${prices.annual.toLocaleString("en-IN")}/yr` },
-              { k: "Lifetime", v: "50MB+", d: `₹${prices.lifetime.toLocaleString("en-IN")} · stackable` },
+              { k: "Identity / Student+", v: "50MB", d: `from ₹${prices.identity.toLocaleString("en-IN")}/mo` },
+              { k: "Essential / Growth", v: "100MB", d: `from ₹${prices.essential.toLocaleString("en-IN")}/mo` },
+              { k: "Storage add-on", v: "+50MB", d: `₹${prices.storage_addon.toLocaleString("en-IN")}/mo per block` },
             ].map((item) => (
               <div
                 key={item.k}
@@ -479,7 +523,7 @@ export default function LandingPage({
             ))}
           </Reveal>
 
-          <div className="mt-12 grid gap-5 lg:grid-cols-3">
+          <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
             {PLANS.map((plan, i) => (
               <Reveal key={plan.id} delay={i} lift>
                 <div
@@ -528,8 +572,9 @@ export default function LandingPage({
           <Reveal lift className="mt-10 flex items-start gap-3 rounded-2xl border border-slate-200 bg-white/80 p-5 text-sm text-slate-600">
             <Shield className="mt-0.5 h-5 w-5 shrink-0 text-[#2F6BFF]" />
             <p>
-              Payments via Razorpay. Prices shown exclude 18% GST. Yearly auto-renews via Razorpay Autopay (cancel anytime); Lifetime is a one-time payment.
-              On Lifetime? Buying Yearly adds +100MB on top of your 50MB base. See our{" "}
+              Payments via Razorpay. Prices shown exclude 18% GST. Identity and Essential renew monthly, Growth renews
+              yearly — all via Razorpay Autopay (cancel anytime). Student+ is a one-time payment. Any paid plan can add
+              +50MB storage blocks at ₹{prices.storage_addon.toLocaleString("en-IN")}/month. See our{" "}
               <Link href="/refund" className="font-semibold text-[#2F6BFF] underline-offset-2 hover:underline">
                 Refund Policy
               </Link>

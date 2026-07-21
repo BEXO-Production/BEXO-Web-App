@@ -145,22 +145,57 @@ export const generateInvoicePDF = async (
       let basePrice = 0, gstPrice = 0, totalPrice = amount;
       let discountPrice = 0, displaySubtotal = 0;
 
+      const PLAN_COPY: Record<string, { name: string; desc: string; ref: string }> = {
+        identity: {
+          name: 'Bexo Pro \u2013 Identity Plan (Monthly)',
+          desc: 'Identity Plan monthly subscription \u2013 personal subdomain, premium templates, 50MB cloud storage, AI resume parsing, and monthly profile updates.',
+          ref: 'PAY_IDEN',
+        },
+        essential: {
+          name: 'Bexo Pro \u2013 Essential Plan (Monthly)',
+          desc: 'Essential Plan monthly subscription \u2013 everything in Identity plus 100MB cloud storage, extra AI resume parses, and more monthly updates.',
+          ref: 'PAY_ESSN',
+        },
+        growth: {
+          name: 'Bexo Pro \u2013 Growth Plan (Yearly)',
+          desc: 'Growth Plan yearly subscription \u2013 12 months of Essential-level access: premium templates, 100MB cloud storage, AI resume parsing, and priority hosting.',
+          ref: 'PAY_GRTH',
+        },
+        studentplus: {
+          name: 'Bexo Pro \u2013 Student+ Plan (Lifetime)',
+          desc: 'Student+ lifetime access \u2013 one-time payment for Identity-level access forever: subdomain, premium templates, 50MB cloud storage, and AI resume parsing.',
+          ref: 'PAY_STUP',
+        },
+        storage_addon: {
+          name: 'Bexo Pro \u2013 Storage Increase Add-on',
+          desc: 'Monthly storage add-on subscription \u2013 additional 50MB cloud storage block(s) on top of your active Bexo Pro plan.',
+          ref: 'PAY_STOR',
+        },
+        lifetime: {
+          name: 'Bexo Pro \u2013 Lifetime Subscription',
+          desc: 'Lifetime Subscription Plan \u2013 Unrestricted access to Bexo Pro services, premium ATS portfolio templates, AI parsing tools, and unlimited cloud hosting bandwidth with no recurring fees.',
+          ref: 'PAY_LIFE',
+        },
+        annual: {
+          name: 'Bexo Pro \u2013 Annual Subscription',
+          desc: 'Annual Subscription Plan \u2013 12 months access to Bexo Pro services, premium ATS portfolio templates, AI parsing tools, and cloud hosting bandwidth.',
+          ref: 'PAY_ANNU',
+        },
+      };
+
       if (plan === 'activation_code') {
         displayPlanName = 'Bexo Pro \u2013 Onboarding Activation';
         displayDesc = 'Pre-paid Bexo Pro account activation via institutional or partner code. Includes unrestricted access to portfolio templates, automated AI parsing, and cloud hosting.';
         const ov = 999;
         basePrice = ov / 1.18; gstPrice = ov - basePrice;
         displaySubtotal = ov; discountPrice = ov; totalPrice = 0;
-      } else if (plan === 'lifetime') {
-        displayPlanName = 'Bexo Pro \u2013 Lifetime Subscription';
-        displayDesc = 'Lifetime Subscription Plan \u2013 Unrestricted access to Bexo Pro services, premium ATS portfolio templates, AI parsing tools, and unlimited cloud hosting bandwidth with no recurring fees.';
-        basePrice = totalPrice / 1.18; gstPrice = totalPrice - basePrice; displaySubtotal = totalPrice;
       } else {
-        displayPlanName = 'Bexo Pro \u2013 Annual Subscription';
-        displayDesc = 'Annual Subscription Plan \u2013 12 months access to Bexo Pro services, premium ATS portfolio templates, AI parsing tools, and cloud hosting bandwidth.';
+        const copy = PLAN_COPY[plan] || PLAN_COPY.annual;
+        displayPlanName = copy.name;
+        displayDesc = copy.desc;
         basePrice = totalPrice / 1.18; gstPrice = totalPrice - basePrice; displaySubtotal = totalPrice;
       }
-      const custRef = plan === 'activation_code' ? 'ACT_CODE' : plan === 'lifetime' ? 'PAY_LIFE' : 'PAY_ANNU';
+      const custRef = plan === 'activation_code' ? 'ACT_CODE' : (PLAN_COPY[plan]?.ref || 'PAY_BEXO');
 
       // ═══════════════════════════════════════════
       // SECTION 3: BILL TO / PROJECT CARDS

@@ -3,18 +3,15 @@ import { createPortal } from 'react-dom';
 import { useLocation } from 'wouter';
 import { useOnboarding } from '../context/OnboardingContext';
 import { Button, Input, Card } from '../design-system/primitives';
-import { Check, ShieldCheck, Loader2, ArrowRight, Tag, ArrowLeft, X, Eye, Globe } from 'lucide-react';
+import { Check, ShieldCheck, Loader2, ArrowRight, Tag, ArrowLeft, X, Eye, Globe, Database, Minus, Plus } from 'lucide-react';
 import { cn } from '../design-system/primitives';
 import { useToast } from '../hooks/use-toast';
 import { buildMinimalPortfolioHTML } from '../lib/buildMinimalHTML';
 import { PENDING_TEMPLATE_KEY } from './step-7';
 import { JUST_ACTIVATED_KEY } from './welcome';
 import { PORTFOLIO_TEMPLATES, FREE_FALLBACK_TEMPLATE_ID } from '../lib/templates';
-import {
-  ANNUAL_STORAGE_BYTES,
-  LIFETIME_STORAGE_BYTES,
-} from '../lib/pricing';
-import { usePricing, validateCouponApi } from '../hooks/use-pricing';
+import { BILLING_PERIOD_LABELS, PLAN_LABELS, STORAGE_BLOCK_BYTES, planBaseQuotaBytes } from '../lib/pricing';
+import { usePricing, validateCouponApi, type PublicPricingPlan, type PricingBreakdown } from '../hooks/use-pricing';
 
 declare global {
   interface Window {
@@ -29,45 +26,38 @@ const THEMES = [
   { id: 'violet',  label: 'Violet',  bg: 'bg-violet-600',  ring: 'ring-violet-600',  hex: '#7c3aed' },
 ];
 
+type PaidPlanId = 'identity' | 'essential' | 'growth' | 'studentplus';
+const SUBSCRIPTION_PLANS: PaidPlanId[] = ['identity', 'essential', 'growth'];
+
 const formatMb = (bytes: number) => `${Math.round((Number(bytes) || 0) / (1024 * 1024))}MB`;
+const fmtINR = (n: number) =>
+  n % 1 === 0
+    ? n.toLocaleString('en-IN')
+    : n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function Step9Plan() {
   const { data, updateData } = useOnboarding();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { prices, gstRate } = usePricing();
-
-  const canBuyLifetime = data.canBuy?.lifetime !== false && !data.isPremium;
-  const canBuyAnnual = data.canBuy?.annual !== false;
-  const renewalMode =
-    data.renewalMode ||
-    (data.isPremium && data.plan === 'lifetime'
-      ? 'addon'
-      : data.isPremium && data.plan === 'annual'
-        ? 'renew'
-        : 'purchase');
-  const yearlyOnly = data.isPremium || !canBuyLifetime;
+  const { gstRate, paidPlans, planById } = usePricing();
 
   const [tab, setTab] = useState<'pay' | 'code'>('pay');
-  const [plan, setPlan] = useState<'annual' | 'lifetime'>('annual');
+  const [plan, setPlan] = useState<PaidPlanId>('essential');
   const [isProcessing, setIsProcessing] = useState(false);
   const [code, setCode] = useState('');
   const [codeError, setCodeError] = useState('');
-  const [isSwooshing, setIsSwooshing] = useState(false);
+  const [isSwooshing] = useState(false);
 
   // Checkout specific states
   const [showCheckout, setShowCheckout] = useState(false);
   const [couponCode, setCouponCode] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
-  const [couponPricing, setCouponPricing] = useState<{
-    base: number;
-    discount: number;
-    subtotal: number;
-    gst: number;
-    total: number;
-  } | null>(null);
+  const [couponPricing, setCouponPricing] = useState<PricingBreakdown | null>(null);
   const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
-  const [showUpgradeOptions, setShowUpgradeOptions] = useState(false);
+
+  // Storage add-on states (for premium users on /billing)
+  const [addonBlocks, setAddonBlocks] = useState(1);
+  const [isAddonProcessing, setIsAddonProcessing] = useState(false);
 
   // Free flow states
   const [freeFlowStep, setFreeFlowStep] = useState<'none' | 'warning' | 'handle'>('none');
@@ -80,10 +70,6 @@ export default function Step9Plan() {
   const [showFreePreview, setShowFreePreview] = useState(false);
 
   useEffect(() => {
-    if (yearlyOnly && plan === 'lifetime') setPlan('annual');
-  }, [yearlyOnly, plan]);
-
-  useEffect(() => {
     setAppliedCoupon(null);
     setCouponPricing(null);
   }, [plan]);
@@ -93,32 +79,34 @@ export default function Step9Plan() {
     [data, freeTheme, freeHandle, freeThemeBg]
   );
 
-  const basePrice = plan === 'annual' ? prices.annual : prices.lifetime;
+  const selectedPlan: PublicPricingPlan | undefined = planById(plan);
+  const basePrice = selectedPlan?.priceInrExGst ?? 0;
+  const listPricing = selectedPlan?.pricing || null;
+  const isSubscriptionPlan = SUBSCRIPTION_PLANS.includes(plan);
+  const periodLabel = BILLING_PERIOD_LABELS[selectedPlan?.billingPeriod || 'yearly'] || '';
 
   const discount = couponPricing?.discount ?? 0;
-  const subtotal = couponPricing?.subtotal ?? basePrice;
-  const gst = couponPricing?.gst ?? subtotal * gstRate;
-  const total = couponPricing?.total ?? Math.round(subtotal + gst);
+  const subtotal = couponPricing?.subtotal ?? listPricing?.subtotal ?? basePrice;
+  const gst = couponPricing?.gst ?? listPricing?.gst ?? Math.round(subtotal * 100 * gstRate) / 100;
+  const total = couponPricing?.total ?? listPricing?.total ?? Math.round((subtotal + gst) * 100) / 100;
   const isBillingManagement = data.hasCompletedOnboarding;
 
   const handleStr = data.handle || (data.name ? data.name.toLowerCase().replace(/[^a-z0-9]/g, '') : '');
   const portfolioUrl = handleStr ? `${handleStr}.atbexo.com` : null;
 
+  const currentPlanId = data.plan === 'annual' ? 'growth' : data.plan === 'lifetime' ? 'studentplus' : data.plan;
+  const currentPlanLabel = PLAN_LABELS[currentPlanId || 'free'] || 'Free';
+  const isLifetimePlan = currentPlanId === 'studentplus';
+
   const expiryLabel = data.expiresAt
     ? new Date(data.expiresAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
     : null;
 
-  const planWarning =
-    renewalMode === 'renew' && data.plan === 'annual'
-      ? expiryLabel
-        ? `You're on Annual until ${expiryLabel}. Renewing extends that date by 1 year — storage stays the same.`
-        : `You're on an active Annual plan. Renewing extends your access by 1 year.`
-      : renewalMode === 'addon' && data.plan === 'lifetime'
-        ? `Lifetime stays forever. Buying Yearly adds +100MB on top of your current ${formatMb(data.storageQuotaBytes || 0)} quota.`
-        : null;
+  const addonPricePerBlock = planById('storage_addon')?.priceInrExGst ?? 25;
+  const addonTotalInr = Math.round(addonPricePerBlock * addonBlocks * 100 * (1 + gstRate)) / 100;
 
   const finishPremiumActivation = async (
-    activatedPlan: 'annual' | 'lifetime',
+    activatedPlan: string,
     extras?: {
       storageQuotaBytes?: number;
       storageBonusBytes?: number;
@@ -130,9 +118,7 @@ export default function Step9Plan() {
     localStorage.removeItem(PENDING_TEMPLATE_KEY);
     const token = localStorage.getItem('token');
 
-    const quota =
-      extras?.storageQuotaBytes ??
-      (activatedPlan === 'annual' ? ANNUAL_STORAGE_BYTES : LIFETIME_STORAGE_BYTES);
+    const quota = extras?.storageQuotaBytes ?? planBaseQuotaBytes(activatedPlan);
 
     const patchBody: Record<string, unknown> = {
       plan: activatedPlan,
@@ -140,8 +126,8 @@ export default function Step9Plan() {
       hasCompletedOnboarding: true,
       storageQuotaBytes: quota,
       storageBonusBytes: extras?.storageBonusBytes ?? data.storageBonusBytes ?? 0,
-      canBuy: { annual: true, lifetime: false },
-      renewalMode: activatedPlan === 'lifetime' ? 'addon' : 'renew',
+      canBuy: { identity: false, essential: false, growth: false, studentplus: false, storage: true, annual: false, lifetime: false },
+      renewalMode: 'renew',
       expiresAt: extras?.expiresAt ?? data.expiresAt,
     };
     if (pending) patchBody.templateId = pending;
@@ -161,13 +147,6 @@ export default function Step9Plan() {
       } catch (err) {
         console.error('Failed to persist premium template:', err);
       }
-    }
-
-    if (extras?.stacked) {
-      toast({
-        title: 'Storage stacked',
-        description: `Your total quota is now ${formatMb(quota)} (+100MB Yearly add-on).`,
-      });
     }
 
     sessionStorage.setItem(JUST_ACTIVATED_KEY, '1');
@@ -193,15 +172,12 @@ export default function Step9Plan() {
       throw new Error(verifyData.error || "Payment verification failed");
     }
 
-    await finishPremiumActivation(
-      (verifyData.plan === 'lifetime' ? 'lifetime' : 'annual') as 'annual' | 'lifetime',
-      {
-        storageQuotaBytes: verifyData.storageQuotaBytes,
-        storageBonusBytes: verifyData.storageBonusBytes,
-        stacked: verifyData.stacked,
-        expiresAt: verifyData.expiresAt,
-      },
-    );
+    await finishPremiumActivation(verifyData.plan || plan, {
+      storageQuotaBytes: verifyData.storageQuotaBytes,
+      storageBonusBytes: verifyData.storageBonusBytes,
+      stacked: verifyData.stacked,
+      expiresAt: verifyData.expiresAt,
+    });
   };
 
   const verifySubscription = async (token: string | null, payload: any) => {
@@ -222,7 +198,7 @@ export default function Step9Plan() {
       throw new Error(verifyData.error || "Subscription verification failed");
     }
 
-    await finishPremiumActivation('annual', {
+    await finishPremiumActivation(verifyData.plan || plan, {
       storageQuotaBytes: verifyData.storageQuotaBytes,
       storageBonusBytes: verifyData.storageBonusBytes,
       stacked: verifyData.stacked,
@@ -270,20 +246,23 @@ export default function Step9Plan() {
       rzp.on('payment.failed', function (response: any) {
         toast({ title: 'Payment Failed', description: response.error?.description || 'Payment failed', variant: 'destructive' });
         setIsProcessing(false);
+        setIsAddonProcessing(false);
       });
       rzp.open();
       // Keep processing=true while the checkout modal is open (cleared on dismiss / fail / success)
     } else {
       toast({ title: 'Error', description: 'Razorpay SDK failed to load. Refresh and try again.', variant: 'destructive' });
       setIsProcessing(false);
+      setIsAddonProcessing(false);
     }
   };
 
-  const baseRazorpayOptions = (token: string | null) => ({
+  const baseRazorpayOptions = (_token: string | null) => ({
     name: "Bexo",
     modal: {
       ondismiss: function () {
         setIsProcessing(false);
+        setIsAddonProcessing(false);
       },
     },
     prefill: {
@@ -294,7 +273,7 @@ export default function Step9Plan() {
     theme: { color: "#4f46e5" }
   });
 
-  // Yearly = auto-renewing Razorpay Subscription (autopay)
+  // Identity / Essential / Growth = auto-renewing Razorpay Subscription (autopay)
   const startSubscriptionCheckout = async (token: string | null): Promise<void> => {
     const subRes = await fetch("/api/payments/create-subscription", {
       method: "POST",
@@ -302,15 +281,15 @@ export default function Step9Plan() {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${token}`
       },
-      body: JSON.stringify({ couponCode: appliedCoupon })
+      body: JSON.stringify({ plan, couponCode: appliedCoupon })
     });
 
     const subData = await subRes.json();
 
     if (!subRes.ok) {
       if (subData.code === 'USE_ORDER' || subRes.status === 503) {
-        // Lifetime add-on case, or autopay not configured yet — fall back to a
-        // one-time order so checkout keeps working.
+        // Autopay not configured yet — fall back to a one-time order so
+        // checkout keeps working.
         await startOrderCheckout(token);
         return;
       }
@@ -330,7 +309,7 @@ export default function Step9Plan() {
       ...baseRazorpayOptions(token),
       key: subData.key || 'rzp_test_YourKeyIdHere',
       subscription_id: subData.subscriptionId,
-      description: "Yearly Plan — auto-renews via Razorpay Autopay",
+      description: `${selectedPlan?.displayName || 'Plan'} — auto-renews via Razorpay Autopay`,
       handler: async function (response: any) {
         setIsProcessing(true);
         try {
@@ -345,7 +324,7 @@ export default function Step9Plan() {
     });
   };
 
-  // Lifetime (and annual add-on on lifetime) = one-time Razorpay Order
+  // Student+ = one-time Razorpay Order
   const startOrderCheckout = async (token: string | null): Promise<void> => {
     const orderRes = await fetch("/api/payments/create-order", {
       method: "POST",
@@ -381,7 +360,7 @@ export default function Step9Plan() {
       amount: orderData.amount,
       currency: orderData.currency,
       order_id: orderData.orderId,
-      description: plan === 'annual' ? "Yearly Storage Add-on" : "Lifetime Access — one-time payment",
+      description: `${selectedPlan?.displayName || 'Plan'} — one-time payment`,
       handler: async function (response: any) {
         setIsProcessing(true);
         try {
@@ -400,9 +379,7 @@ export default function Step9Plan() {
     setIsProcessing(true);
     try {
       const token = localStorage.getItem('token');
-      // Yearly purchases/renewals auto-renew via subscription; the lifetime
-      // storage add-on and Lifetime itself stay one-time orders.
-      if (plan === 'annual' && renewalMode !== 'addon') {
+      if (isSubscriptionPlan) {
         await startSubscriptionCheckout(token);
       } else {
         await startOrderCheckout(token);
@@ -411,6 +388,93 @@ export default function Step9Plan() {
       console.error("Checkout error:", err);
       toast({ title: 'Checkout Error', description: err.message, variant: 'destructive' });
       setIsProcessing(false);
+    }
+  };
+
+  // Storage add-on (premium users only) — second concurrent subscription
+  const handleAddonCheckout = async () => {
+    setIsAddonProcessing(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch("/api/payments/create-addon-subscription", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ blocks: addonBlocks })
+      });
+      const addonData = await res.json();
+      if (!res.ok) throw new Error(addonData.error || "Failed to start the storage add-on");
+
+      const verifyAddon = async (payload: any) => {
+        const verifyRes = await fetch("/api/payments/verify-addon-subscription", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify(payload)
+        });
+        const verifyData = await verifyRes.json();
+        if (!verifyRes.ok) throw new Error(verifyData.error || "Add-on verification failed");
+        updateData({
+          storageQuotaBytes: verifyData.storageQuotaBytes,
+          addonBlocks: addonBlocks,
+        } as any);
+        toast({
+          title: 'Storage added!',
+          description: `+${formatMb(addonBlocks * STORAGE_BLOCK_BYTES)} is now live on your account.`,
+        });
+        setIsAddonProcessing(false);
+      };
+
+      if (addonData.mock) {
+        await verifyAddon({
+          razorpay_payment_id: `mock_payment_${Date.now()}`,
+          razorpay_subscription_id: addonData.subscriptionId,
+          razorpay_signature: 'mock_signature'
+        });
+        return;
+      }
+
+      openRazorpayModal({
+        ...baseRazorpayOptions(token),
+        key: addonData.key || 'rzp_test_YourKeyIdHere',
+        subscription_id: addonData.subscriptionId,
+        description: `Storage Increase — ${addonBlocks} × 50MB block(s), monthly`,
+        handler: async function (response: any) {
+          setIsAddonProcessing(true);
+          try {
+            await verifyAddon(response);
+          } catch (err: any) {
+            toast({ title: 'Verification Failed', description: err.message, variant: 'destructive' });
+            setIsAddonProcessing(false);
+          }
+        },
+      });
+    } catch (err: any) {
+      toast({ title: 'Add-on Error', description: err.message, variant: 'destructive' });
+      setIsAddonProcessing(false);
+    }
+  };
+
+  const handleAddonCancel = async () => {
+    setIsAddonProcessing(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch("/api/payments/addon/cancel", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "Failed to cancel the add-on");
+      toast({ title: 'Add-on cancelled', description: result.message });
+      updateData({ storageQuotaBytes: result.storageQuotaBytes } as any);
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } finally {
+      setIsAddonProcessing(false);
     }
   };
 
@@ -432,8 +496,7 @@ export default function Step9Plan() {
       const result = await res.json();
       
       if (res.ok) {
-        const activatedPlan = (result.plan === 'lifetime' ? 'lifetime' : 'annual') as 'annual' | 'lifetime';
-        await finishPremiumActivation(activatedPlan, {
+        await finishPremiumActivation(result.plan || 'growth', {
           storageQuotaBytes: result.storageQuotaBytes,
           storageBonusBytes: result.storageBonusBytes,
           stacked: result.stacked,
@@ -588,16 +651,18 @@ export default function Step9Plan() {
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 mb-6">
           <div className="flex justify-between items-center gap-3 mb-6 pb-6 border-b border-slate-100">
             <div className="min-w-0">
-              <h3 className="font-bold text-slate-900 text-lg">{plan === 'annual' ? 'Yearly Plan' : 'Lifetime Access'}</h3>
+              <h3 className="font-bold text-slate-900 text-lg">{selectedPlan?.displayName || 'Plan'}</h3>
               <p className="text-slate-500 text-sm">
-                {plan === 'annual'
-                  ? renewalMode === 'addon'
-                    ? 'One-time storage add-on'
-                    : 'Auto-renews yearly via Razorpay Autopay'
-                  : 'One-time payment — yours forever'}
+                {selectedPlan?.billingPeriod === 'monthly'
+                  ? 'Auto-renews monthly via Razorpay Autopay'
+                  : selectedPlan?.billingPeriod === 'yearly'
+                    ? 'Auto-renews yearly via Razorpay Autopay'
+                    : 'One-time payment — yours forever'}
               </p>
             </div>
-            <div className="text-xl font-bold text-slate-900 shrink-0">₹{basePrice}</div>
+            <div className="text-xl font-bold text-slate-900 shrink-0">
+              ₹{fmtINR(basePrice)}<span className="text-xs font-medium text-slate-400">{periodLabel}</span>
+            </div>
           </div>
 
           <div className="space-y-4 mb-6 pb-6 border-b border-slate-100">
@@ -622,7 +687,7 @@ export default function Step9Plan() {
                 </Button>
               ) : (
                 <Button 
-                  onClick={() => { setAppliedCoupon(null); setCouponCode(''); }}
+                  onClick={() => { setAppliedCoupon(null); setCouponCode(''); setCouponPricing(null); }}
                   variant="outline"
                   className="text-red-500 hover:text-red-600 hover:bg-red-50 border-red-200"
                 >
@@ -640,12 +705,12 @@ export default function Step9Plan() {
           <div className="space-y-3 mb-6">
             <div className="flex justify-between text-slate-600 text-sm">
               <span>Subtotal</span>
-              <span>₹{basePrice}</span>
+              <span>₹{fmtINR(basePrice)}</span>
             </div>
             {discount > 0 && (
               <div className="flex justify-between text-green-600 text-sm font-medium">
                 <span>Discount ({appliedCoupon})</span>
-                <span>-₹{discount}</span>
+                <span>-₹{fmtINR(discount)}</span>
               </div>
             )}
             <div className="flex justify-between text-slate-600 text-sm">
@@ -656,7 +721,7 @@ export default function Step9Plan() {
 
           <div className="flex justify-between items-center pt-6 border-t border-slate-200">
             <span className="font-bold text-slate-900 text-lg">Total</span>
-            <span className="font-bold text-indigo-600 text-2xl">₹{total}</span>
+            <span className="font-bold text-indigo-600 text-2xl">₹{fmtINR(total)}</span>
           </div>
         </div>
 
@@ -669,12 +734,16 @@ export default function Step9Plan() {
           {isProcessing ? (
             <Loader2 className="w-5 h-5 animate-spin" />
           ) : (
-            <>{plan === 'annual' && renewalMode !== 'addon' ? `Subscribe — ₹${total}/year` : `Pay ₹${total} Securely`}</>
+            <>
+              {isSubscriptionPlan
+                ? `Subscribe — ₹${fmtINR(total)}${periodLabel}`
+                : `Pay ₹${fmtINR(total)} Securely`}
+            </>
           )}
         </button>
-        {plan === 'annual' && renewalMode !== 'addon' && (
+        {isSubscriptionPlan && (
           <p className="text-center text-xs text-slate-500 mt-3">
-            Renews automatically every year at the same price. Cancel anytime.
+            Renews automatically {selectedPlan?.billingPeriod === 'monthly' ? 'every month' : 'every year'} at the same price. Cancel anytime.
           </p>
         )}
         <p className="text-center text-xs text-slate-400 mt-4 flex items-center justify-center gap-1">
@@ -703,24 +772,24 @@ export default function Step9Plan() {
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 mb-6 space-y-4">
           {[
             {
-              pct: '90%',
+              pct: '80%',
               title: 'Less Storage Space',
-              desc: 'Your storage limit drops to 10MB (Pro offers 50MB Lifetime / 100MB Yearly).',
+              desc: 'Your storage limit drops to 10MB (paid plans offer 50–100MB + add-ons).',
             },
             {
               icon: <X className="w-4 h-4 text-red-600" />,
               title: 'No AI Resume Parsing',
-              desc: 'Monthly AI resume data extraction is locked (Pro includes up to 3 parses/month).',
+              desc: 'Monthly AI resume data extraction is locked (paid plans include 1–3 parses/month).',
             },
             {
               icon: <X className="w-4 h-4 text-red-600" />,
               title: 'Locked Premium Templates',
-              desc: `Free publishes a basic path URL. Pro unlocks ${PORTFOLIO_TEMPLATES.map((t) => t.name).join(', ')} on yourname.atbexo.com.`,
+              desc: `Free publishes a basic path URL. Paid plans unlock ${PORTFOLIO_TEMPLATES.map((t) => t.name).join(', ')} on yourname.atbexo.com.`,
             },
             {
               icon: <X className="w-4 h-4 text-red-600" />,
-              title: 'No Custom Subdomains',
-              desc: 'Portfolio at atbexo.com/handle only — no yourname.atbexo.com custom domain.',
+              title: 'Only 1 Update Per Month',
+              desc: 'Free includes a single profile update each month (paid plans include 3–10).',
             },
           ].map((item, idx) => (
             <div key={idx} className={cn("flex items-start gap-3", idx < 3 && "pb-3 border-b border-slate-100")}>
@@ -740,13 +809,13 @@ export default function Step9Plan() {
         </div>
 
         <div className="space-y-4">
-          {/* VISIBLE Upgrade to Pro button */}
+          {/* VISIBLE Upgrade button */}
           <button
             type="button"
             className="w-full h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-bold text-sm transition-all duration-200 shadow-lg shadow-indigo-600/25 flex items-center justify-center gap-2 cursor-pointer border-none"
             onClick={() => setFreeFlowStep('none')}
           >
-            🚀 Upgrade to Pro Now
+            🚀 Get a Paid Plan from ₹59/month
           </button>
           
           {/* Plain clickable text — NOT a button */}
@@ -995,9 +1064,10 @@ export default function Step9Plan() {
   }
 
   // ──────────────────────────────────────────────────────────────────────
-  // ACTIVE PLAN VIEW (For Premium Users)
+  // ACTIVE PLAN VIEW (For Premium Users) — plan status + storage add-on
   // ──────────────────────────────────────────────────────────────────────
-  if (data.isPremium && isBillingManagement && !showUpgradeOptions) {
+  if (data.isPremium && isBillingManagement) {
+    const currentAddonBlocks = data.addonBlocks || 0;
     return (
       <div className="flex flex-col h-full max-w-lg w-full mx-auto justify-center pb-10 animate-in fade-in slide-in-from-right-4">
         <button 
@@ -1008,7 +1078,7 @@ export default function Step9Plan() {
         </button>
 
         <h2 className="font-serif text-2xl sm:text-3xl md:text-4xl font-bold text-slate-900 mb-2">Billing & Plan</h2>
-        <p className="text-slate-500 text-sm mb-6">Manage your subscription and view your current limits.</p>
+        <p className="text-slate-500 text-sm mb-6">Manage your subscription, storage, and view your current limits.</p>
 
         {portfolioUrl && (
           <div className="inline-flex items-center gap-2 mb-6 px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-full w-fit">
@@ -1027,19 +1097,17 @@ export default function Step9Plan() {
                 <Check className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="font-bold text-slate-900 text-lg">
-                  {data.plan === 'lifetime' ? 'Lifetime Pro' : data.plan === 'annual' ? 'Yearly Plan' : 'Pro Plan'}
-                </h3>
+                <h3 className="font-bold text-slate-900 text-lg">{currentPlanLabel} Plan</h3>
                 <p className="text-sm text-slate-500 mt-0.5">
-                  {data.plan === 'lifetime'
+                  {isLifetimePlan
                     ? 'Lifetime premium access — one-time payment, forever.'
                     : expiryLabel
-                      ? `Active until ${expiryLabel}.`
-                      : 'You are currently on the yearly premium tier.'}
+                      ? `Valid until ${expiryLabel}.`
+                      : 'Your premium plan is active.'}
                 </p>
-                {data.plan === 'annual' && data.autopay && (
+                {!isLifetimePlan && data.autopay && (
                   <span className="inline-flex items-center gap-1 mt-2 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-bold">
-                    <Check className="w-3 h-3" /> Auto-renew on
+                    <Check className="w-3 h-3" /> Auto-renew on ({data.billingPeriod === 'monthly' ? 'monthly' : 'yearly'})
                   </span>
                 )}
               </div>
@@ -1050,99 +1118,119 @@ export default function Step9Plan() {
                 <p className="text-xs font-bold text-slate-400 uppercase mb-1">Storage Quota</p>
                 <p className="text-sm font-semibold text-slate-800">
                   {formatMb(data.storageQuotaBytes || 0)} Limit
-                  {(data.storageBonusBytes || 0) > 0 && (
+                  {currentAddonBlocks > 0 && (
                     <span className="block text-xs font-medium text-indigo-600 mt-0.5">
-                      includes +{formatMb(data.storageBonusBytes)} stacked
+                      includes +{formatMb(currentAddonBlocks * STORAGE_BLOCK_BYTES)} add-on
                     </span>
                   )}
                 </p>
               </div>
               <div>
-                <p className="text-xs font-bold text-slate-400 uppercase mb-1">AI Resume Parses</p>
+                <p className="text-xs font-bold text-slate-400 uppercase mb-1">Monthly Limits</p>
                 <p className="text-sm font-semibold text-slate-800">
-                  {data.plan === 'lifetime' ? '3 per month' : '10 per month'}
+                  {data.limits?.parsesPerMonth ?? '—'} AI parses · {data.limits?.updatesPerMonth ?? '—'} updates
                 </p>
               </div>
             </div>
           </Card>
 
-          {data.plan === 'annual' && data.autopay && (
+          {!isLifetimePlan && data.autopay && (
             <Card className="p-6 bg-white border border-slate-200 shadow-sm">
               <h3 className="font-bold text-slate-900 text-base mb-1.5">Auto-renew is on</h3>
               <p className="text-sm text-slate-500">
                 {expiryLabel
-                  ? `Your Yearly plan renews automatically on ${expiryLabel} via Razorpay Autopay. To cancel auto-renew, contact support@mybexo.cyou.`
-                  : 'Your Yearly plan renews automatically via Razorpay Autopay. To cancel auto-renew, contact support@mybexo.cyou.'}
+                  ? `Your ${currentPlanLabel} plan renews automatically on ${expiryLabel} via Razorpay Autopay. To cancel auto-renew, contact support@mybexo.cyou.`
+                  : `Your ${currentPlanLabel} plan renews automatically via Razorpay Autopay. To cancel auto-renew, contact support@mybexo.cyou.`}
               </p>
             </Card>
           )}
 
-          {data.plan === 'annual' && canBuyAnnual && !data.autopay && (
-            <Card className="p-6 bg-indigo-600 border border-indigo-700 shadow-md text-white text-center">
-              <h3 className="font-bold text-xl mb-2">Renew Yearly</h3>
-              <p className="text-indigo-100 text-sm mb-6">
-                {expiryLabel
-                  ? `Extend your Yearly plan past ${expiryLabel} — renewals continue automatically via Razorpay Autopay.`
-                  : 'Extend your Yearly plan — renewals continue automatically via Razorpay Autopay.'}
-              </p>
-              <Button
-                onClick={() => {
-                  setPlan('annual');
-                  setShowUpgradeOptions(true);
-                }}
-                variant="secondary"
-                className="w-full bg-white text-indigo-600 hover:bg-indigo-50 border-none"
-              >
-                Renew Yearly Plan
-              </Button>
-            </Card>
-          )}
+          {/* Storage add-on */}
+          <Card className="p-6 bg-white border border-slate-200 shadow-sm">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                <Database className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-900 text-base">Storage Increase</h3>
+                <p className="text-sm text-slate-500 mt-0.5">
+                  ₹{addonPricePerBlock}/month per 50MB block, on top of your plan. Cancel anytime.
+                </p>
+              </div>
+            </div>
 
-          {data.plan === 'lifetime' && canBuyAnnual && (
-            <Card className="p-6 bg-indigo-600 border border-indigo-700 shadow-md text-white text-center">
-              <h3 className="font-bold text-xl mb-2">Add Yearly Storage</h3>
-              <p className="text-indigo-100 text-sm mb-6">
-                Keep Lifetime forever and stack +100MB cloud storage on top.
-              </p>
-              <Button
-                onClick={() => {
-                  setPlan('annual');
-                  setShowUpgradeOptions(true);
-                }}
-                variant="secondary"
-                className="w-full bg-white text-indigo-600 hover:bg-indigo-50 border-none"
-              >
-                Add +100MB Yearly
-              </Button>
-            </Card>
-          )}
+            {currentAddonBlocks > 0 ? (
+              <div className="flex items-center justify-between gap-3 bg-indigo-50/50 border border-indigo-100 rounded-xl p-4">
+                <div>
+                  <p className="text-sm font-bold text-slate-900">
+                    {currentAddonBlocks} block{currentAddonBlocks > 1 ? 's' : ''} active (+{formatMb(currentAddonBlocks * STORAGE_BLOCK_BYTES)})
+                  </p>
+                  <p className="text-xs text-slate-500 mt-0.5">Billed monthly via Razorpay Autopay.</p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-red-500 hover:text-red-600 hover:bg-red-50 border-red-200 shrink-0"
+                  disabled={isAddonProcessing}
+                  onClick={handleAddonCancel}
+                >
+                  {isAddonProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Cancel add-on'}
+                </Button>
+              </div>
+            ) : (
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5">
+                  <button
+                    type="button"
+                    className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-100 disabled:opacity-40"
+                    onClick={() => setAddonBlocks(b => Math.max(1, b - 1))}
+                    disabled={addonBlocks <= 1}
+                  >
+                    <Minus className="w-3.5 h-3.5" />
+                  </button>
+                  <span className="text-sm font-bold text-slate-900 w-24 text-center">
+                    {addonBlocks} × 50MB
+                  </span>
+                  <button
+                    type="button"
+                    className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-100 disabled:opacity-40"
+                    onClick={() => setAddonBlocks(b => Math.min(20, b + 1))}
+                    disabled={addonBlocks >= 20}
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <Button
+                  className="flex-1 h-11"
+                  disabled={isAddonProcessing}
+                  onClick={handleAddonCheckout}
+                >
+                  {isAddonProcessing ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>Add +{formatMb(addonBlocks * STORAGE_BLOCK_BYTES)} — ₹{fmtINR(addonTotalInr)}/mo</>
+                  )}
+                </Button>
+              </div>
+            )}
+          </Card>
         </div>
       </div>
     );
   }
 
   // ──────────────────────────────────────────────────────────────────────
-  // MAIN PLAN SELECTION VIEW
+  // MAIN PLAN SELECTION VIEW — new 4-plan catalog + free flow
   // ──────────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-full max-w-lg w-full mx-auto justify-center pb-10">
+    <div className="flex flex-col h-full max-w-2xl w-full mx-auto justify-center pb-10">
       <div className="mb-8 text-center">
         <h1 className="font-serif text-2xl sm:text-3xl md:text-4xl font-bold text-slate-900 mb-3 tracking-tight">
-          {isBillingManagement
-            ? renewalMode === 'renew'
-              ? 'Renew Your Plan'
-              : renewalMode === 'addon'
-                ? 'Add Yearly Storage'
-                : 'Manage Your Plan'
-            : 'Activate Your Account'}
+          {isBillingManagement ? 'Choose Your Plan' : 'Activate Your Account'}
         </h1>
         <p className="text-slate-500 text-base md:text-lg">
           {isBillingManagement
-            ? renewalMode === 'renew'
-              ? 'Extend your Yearly plan — Lifetime is hidden while Annual is active.'
-              : renewalMode === 'addon'
-                ? 'Stack +100MB storage on top of Lifetime with a Yearly add-on.'
-                : 'Upgrade, renew, or redeem a campus activation code for your portfolio.'
+            ? 'Upgrade or redeem a campus activation code for your portfolio.'
             : 'Complete your setup to unlock dashboard access and premium features.'}
         </p>
         {portfolioUrl && (
@@ -1153,13 +1241,6 @@ export default function Step9Plan() {
         )}
       </div>
 
-      {planWarning && (
-        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left">
-          <p className="text-sm font-semibold text-amber-900">Current plan notice</p>
-          <p className="text-sm text-amber-800 mt-1">{planWarning}</p>
-        </div>
-      )}
-
       <div className="bg-slate-200/50 p-1.5 rounded-xl flex mb-8">
         <button
           className={cn(
@@ -1168,7 +1249,7 @@ export default function Step9Plan() {
           )}
           onClick={() => { setTab('pay'); setCodeError(''); }}
         >
-          {yearlyOnly ? (renewalMode === 'addon' ? 'Add Storage' : 'Renew Plan') : 'Choose Plan'}
+          Choose Plan
         </button>
         <button
           className={cn(
@@ -1182,109 +1263,51 @@ export default function Step9Plan() {
       </div>
 
       {tab === 'pay' ? (
-        <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
-          {/* Annual — promoted / only option for existing subscribers */}
-          {canBuyAnnual && (
-            <Card 
-              className={cn(
-                "p-6 cursor-pointer border-2 transition-all relative overflow-hidden",
-                plan === 'annual' ? "border-indigo-600 bg-indigo-50/10" : "border-slate-200 hover:border-indigo-300"
-              )}
-              onClick={() => setPlan('annual')}
-            >
-              <div className="absolute top-0 right-0 bg-indigo-600 text-white text-[9px] font-extrabold px-3 py-1 rounded-bl-lg tracking-wider uppercase">
-                {renewalMode === 'renew' ? 'RENEW' : renewalMode === 'addon' ? 'ADD-ON' : 'RECOMMENDED'}
-              </div>
-              <div className="flex justify-between items-start mb-2">
-                <div>
-                  <h3 className="text-xl font-bold text-slate-900">
-                    {renewalMode === 'addon' ? 'Yearly Storage Add-on' : 'Yearly Plan'}
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-0.5 font-medium">
-                    {renewalMode === 'renew'
-                      ? 'Extends your current Yearly access by 1 year.'
-                      : renewalMode === 'addon'
-                        ? 'Adds +100MB on top of Lifetime storage.'
-                        : 'Auto-renews yearly via Razorpay Autopay. Cancel anytime.'}
-                  </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 animate-in fade-in slide-in-from-bottom-2">
+          {paidPlans.map((p) => {
+            const isSelected = plan === p.id;
+            const period = BILLING_PERIOD_LABELS[p.billingPeriod] || '';
+            return (
+              <Card
+                key={p.id}
+                className={cn(
+                  "p-5 cursor-pointer border-2 transition-all relative overflow-hidden flex flex-col",
+                  isSelected ? "border-indigo-600 bg-indigo-50/10 shadow-md" : "border-slate-200 hover:border-indigo-300"
+                )}
+                onClick={() => setPlan(p.id as PaidPlanId)}
+              >
+                {p.isHighlighted && (
+                  <div className="absolute top-0 right-0 bg-indigo-600 text-white text-[9px] font-extrabold px-3 py-1 rounded-bl-lg tracking-wider uppercase">
+                    MOST POPULAR
+                  </div>
+                )}
+                {p.id === 'studentplus' && (
+                  <div className="absolute top-0 right-0 bg-gradient-to-l from-emerald-600 to-indigo-600 text-white text-[9px] font-extrabold px-3 py-1 rounded-bl-lg tracking-wider uppercase">
+                    LIFETIME
+                  </div>
+                )}
+                <div className="mb-2 pr-16">
+                  <h3 className="text-lg font-bold text-slate-900 leading-tight">{p.displayName}</h3>
+                  {p.subtitle && <p className="text-[11px] text-slate-500 mt-0.5 font-medium">{p.subtitle}</p>}
                 </div>
-                <div className="text-right">
-                  <span className="text-2xl font-bold text-slate-900">₹{prices.annual.toLocaleString('en-IN')}</span>
-                  <span className="text-xs text-slate-500">/year</span>
-                  <span className="text-[10px] text-slate-400 block">excl. GST</span>
+                <div className="mb-3">
+                  <span className="text-2xl font-bold text-slate-900">₹{fmtINR(p.priceInrExGst)}</span>
+                  <span className="text-xs text-slate-500">{period}</span>
+                  <span className="text-[10px] text-slate-400 block">
+                    ₹{fmtINR(p.pricing?.total ?? Math.round(p.priceInrExGst * 1.18 * 100) / 100)} incl. GST
+                    {p.billingPeriod === 'monthly' ? ' / month' : p.billingPeriod === 'yearly' ? ' / year' : ' one-time'}
+                  </span>
                 </div>
-              </div>
-              <ul className="space-y-2 mt-4">
-                {(renewalMode === 'addon'
-                  ? [
-                      '+100MB stacked cloud storage',
-                      'Lifetime access unchanged',
-                      'Premium templates',
-                    ]
-                  : renewalMode === 'renew'
-                    ? [
-                        'Extend access by 1 year from current expiry',
-                        'Keep your current storage quota',
-                        'yourname.atbexo.com',
-                        'Premium templates',
-                      ]
-                    : [
-                        'Premium templates',
-                        '100MB cloud storage base',
-                        'yourname.atbexo.com',
-                        'AI resume parses',
-                        'Auto-renews yearly via Razorpay Autopay',
-                      ]
-                ).map((feat, i) => (
-                  <li key={i} className="flex items-center text-xs text-slate-600">
-                    <Check className="w-4 h-4 text-indigo-500 mr-2 shrink-0" /> {feat}
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          )}
-
-          {/* Lifetime — only for free / expired users */}
-          {canBuyLifetime && (
-            <Card 
-              className={cn(
-                "p-6 cursor-pointer border-2 transition-all relative overflow-hidden",
-                plan === 'lifetime' ? "border-indigo-600 bg-indigo-50/10" : "border-slate-200 hover:border-indigo-300"
-              )}
-              onClick={() => setPlan('lifetime')}
-            >
-              <div className="absolute top-0 right-0 bg-gradient-to-l from-emerald-600 to-indigo-600 text-white text-[9px] font-extrabold px-3 py-1 rounded-bl-lg tracking-wider uppercase">
-                STUDENT PROMO
-              </div>
-              
-              <div className="flex justify-between items-start mb-2">
-                <div>
-                  <h3 className="text-xl font-bold text-slate-900 flex items-center gap-1.5">
-                    Lifetime Pro
-                  </h3>
-                  <p className="text-xs text-indigo-600 font-bold mt-0.5">Best for students & professionals</p>
-                </div>
-                <div className="text-right">
-                  <span className="text-2xl font-bold text-slate-900">₹{prices.lifetime.toLocaleString('en-IN')}</span>
-                  <span className="text-[10px] text-slate-400 block">excl. GST</span>
-                </div>
-              </div>
-              <p className="text-xs text-slate-500 mb-4">Pay once, hosting & live portfolio is yours for life.</p>
-              <ul className="space-y-2">
-                {[
-                  'Everything in Yearly (templates & subdomain)',
-                  '50MB storage base',
-                  'One-time payment — no auto-renewal',
-                  'Forever hosting',
-                  'Optional Yearly add-on = +100MB storage',
-                ].map((feat, i) => (
-                  <li key={i} className="flex items-center text-xs text-slate-600">
-                    <Check className="w-4 h-4 text-emerald-500 mr-2 shrink-0" /> {feat}
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          )}
+                <ul className="space-y-1.5 mt-auto">
+                  {p.features.slice(0, 6).map((feat, i) => (
+                    <li key={i} className="flex items-start text-[11px] text-slate-600 leading-snug">
+                      <Check className={cn("w-3.5 h-3.5 mr-1.5 shrink-0 mt-px", p.id === 'studentplus' ? "text-emerald-500" : "text-indigo-500")} /> {feat}
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            );
+          })}
         </div>
       ) : (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 bg-white p-8 rounded-2xl border border-slate-200 shadow-sm">
@@ -1308,7 +1331,7 @@ export default function Step9Plan() {
         </div>
       )}
 
-      <div className="mt-8 onboarding-cta">
+      <div className="mt-8 onboarding-cta max-w-md w-full mx-auto">
         <button
           type="button"
           className={`w-full h-14 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-semibold text-base transition-all duration-200 flex items-center justify-center gap-3 group disabled:opacity-50 disabled:pointer-events-none cursor-pointer shadow-lg shadow-slate-900/20 btn-continue-wrap px-6${isSwooshing ? ' is-swooshing' : ''}`}
@@ -1330,11 +1353,7 @@ export default function Step9Plan() {
               </div>
               <span className="btn-label">
                 {tab === 'pay'
-                  ? renewalMode === 'renew'
-                    ? 'Continue to Renew'
-                    : renewalMode === 'addon'
-                      ? 'Continue to Add Storage'
-                      : 'Continue to Checkout'
+                  ? `Continue with ${selectedPlan?.displayName || 'Plan'}`
                   : 'Finish Setup'}
               </span>
             </>

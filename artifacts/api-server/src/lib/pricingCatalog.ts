@@ -1,9 +1,9 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import { billingSettings, db, pricingCoupons, pricingPlans } from "@workspace/db";
-import type { PaidPlan } from "./subscriptions";
+import { normalizePlanId, type PaidPlan } from "./subscriptions";
 import { logger } from "./logger";
 
-export type PublicPlanId = "free" | "annual" | "lifetime";
+export type PublicPlanId = "free" | "identity" | "essential" | "growth" | "studentplus" | "storage_addon";
 
 export type PricingPlanRow = {
   id: PublicPlanId;
@@ -15,6 +15,10 @@ export type PricingPlanRow = {
   sortOrder: number;
   isHighlighted: boolean;
   features: string[];
+  billingPeriod: "free" | "monthly" | "yearly" | "lifetime";
+  razorpayPlanId: string | null;
+  parsesPerMonth: number;
+  updatesPerMonth: number;
 };
 
 export type PricingBreakdown = {
@@ -23,54 +27,129 @@ export type PricingBreakdown = {
   subtotal: number;
   gst: number;
   total: number;
+  totalPaise: number;
   coupon: string | null;
   gstRate: number;
 };
+
+const MB = 1024 * 1024;
 
 const FALLBACK_PLANS: PricingPlanRow[] = [
   {
     id: "free",
     displayName: "Free",
-    subtitle: "Publish a path-based portfolio",
+    subtitle: "Basic portfolio to prove the flow",
     priceInrExGst: 0,
-    storageBytes: 10 * 1024 * 1024,
+    storageBytes: 10 * MB,
     isPurchasable: true,
     sortOrder: 0,
     isHighlighted: false,
-    features: ["10MB storage", "Path-based portfolio", "atbexo.com link"],
+    features: ["Basic template", "10MB storage", "1 update per month", "Path-based link (no subdomain)"],
+    billingPeriod: "free",
+    razorpayPlanId: null,
+    parsesPerMonth: 0,
+    updatesPerMonth: 1,
   },
   {
-    id: "annual",
-    displayName: "Yearly",
-    subtitle: "Best for students & professionals",
-    priceInrExGst: 799,
-    storageBytes: 100 * 1024 * 1024,
+    id: "identity",
+    displayName: "Identity Plan",
+    subtitle: "Your professional identity, live",
+    priceInrExGst: 59,
+    storageBytes: 50 * MB,
     isPurchasable: true,
     sortOrder: 1,
-    isHighlighted: true,
-    features: [
-      "Premium templates",
-      "100MB cloud storage base",
-      "yourname.atbexo.com",
-      "AI resume parses",
-      "Auto-renews yearly via Razorpay Autopay",
-    ],
-  },
-  {
-    id: "lifetime",
-    displayName: "Lifetime",
-    subtitle: "Best for students & professionals",
-    priceInrExGst: 1999,
-    storageBytes: 50 * 1024 * 1024,
-    isPurchasable: true,
-    sortOrder: 2,
     isHighlighted: false,
     features: [
-      "Everything in Yearly (templates & subdomain)",
-      "50MB storage base",
-      "One-time payment — no renewals",
-      "Forever hosting",
+      "yourname subdomain",
+      "Premium templates",
+      "50MB cloud storage",
+      "1 AI resume parse / month",
+      "3 updates / month",
+      "Monthly invoice in dashboard",
     ],
+    billingPeriod: "monthly",
+    razorpayPlanId: null,
+    parsesPerMonth: 1,
+    updatesPerMonth: 3,
+  },
+  {
+    id: "essential",
+    displayName: "Essential Plan",
+    subtitle: "Everything in Identity, more room to grow",
+    priceInrExGst: 199,
+    storageBytes: 100 * MB,
+    isPurchasable: true,
+    sortOrder: 2,
+    isHighlighted: true,
+    features: [
+      "Everything in Identity",
+      "100MB cloud storage",
+      "3 AI resume parses / month",
+      "10 updates / month",
+      "Access to exclusive templates",
+    ],
+    billingPeriod: "monthly",
+    razorpayPlanId: null,
+    parsesPerMonth: 3,
+    updatesPerMonth: 10,
+  },
+  {
+    id: "growth",
+    displayName: "Growth Plan",
+    subtitle: "Essential, billed yearly",
+    priceInrExGst: 999,
+    storageBytes: 100 * MB,
+    isPurchasable: true,
+    sortOrder: 3,
+    isHighlighted: false,
+    features: [
+      "Everything in Essential",
+      "Billed once a year",
+      "100MB cloud storage",
+      "3 AI resume parses / month",
+      "10 updates / month",
+    ],
+    billingPeriod: "yearly",
+    razorpayPlanId: null,
+    parsesPerMonth: 3,
+    updatesPerMonth: 10,
+  },
+  {
+    id: "studentplus",
+    displayName: "Student+ Plan",
+    subtitle: "Identity, forever - one payment",
+    priceInrExGst: 1999,
+    storageBytes: 50 * MB,
+    isPurchasable: true,
+    sortOrder: 4,
+    isHighlighted: false,
+    features: [
+      "Everything in Identity",
+      "One-time payment",
+      "No renewals ever",
+      "50MB cloud storage",
+      "1 AI resume parse / month",
+      "3 updates / month",
+    ],
+    billingPeriod: "lifetime",
+    razorpayPlanId: null,
+    parsesPerMonth: 1,
+    updatesPerMonth: 3,
+  },
+  {
+    id: "storage_addon",
+    displayName: "Storage Increase",
+    subtitle: "+50MB per block, billed monthly",
+    priceInrExGst: 25,
+    storageBytes: 50 * MB,
+    isPurchasable: true,
+    sortOrder: 99,
+    isHighlighted: false,
+    features: ["+50MB per block on top of your base plan", "Billed monthly via Razorpay Autopay", "Cancel anytime"],
+    billingPeriod: "monthly",
+    razorpayPlanId: null,
+    parsesPerMonth: 0,
+    updatesPerMonth: 0,
   },
 ];
 
@@ -86,7 +165,10 @@ let cache: {
 function normalizePlan(row: typeof pricingPlans.$inferSelect): PricingPlanRow {
   const features = Array.isArray(row.features)
     ? (row.features as unknown[]).map(String)
-  : [];
+    : [];
+  const billingPeriod = ["free", "monthly", "yearly", "lifetime"].includes(row.billingPeriod)
+    ? (row.billingPeriod as PricingPlanRow["billingPeriod"])
+    : "yearly";
   return {
     id: row.id as PublicPlanId,
     displayName: row.displayName,
@@ -97,6 +179,10 @@ function normalizePlan(row: typeof pricingPlans.$inferSelect): PricingPlanRow {
     sortOrder: Number(row.sortOrder) || 0,
     isHighlighted: !!row.isHighlighted,
     features,
+    billingPeriod,
+    razorpayPlanId: row.razorpayPlanId || null,
+    parsesPerMonth: Number(row.parsesPerMonth) || 0,
+    updatesPerMonth: Number(row.updatesPerMonth) || 0,
   };
 }
 
@@ -139,22 +225,29 @@ export function invalidatePricingCache() {
   cache = null;
 }
 
-export async function getPlanById(planId: PublicPlanId | PaidPlan | "free"): Promise<PricingPlanRow | undefined> {
+export type PurchasableId = PaidPlan | "storage_addon";
+
+export async function getPlanById(planId: string): Promise<PricingPlanRow | undefined> {
   const { plans } = await loadPricingCatalog();
-  return plans.find((p) => p.id === planId);
+  const direct = plans.find((p) => p.id === planId);
+  if (direct) return direct;
+  // Legacy ids map onto the new catalog
+  const normalized = normalizePlanId(planId);
+  if (normalized) return plans.find((p) => p.id === normalized);
+  return undefined;
 }
 
-export async function getPlanPriceInr(plan: PaidPlan): Promise<number> {
+export async function getPlanPriceInr(plan: PurchasableId): Promise<number> {
   const row = await getPlanById(plan);
-  return row?.priceInrExGst ?? (plan === "annual" ? 799 : 1999);
+  if (row) return row.priceInrExGst;
+  const fallback = FALLBACK_PLANS.find((p) => p.id === plan);
+  return fallback?.priceInrExGst ?? 0;
 }
 
-export async function getPlanStorageBytes(plan: PublicPlanId): Promise<number> {
+export async function getPlanStorageBytes(plan: string): Promise<number> {
   const row = await getPlanById(plan);
   if (row) return row.storageBytes;
-  if (plan === "annual") return 100 * 1024 * 1024;
-  if (plan === "lifetime") return 50 * 1024 * 1024;
-  return 10 * 1024 * 1024;
+  return 10 * MB;
 }
 
 type CouponRow = typeof pricingCoupons.$inferSelect;
@@ -167,7 +260,7 @@ function couponIsValid(row: CouponRow, now = new Date()): boolean {
   return true;
 }
 
-function discountFromCoupon(row: CouponRow, plan: PaidPlan, base: number): number {
+function discountFromCoupon(row: CouponRow, plan: PurchasableId, base: number): number {
   if (row.discountType === "percent" && row.percentOff != null) {
     return Math.round(base * (Number(row.percentOff) / 100));
   }
@@ -207,24 +300,31 @@ export async function findActiveCoupon(code?: string | null): Promise<CouponRow 
   }
 }
 
+/**
+ * Paise-exact checkout math: GST is computed on paise so the charged amount
+ * matches the Razorpay plan/order amount exactly (₹59 → ₹69.62 → 6962 paise).
+ */
 export async function calculatePlanAmount(
-  plan: PaidPlan,
+  plan: PurchasableId,
   couponCode?: string,
+  quantity = 1,
 ): Promise<PricingBreakdown> {
   const { gstRate } = await loadPricingCatalog();
-  const base = await getPlanPriceInr(plan);
+  const base = (await getPlanPriceInr(plan)) * Math.max(1, quantity);
   const couponRow = await findActiveCoupon(couponCode);
   const discount = couponRow ? discountFromCoupon(couponRow, plan, base) : 0;
   const subtotal = Math.max(base - discount, 0);
-  const gst = subtotal * gstRate;
-  const total = Math.round(subtotal + gst);
+  const subtotalPaise = Math.round(subtotal * 100);
+  const gstPaise = Math.round(subtotalPaise * gstRate);
+  const totalPaise = subtotalPaise + gstPaise;
 
   return {
     base,
     discount,
     subtotal,
-    gst,
-    total,
+    gst: gstPaise / 100,
+    total: totalPaise / 100,
+    totalPaise,
     coupon: couponRow ? couponRow.code.toUpperCase() : null,
     gstRate,
   };
@@ -232,7 +332,7 @@ export async function calculatePlanAmount(
 
 export async function validateCouponForPlan(
   couponCode: string,
-  plan: PaidPlan,
+  plan: PurchasableId,
 ): Promise<{ valid: boolean; message?: string; pricing?: PricingBreakdown }> {
   const normalized = couponCode.trim().toUpperCase();
   if (!normalized) {
@@ -247,7 +347,7 @@ export async function validateCouponForPlan(
   const pricing = await calculatePlanAmount(plan, normalized);
 
   // plan_prices coupons lock an explicit price; they stay valid even when the
-  // list price already matches (discount 0), e.g. EARLYBIRD at launch pricing.
+  // list price already matches (discount 0).
   const locksPlanPrice =
     couponRow.discountType === "plan_prices" &&
     couponRow.planPrices &&
@@ -278,11 +378,9 @@ export async function recordCouponRedemption(code: string | null | undefined) {
   }
 }
 
-export function toPublicPricingPayload(catalog: Awaited<ReturnType<typeof loadPricingCatalog>>) {
-  return {
-    currency: catalog.currency,
-    gstRate: catalog.gstRate,
-    plans: catalog.plans.map((p) => ({
+export async function toPublicPricingPayload(catalog: Awaited<ReturnType<typeof loadPricingCatalog>>) {
+  const plans = await Promise.all(
+    catalog.plans.map(async (p) => ({
       id: p.id,
       displayName: p.displayName,
       subtitle: p.subtitle,
@@ -291,6 +389,19 @@ export function toPublicPricingPayload(catalog: Awaited<ReturnType<typeof loadPr
       isPurchasable: p.isPurchasable,
       isHighlighted: p.isHighlighted,
       features: p.features,
+      billingPeriod: p.billingPeriod,
+      parsesPerMonth: p.parsesPerMonth,
+      updatesPerMonth: p.updatesPerMonth,
+      sortOrder: p.sortOrder,
+      pricing:
+        p.priceInrExGst > 0 && p.isPurchasable
+          ? await calculatePlanAmount(p.id as PurchasableId)
+          : null,
     })),
+  );
+  return {
+    currency: catalog.currency,
+    gstRate: catalog.gstRate,
+    plans,
   };
 }

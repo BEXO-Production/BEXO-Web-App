@@ -36,6 +36,7 @@ import {
   CreditCard,
   CalendarClock,
   Crown,
+  Database,
   Share2,
   Lock,
   Eye
@@ -78,14 +79,29 @@ const THEMES = [
   { id: 'violet', label: 'Violet', hex: 'bg-violet-600', textHex: 'text-violet-600' },
 ];
 
+export const PLAN_DISPLAY_NAMES: Record<string, string> = {
+  free: 'Free',
+  identity: 'Identity',
+  essential: 'Essential',
+  growth: 'Growth',
+  studentplus: 'Student+',
+  annual: 'Growth',
+  lifetime: 'Student+',
+};
+
 type BillingStatus = {
-  plan: 'annual' | 'lifetime' | null;
+  plan: string | null;
   status: 'free' | 'active' | 'expired';
   isPremium: boolean;
   expiresAt: string | null;
+  billingPeriod?: 'free' | 'monthly' | 'yearly' | 'lifetime';
   storageQuotaBytes: number;
   storageBonusBytes?: number;
-  canBuy?: { annual: boolean; lifetime: boolean };
+  addonBlocks?: number;
+  addonBytes?: number;
+  addon?: { blocks: number; status: string; currentEnd: string | null; autopay: boolean } | null;
+  limits?: { parsesPerMonth: number; updatesPerMonth: number };
+  canBuy?: Record<string, boolean>;
   renewalMode?: 'purchase' | 'renew' | 'addon';
   subscription?: {
     plan: string;
@@ -99,6 +115,8 @@ type BillingStatus = {
     status: string;
     createdAt: string;
   } | null;
+  payments?: any[];
+  pricing?: any;
 };
 
 export default function Dashboard() {
@@ -113,7 +131,7 @@ export default function Dashboard() {
 
   const [currentView, setCurrentView] = useState<'overview' | 'edit-profile' | 'updates' | 'settings'>('overview');
   const [updatesTab, setUpdatesTab] = useState<'parse' | 'post'>('parse');
-  const [settingsSubTab, setSettingsSubTab] = useState<'profile' | 'design' | 'storage' | 'billing'>('profile');
+  const [settingsSubTab, setSettingsSubTab] = useState<'profile' | 'design' | 'storage' | 'assets' | 'billing'>('profile');
   // Fullscreen "try this template with your data" preview (free users included)
   const [previewTemplateId, setPreviewTemplateId] = useState<string | null>(null);
   const [showLoginToast, setShowLoginToast] = useState(false);
@@ -128,6 +146,18 @@ export default function Dashboard() {
     assets: { mode: 'images' as AssetMode, images: [], pdfs: [], links: [] }
   });
   const [isUpdateUploading, setIsUpdateUploading] = useState(false);
+  const [isPostingUpdate, setIsPostingUpdate] = useState(false);
+
+  // Resume manager states
+  const [isResumeFileUploading, setIsResumeFileUploading] = useState(false);
+  const [isResumePrefSaving, setIsResumePrefSaving] = useState(false);
+  const resumeFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Assets & storage manager states
+  const [assetsList, setAssetsList] = useState<any[]>([]);
+  const [assetsLoading, setAssetsLoading] = useState(false);
+  const [assetsUsage, setAssetsUsage] = useState<{ used: number; quota: number; addonBlocks: number } | null>(null);
+  const [deletingAssetId, setDeletingAssetId] = useState<string | null>(null);
 
 
   // Click outside listener for FAB
@@ -191,6 +221,130 @@ export default function Dashboard() {
     localStorage.removeItem('token');
     setToken(null);
     window.location.href = '/';
+  };
+
+  // ----- Resume manager (default toggle + store-only upload) -----
+  const handleResumePreference = async (pref: 'generated' | 'uploaded') => {
+    if (isResumePrefSaving || data.defaultResume === pref) return;
+    setIsResumePrefSaving(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(apiUrl('/api/profile/resume-preference'), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ defaultResume: pref }),
+      });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(result.error || 'Failed to update preference');
+      updateData({ defaultResume: pref } as any);
+      toast({
+        title: 'Default resume updated',
+        description: pref === 'generated'
+          ? 'Your website download button now serves the system-generated ATS resume.'
+          : 'Your website download button now serves your uploaded resume.',
+      });
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message || 'Could not update preference.', variant: 'destructive' });
+    } finally {
+      setIsResumePrefSaving(false);
+    }
+  };
+
+  const handleResumeFileUpload = async (file: File) => {
+    if (file.type !== 'application/pdf') {
+      toast({ title: 'Invalid file', description: 'Only PDF resumes are supported.', variant: 'destructive' });
+      return;
+    }
+    setIsResumeFileUploading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const formData = new FormData();
+      formData.append('resume', file);
+      const res = await fetch(apiUrl('/api/profile/resume-file'), {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData,
+      });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(result.error || 'Upload failed');
+      updateData({
+        uploadedResumeUrl: result.url,
+        defaultResume: 'uploaded',
+        resumeFileName: file.name,
+        resumeFileSize: file.size,
+      } as any);
+      toast({ title: 'Resume uploaded', description: 'Your uploaded resume is now the default for your website.' });
+    } catch (err: any) {
+      toast({ title: 'Upload failed', description: err.message || 'Could not upload resume.', variant: 'destructive' });
+    } finally {
+      setIsResumeFileUploading(false);
+    }
+  };
+
+  const handleResumeFileRemove = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(apiUrl('/api/profile/resume-file'), {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(result.error || 'Failed to remove resume');
+      updateData({
+        uploadedResumeUrl: null,
+        defaultResume: 'generated',
+        resumeFileName: '',
+        resumeFileSize: 0,
+        generatedResumeUrl: result.generatedResumeUrl ?? data.generatedResumeUrl,
+      } as any);
+      toast({ title: 'Resume removed', description: 'Falling back to the system-generated ATS resume.' });
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message || 'Could not remove resume.', variant: 'destructive' });
+    }
+  };
+
+  // ----- Assets & storage manager -----
+  const loadAssets = async () => {
+    setAssetsLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(apiUrl('/api/profile/assets'), {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(result.error || 'Failed to load assets');
+      setAssetsList(result.assets || []);
+      setAssetsUsage({
+        used: result.storageUsedBytes || 0,
+        quota: result.storageQuotaBytes || storageLimit,
+        addonBlocks: result.addonBlocks || 0,
+      });
+    } catch (err) {
+      console.error('Assets load error:', err);
+    } finally {
+      setAssetsLoading(false);
+    }
+  };
+
+  const handleDeleteAssetRow = async (asset: any) => {
+    if (deletingAssetId) return;
+    setDeletingAssetId(asset.id);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(apiUrl(`/api/profile/assets/${asset.id}`), {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(result.error || 'Failed to delete asset');
+      setAssetsList(prev => prev.filter(a => a.id !== asset.id));
+      setAssetsUsage(prev => prev ? { ...prev, used: result.storageUsedBytes ?? prev.used } : prev);
+      toast({ title: 'Asset deleted', description: `${asset.name} removed and storage reclaimed.` });
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message || 'Could not delete asset.', variant: 'destructive' });
+    } finally {
+      setDeletingAssetId(null);
+    }
   };
 
   const handleUploadPhoto = async (file: File) => {
@@ -349,6 +503,11 @@ export default function Dashboard() {
         canBuy: result.canBuy || { annual: true, lifetime: !result.isPremium },
         renewalMode: result.renewalMode || 'purchase',
         expiresAt: result.expiresAt,
+        autopay: result.subscription?.autopay ?? false,
+        billingPeriod: result.billingPeriod,
+        addonBlocks: result.addonBlocks ?? 0,
+        limits: result.limits,
+        ...(Array.isArray(result.payments) ? { payments: result.payments } : {}),
       });
     } catch (err) {
       console.error('Billing status error:', err);
@@ -381,16 +540,14 @@ export default function Dashboard() {
   };
 
   const completionScore = calculateCompletion();
-  const planName = billingStatus?.plan === 'lifetime'
-    ? 'Lifetime Pro'
-    : billingStatus?.plan === 'annual'
-      ? 'Yearly Pro'
-      : data.isPremium
-        ? 'Pro'
-        : 'Free';
+  const activePlanId = billingStatus?.plan || data.plan || 'free';
+  const planName = billingStatus?.isPremium || data.isPremium
+    ? `${PLAN_DISPLAY_NAMES[activePlanId] || 'Pro'} Plan`
+    : 'Free';
+  const isLifetimePlan = activePlanId === 'studentplus' || activePlanId === 'lifetime';
   const planRenewal = billingStatus?.expiresAt
     ? `${billingStatus?.subscription?.autopay ? 'Renews' : 'Expires'} ${new Date(billingStatus.expiresAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`
-    : billingStatus?.plan === 'lifetime'
+    : isLifetimePlan
       ? 'Never expires'
       : 'Upgrade available';
   const totalEntries = [
@@ -2361,32 +2518,11 @@ export default function Dashboard() {
               <div className="space-y-6">
                 {/* Pre-flight limit check */}
                 {(() => {
-                  const now = new Date();
-                  const resetTime = data.lastResumeParseReset ? new Date(data.lastResumeParseReset) : now;
-                  const diffDays = Math.floor((now.getTime() - resetTime.getTime()) / (1000 * 60 * 60 * 24));
-                  
-                  let limitDays = 30;
-                  let limitParses = 0;
-                  let planDisplay = "Free";
-
-                  // Keep in sync with the API limits in profile.ts (free: 2/30d, lifetime: 3/30d, annual: 10/30d)
-                  if (!data.plan || data.plan === "free") {
-                    limitDays = 30;
-                    limitParses = 2;
-                  } else if (data.plan === "lifetime") {
-                    limitDays = 30;
-                    limitParses = 3;
-                    planDisplay = "Lifetime";
-                  } else if (data.plan === "annual") {
-                    limitDays = 30;
-                    limitParses = 10;
-                    planDisplay = "Yearly";
-                  }
-
-                  const actualParsesCount = diffDays >= limitDays ? 0 : data.resumeParsesThisMonth;
-                  const actualDiffDays = diffDays >= limitDays ? 0 : diffDays;
-                  const remaining = Math.max(limitParses - actualParsesCount, 0);
-                  const daysToReset = Math.max(limitDays - actualDiffDays, 1);
+                  // Server-provided plan limits (Identity 1, Essential/Growth 3, Student+ 1, Free 0)
+                  const planDisplay = PLAN_DISPLAY_NAMES[data.plan || 'free'] || 'Free';
+                  const limitParses = data.limits?.parsesPerMonth ?? 0;
+                  const remaining = data.limits?.parsesRemaining ?? 0;
+                  const daysToReset = data.limits?.parsesDaysToReset ?? 30;
                   const isLocked = remaining <= 0;
 
                   return (
@@ -2411,12 +2547,14 @@ export default function Dashboard() {
                             <div className="w-12 h-12 bg-red-50 text-red-500 rounded-full flex items-center justify-center mb-3 shadow-sm">
                               <Lock className="w-6 h-6" />
                             </div>
-                            <h3 className="font-bold text-slate-900 mb-1">Quota Exhausted</h3>
+                            <h3 className="font-bold text-slate-900 mb-1">{limitParses <= 0 ? 'Paid Feature' : 'Quota Exhausted'}</h3>
                             <p className="text-sm text-slate-600 max-w-xs text-center mb-4">
-                              You've used all your AI parses for this period. Please wait {daysToReset} days for the quota to reset.
+                              {limitParses <= 0
+                                ? 'AI resume parsing is included in Identity, Essential, Growth and Student+ plans. Upgrade to parse resumes.'
+                                : `You've used all your AI parses for this period. Please wait ${daysToReset} days for the quota to reset.`}
                             </p>
                             {(!data.isPremium || data.plan === 'free') && (
-                              <Button onClick={openBilling} size="sm">Upgrade to Pro</Button>
+                              <Button onClick={openBilling} size="sm">Upgrade Plan</Button>
                             )}
                           </div>
                         )}
@@ -2613,8 +2751,40 @@ export default function Dashboard() {
               </div>
             )}
 
-            {updatesTab === 'post' && (
-              <Card className="p-6 bg-white border border-slate-200 shadow-sm animate-in slide-in-from-bottom duration-300">
+            {updatesTab === 'post' && (() => {
+              const updatesLimit = data.limits?.updatesPerMonth ?? 1;
+              const updatesRemaining = data.limits?.updatesRemaining ?? updatesLimit;
+              const updatesDaysToReset = data.limits?.updatesDaysToReset ?? 30;
+              const updatesLocked = updatesRemaining <= 0;
+              const postPlanDisplay = PLAN_DISPLAY_NAMES[data.plan || 'free'] || 'Free';
+              return (
+              <div className="space-y-6">
+              <Card className="p-5 bg-white border border-slate-200 shadow-sm flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Monthly Updates ({postPlanDisplay})</p>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl font-bold text-slate-900">{updatesRemaining}</span>
+                    <span className="text-slate-500 text-sm">of {updatesLimit} remaining</span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-slate-500 mb-1">Resets in</p>
+                  <p className="text-sm font-semibold text-indigo-600">{updatesDaysToReset} Days</p>
+                </div>
+              </Card>
+              <Card className="p-6 bg-white border border-slate-200 shadow-sm animate-in slide-in-from-bottom duration-300 relative overflow-hidden">
+                {updatesLocked && (
+                  <div className="absolute inset-0 z-10 bg-white/75 backdrop-blur-sm flex flex-col items-center justify-center p-6">
+                    <div className="w-12 h-12 bg-red-50 text-red-500 rounded-full flex items-center justify-center mb-3 shadow-sm">
+                      <Lock className="w-6 h-6" />
+                    </div>
+                    <h3 className="font-bold text-slate-900 mb-1">Update Limit Reached</h3>
+                    <p className="text-sm text-slate-600 max-w-xs text-center mb-4">
+                      You've used all {updatesLimit} update{updatesLimit === 1 ? '' : 's'} included in the {postPlanDisplay} plan this month. Resets in {updatesDaysToReset} day{updatesDaysToReset === 1 ? '' : 's'}.
+                    </p>
+                    <Button onClick={openBilling} size="sm">Upgrade for more updates</Button>
+                  </div>
+                )}
                 <div className="space-y-6">
                   <div>
                     <Label className="text-sm font-semibold text-slate-800">What type of update is this?</Label>
@@ -2900,7 +3070,8 @@ export default function Dashboard() {
                   <div className="flex justify-end pt-4 border-t border-slate-100">
                     <Button 
                       className="h-10 px-6"
-                      onClick={() => {
+                      disabled={isPostingUpdate || updatesLocked}
+                      onClick={async () => {
                         // Check uploading state
                         if (isUpdateUploading) {
                           toast({ title: 'Wait', description: 'Please wait for files to finish uploading.', variant: 'destructive' });
@@ -2915,13 +3086,39 @@ export default function Dashboard() {
                         if (updateCategory === 'project' && updateForm.title?.trim()) isValid = true;
                         if (updateCategory === 'certificate' && updateForm.title?.trim() && updateForm.issuer?.trim()) isValid = true;
 
-                        if (isValid) {
-                          const newEntry = {
-                            id: Date.now().toString(),
-                            ...updateForm
-                          };
-                          
-                          // Map category to the data key
+                        if (!isValid) {
+                          toast({ title: 'Incomplete', description: 'Please fill out the required primary fields.', variant: 'destructive' });
+                          return;
+                        }
+
+                        setIsPostingUpdate(true);
+                        try {
+                          const token = localStorage.getItem('token');
+                          const res = await fetch(apiUrl('/api/profile/updates'), {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json',
+                              'Authorization': `Bearer ${token}`,
+                            },
+                            body: JSON.stringify({ category: updateCategory, entry: updateForm }),
+                          });
+                          const result = await res.json().catch(() => ({}));
+
+                          if (res.status === 429) {
+                            updateData({
+                              limits: {
+                                ...(data.limits || ({} as any)),
+                                updatesRemaining: 0,
+                                updatesUsed: result.used ?? data.limits?.updatesUsed ?? 0,
+                                updatesDaysToReset: result.daysToReset ?? data.limits?.updatesDaysToReset ?? 30,
+                              } as any,
+                            });
+                            toast({ title: 'Limit reached', description: result.error || 'Monthly update limit reached.', variant: 'destructive' });
+                            return;
+                          }
+                          if (!res.ok) throw new Error(result.error || 'Failed to post update');
+
+                          // Reflect the server-side append locally
                           const stateKeyMap: Record<string, string> = {
                             'achievement': 'achievementEntries',
                             'experience': 'experienceEntries',
@@ -2932,30 +3129,40 @@ export default function Dashboard() {
                           };
                           const targetKey = stateKeyMap[updateCategory];
                           const currentList = Array.isArray((data as any)[targetKey]) ? (data as any)[targetKey] : [];
-                          
                           updateData({
-                            [targetKey]: [...currentList, newEntry]
-                          });
-                          
+                            [targetKey]: [...currentList, result.entry],
+                            limits: {
+                              ...(data.limits || ({} as any)),
+                              updatesUsed: result.usage?.used ?? ((data.limits?.updatesUsed ?? 0) + 1),
+                              updatesRemaining: result.usage?.remaining ?? Math.max(0, (data.limits?.updatesRemaining ?? 1) - 1),
+                              updatesDaysToReset: result.usage?.daysToReset ?? data.limits?.updatesDaysToReset ?? 30,
+                            } as any,
+                          } as any);
+
                           toast({
                             title: "Update posted!",
-                            description: "Your new entry has been added to your profile."
+                            description: `Your new entry has been added. ${result.usage?.remaining ?? 0} update(s) left this month.`
                           });
-                          
+
                           // Reset form
                           setUpdateForm({ assets: { mode: 'images' as AssetMode, images: [], pdfs: [], links: [] } });
                           setCurrentView('overview');
-                        } else {
-                          toast({ title: 'Incomplete', description: 'Please fill out the required primary fields.', variant: 'destructive' });
+                        } catch (err: any) {
+                          toast({ title: 'Error', description: err.message || 'Failed to post update.', variant: 'destructive' });
+                        } finally {
+                          setIsPostingUpdate(false);
                         }
                       }}
                     >
+                      {isPostingUpdate ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
                       Post Update to Profile
                     </Button>
                   </div>
                 </div>
               </Card>
-            )}
+              </div>
+              );
+            })()}
           </div>
         )}
 
@@ -3015,6 +3222,18 @@ export default function Dashboard() {
                 </button>
 
                 <button
+                  onClick={() => { setSettingsSubTab('assets'); loadAssets(); }}
+                  className={cn(
+                    "flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-sm font-semibold transition-all text-left md:w-full whitespace-nowrap shrink-0",
+                    settingsSubTab === 'assets' 
+                      ? "bg-indigo-50 text-indigo-900 shadow-sm ring-1 ring-indigo-100" 
+                      : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                  )}
+                >
+                  <ImageIcon className="w-4 h-4 shrink-0" /> Assets & Storage
+                </button>
+
+                <button
                   onClick={() => setSettingsSubTab('billing')}
                   className={cn(
                     "flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-sm font-semibold transition-all text-left md:w-full whitespace-nowrap shrink-0",
@@ -3030,7 +3249,8 @@ export default function Dashboard() {
               {/* Tab Content Cards */}
               <div className="min-w-0">
                 {settingsSubTab === 'profile' && (
-                  <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-6 animate-in fade-in duration-200">
+                  <div className="space-y-6 animate-in fade-in duration-200">
+                  <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-6">
                     <div>
                       <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                         <User className="w-4 h-4 text-indigo-500" /> Personal Settings
@@ -3115,6 +3335,134 @@ export default function Dashboard() {
                       Save Settings
                     </Button>
                   </Card>
+
+                  {/* Resume Manager — default resume toggle + store-only upload */}
+                  <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-5">
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-indigo-500" /> Resume Manager
+                      </h3>
+                      <p className="text-slate-500 text-xs mt-0.5">
+                        Choose which resume powers the Download Resume button on your live website.
+                      </p>
+                    </div>
+
+                    {/* Default resume toggle */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        disabled={isResumePrefSaving}
+                        onClick={() => handleResumePreference('generated')}
+                        className={cn(
+                          "text-left p-4 rounded-xl border-2 transition-all",
+                          (data.defaultResume || 'generated') === 'generated'
+                            ? "border-indigo-500 bg-indigo-50/50 shadow-sm"
+                            : "border-slate-200 bg-white hover:border-slate-300"
+                        )}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm font-bold text-slate-900">System-generated</span>
+                          {(data.defaultResume || 'generated') === 'generated' && (
+                            <CheckCircle2 className="w-4 h-4 text-indigo-600" />
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-500 leading-snug">
+                          ATS resume compiled from your live portfolio details. Always up to date with your latest updates.
+                        </p>
+                        {data.generatedResumeUrl && (
+                          <a
+                            href={data.generatedResumeUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:underline mt-2"
+                          >
+                            Preview PDF <ExternalLink className="w-3 h-3" />
+                          </a>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={isResumePrefSaving || !data.uploadedResumeUrl}
+                        onClick={() => handleResumePreference('uploaded')}
+                        className={cn(
+                          "text-left p-4 rounded-xl border-2 transition-all",
+                          data.defaultResume === 'uploaded'
+                            ? "border-indigo-500 bg-indigo-50/50 shadow-sm"
+                            : "border-slate-200 bg-white hover:border-slate-300",
+                          !data.uploadedResumeUrl && "opacity-60"
+                        )}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm font-bold text-slate-900">My uploaded resume</span>
+                          {data.defaultResume === 'uploaded' && (
+                            <CheckCircle2 className="w-4 h-4 text-indigo-600" />
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-500 leading-snug">
+                          {data.uploadedResumeUrl
+                            ? 'Your own PDF is served exactly as you uploaded it.'
+                            : 'Upload a PDF below to enable this option.'}
+                        </p>
+                        {data.uploadedResumeUrl && (
+                          <a
+                            href={data.uploadedResumeUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:underline mt-2"
+                          >
+                            Preview PDF <ExternalLink className="w-3 h-3" />
+                          </a>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Upload / replace / remove */}
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-1 border-t border-slate-100 pt-4">
+                      <input
+                        type="file"
+                        ref={resumeFileInputRef}
+                        className="hidden"
+                        accept="application/pdf"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleResumeFileUpload(file);
+                          e.target.value = '';
+                        }}
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-9 text-xs"
+                        disabled={isResumeFileUploading}
+                        onClick={() => resumeFileInputRef.current?.click()}
+                      >
+                        {isResumeFileUploading ? (
+                          <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                        ) : (
+                          <Upload className="w-3.5 h-3.5 mr-1.5" />
+                        )}
+                        {data.uploadedResumeUrl ? 'Replace uploaded resume' : 'Upload resume (no AI parse)'}
+                      </Button>
+                      {data.uploadedResumeUrl && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-9 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                          onClick={handleResumeFileRemove}
+                        >
+                          <Trash2 className="w-3.5 h-3.5 mr-1.5" /> Remove uploaded resume
+                        </Button>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-normal">
+                      Uploading here stores your file without using an AI parse credit. Uploaded resumes count towards your
+                      storage; system-generated resumes are free.
+                    </p>
+                  </Card>
+                  </div>
                 )}
 
                 {settingsSubTab === 'design' && (
@@ -3399,8 +3747,144 @@ export default function Dashboard() {
                   </Card>
                 )}
 
-                {settingsSubTab === 'billing' && (
+                {settingsSubTab === 'assets' && (() => {
+                  const fmtSize = (bytes: number) => {
+                    if (!bytes || bytes <= 0) return '—';
+                    if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+                    return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+                  };
+                  const used = assetsUsage?.used ?? usedStorage;
+                  const quota = assetsUsage?.quota ?? storageLimit;
+                  const pct = Math.min((used / Math.max(quota, 1)) * 100, 100);
+                  const isImage = (a: any) => /\.(png|jpe?g|gif|webp|svg)(\?|$)/i.test(a.url || '') || (a.name || '').match(/\.(png|jpe?g|gif|webp|svg)$/i);
+                  return (
                   <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-6 animate-in fade-in duration-200">
+                    <div className="flex items-start justify-between gap-3 flex-wrap">
+                      <div>
+                        <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                          <ImageIcon className="w-4 h-4 text-indigo-500" /> Assets & Storage
+                        </h3>
+                        <p className="text-slate-500 text-xs mt-0.5">
+                          Every file in your account — deleting here frees storage instantly.
+                        </p>
+                      </div>
+                      <Button variant="outline" size="sm" className="h-8 text-xs" onClick={loadAssets} disabled={assetsLoading}>
+                        {assetsLoading ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : null}
+                        Refresh
+                      </Button>
+                    </div>
+
+                    {/* Server-side usage meter */}
+                    <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 space-y-2">
+                      <div className="flex justify-between items-center text-xs font-semibold text-slate-700">
+                        <span>Cloud storage used</span>
+                        <span className="tabular-nums">{(used / 1024 / 1024).toFixed(1)} / {(quota / 1024 / 1024).toFixed(0)} MB</span>
+                      </div>
+                      <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden">
+                        <div
+                          className={cn("h-full rounded-full transition-all duration-500", pct >= 90 ? "bg-red-500" : pct >= 70 ? "bg-amber-500" : "bg-indigo-600")}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between flex-wrap gap-2 pt-1">
+                        <p className="text-[11px] text-slate-400">
+                          {assetsUsage?.addonBlocks
+                            ? `Includes ${assetsUsage.addonBlocks} storage add-on block(s) (+${assetsUsage.addonBlocks * 50}MB).`
+                            : 'System-generated resumes never count against storage.'}
+                        </p>
+                        {data.isPremium && (
+                          <button onClick={openBilling} className="text-[11px] font-bold text-indigo-600 hover:underline">
+                            Need more space? Add 50MB for ₹25/mo →
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Asset list */}
+                    {assetsLoading && assetsList.length === 0 ? (
+                      <div className="py-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-300" /></div>
+                    ) : assetsList.length === 0 ? (
+                      <div className="text-center py-10 rounded-2xl bg-slate-50/50 border border-dashed border-slate-200">
+                        <p className="text-sm text-slate-400 font-medium">No assets uploaded yet.</p>
+                        <p className="text-xs text-slate-400 mt-1">Files you attach to projects, certificates, and updates will appear here.</p>
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-slate-100">
+                        {assetsList.map((asset: any) => (
+                          <div key={asset.id} className="py-3 flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-lg border border-slate-200 bg-slate-50 overflow-hidden flex items-center justify-center shrink-0">
+                              {isImage(asset) ? (
+                                <img src={asset.url} alt={asset.name} className="w-full h-full object-cover" loading="lazy" />
+                              ) : (
+                                <FileText className="w-4 h-4 text-slate-400" />
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <a href={asset.url} target="_blank" rel="noreferrer" className="text-xs font-semibold text-slate-800 hover:text-indigo-600 hover:underline truncate block">
+                                {asset.name || 'file'}
+                              </a>
+                              <p className="text-[11px] text-slate-400 truncate">
+                                {fmtSize(Number(asset.sizeBytes))}{asset.sectionType ? ` · ${asset.sectionType}` : ''}{asset.createdAt ? ` · ${new Date(asset.createdAt).toLocaleDateString()}` : ''}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              disabled={deletingAssetId === asset.id}
+                              onClick={() => handleDeleteAssetRow(asset)}
+                              className="p-2 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors shrink-0"
+                              title="Delete asset"
+                            >
+                              {deletingAssetId === asset.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </Card>
+                  );
+                })()}
+
+                {settingsSubTab === 'billing' && (
+                  <div className="space-y-5 animate-in fade-in duration-200">
+                    {/* Current plan + validity */}
+                    <Card className="p-6 bg-white border border-slate-200 shadow-sm">
+                      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                        <div>
+                          <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                            <Crown className="w-4 h-4 text-indigo-500" /> {planName}
+                          </h3>
+                          <p className="text-slate-500 text-xs mt-1">
+                            {isLifetimePlan
+                              ? 'Lifetime access — one-time payment, never expires.'
+                              : billingStatus?.expiresAt
+                                ? `${billingStatus?.subscription?.autopay ? 'Renews automatically on' : 'Valid until'} ${new Date(billingStatus.expiresAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}${billingStatus?.billingPeriod === 'monthly' ? ' (monthly billing)' : billingStatus?.billingPeriod === 'yearly' ? ' (yearly billing)' : ''}.`
+                                : 'Free plan — upgrade anytime for a subdomain, premium templates, and more storage.'}
+                          </p>
+                          <div className="flex flex-wrap items-center gap-2 mt-3">
+                            {!isLifetimePlan && billingStatus?.subscription?.autopay && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-bold">
+                                <CheckCircle2 className="w-3 h-3" /> Auto-renew on
+                              </span>
+                            )}
+                            {(billingStatus?.addonBlocks || 0) > 0 && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 text-[11px] font-bold">
+                                <Database className="w-3 h-3" /> +{(billingStatus?.addonBlocks || 0) * 50}MB storage add-on
+                              </span>
+                            )}
+                            {billingStatus?.limits && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-50 border border-slate-200 text-slate-600 text-[11px] font-bold">
+                                {billingStatus.limits.parsesPerMonth} parses · {billingStatus.limits.updatesPerMonth} updates /mo
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <Button variant="outline" size="sm" onClick={openBilling} className="shrink-0 gap-1.5">
+                          <CreditCard className="w-3.5 h-3.5" /> {data.isPremium ? 'Manage plan & storage' : 'Upgrade plan'}
+                        </Button>
+                      </div>
+                    </Card>
+
+                    <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-6">
                     <div>
                       <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                         <CreditCard className="w-4 h-4 text-indigo-500" /> Billing History & Invoices
@@ -3417,19 +3901,16 @@ export default function Dashboard() {
                               month: 'long',
                               year: 'numeric'
                             });
+                            const planLabel = payment.plan === 'storage_addon'
+                              ? 'Storage Increase (monthly add-on)'
+                              : `${PLAN_DISPLAY_NAMES[payment.plan] || 'Pro'} Plan${payment.kind === 'subscription' ? ' (Auto-renew)' : payment.plan === 'studentplus' || payment.plan === 'lifetime' ? ' (Lifetime)' : ''}`;
                             return (
                               <div key={payment.id} className="py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                                 <div>
-                                  <p className="text-sm font-semibold text-slate-900 capitalize">
-                                    Bexo Pro {payment.plan === 'lifetime'
-                                      ? 'Lifetime Membership'
-                                      : payment.plan === 'annual'
-                                        ? (payment.kind === 'subscription' ? 'Yearly Plan (Auto-renew)' : 'Yearly Plan')
-                                        : payment.amount === 299900 || payment.amount === 353882 || payment.amount === 353900 || payment.amount === 235882
-                                          ? 'Lifetime Membership'
-                                          : 'Yearly Plan'}
+                                  <p className="text-sm font-semibold text-slate-900">
+                                    Bexo {planLabel}
                                   </p>
-                                  <p className="text-xs text-slate-555 mt-0.5">
+                                  <p className="text-xs text-slate-500 mt-0.5">
                                     Paid on {dateStr}  |  Ref: <span className="font-mono text-slate-400">{payment.razorpayOrderId || payment.razorpaySubscriptionId || payment.razorpayPaymentId}</span>
                                   </p>
                                 </div>
@@ -3460,7 +3941,8 @@ export default function Dashboard() {
                         </div>
                       )}
                     </div>
-                  </Card>
+                    </Card>
+                  </div>
                 )}
               </div>
             </div>

@@ -238,6 +238,16 @@ export function buildPublicProfile(input: BuildPublicProfileInput) {
     customLinks: socials,
   };
 
+  // Download Resume buttons follow the owner's default-resume preference:
+  // 'uploaded' serves their own PDF, otherwise the system-generated ATS resume.
+  // Falls back to whichever exists so the button never breaks.
+  const uploadedResume = asString(user.resumeUrl);
+  const generatedResume = asString(user.generatedResumeUrl);
+  const resumeUrl =
+    asString(user.defaultResume) === "uploaded"
+      ? uploadedResume || generatedResume
+      : generatedResume || uploadedResume;
+
   return {
     profile: {
       handle: asString(profile.handle),
@@ -251,7 +261,7 @@ export function buildPublicProfile(input: BuildPublicProfileInput) {
       name: asString(user.name),
       email: contactEmail,
       photoUrl: asString(user.photoUrl),
-      resumeUrl: asString(user.resumeUrl),
+      resumeUrl,
       openToHire: !!user.openToHire,
       templateId: asString(user.templateId, "minimal"),
       themeColor: asString(user.themeColor, "blue"),

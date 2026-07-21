@@ -35,6 +35,27 @@ export type AchievementEntry = { id: string; title: string; organization: string
 export type ResearchEntry = { id: string; title: string; organization: string; date: string; assets: AssetData };
 export type ContactData = { email: string; phone?: string; linkedin: string; github: string; portfolio: string; customLinks?: { name: string; url: string }[] };
 
+export type PlanLimitsData = {
+  parsesPerMonth: number;
+  updatesPerMonth: number;
+  updatesUsed: number;
+  updatesRemaining: number;
+  updatesDaysToReset: number;
+  parsesUsed: number;
+  parsesRemaining: number;
+  parsesDaysToReset: number;
+};
+
+export type CanBuyData = {
+  identity?: boolean;
+  essential?: boolean;
+  growth?: boolean;
+  studentplus?: boolean;
+  storage?: boolean;
+  annual: boolean;
+  lifetime: boolean;
+};
+
 export type OnboardingData = {
   phone: string;
   name: string;
@@ -48,6 +69,9 @@ export type OnboardingData = {
   resumeFileName: string;
   resumeFileSize: number; // in bytes
   resumeUrl?: string;
+  uploadedResumeUrl?: string | null;
+  generatedResumeUrl?: string | null;
+  defaultResume?: 'generated' | 'uploaded';
   photoUrl: string;
   aboutEntries: AboutEntry[];
   educationEntries: EducationEntry[];
@@ -57,7 +81,7 @@ export type OnboardingData = {
   achievementEntries: AchievementEntry[];
   researchEntries: ResearchEntry[];
   contactData: ContactData;
-  plan: 'annual' | 'lifetime' | 'activation_code' | 'free' | null;
+  plan: string | null; // 'identity' | 'essential' | 'growth' | 'studentplus' | 'free' | legacy ids | null
   templateId: string;
   themeColor: string;
   themeBg: string;
@@ -70,10 +94,13 @@ export type OnboardingData = {
   payments?: any[];
   resumeParsesThisMonth: number;
   lastResumeParseReset?: string | Date;
-  canBuy: { annual: boolean; lifetime: boolean };
+  canBuy: CanBuyData;
   renewalMode: 'purchase' | 'renew' | 'addon';
   expiresAt?: string | Date | null;
   autopay?: boolean;
+  billingPeriod?: 'free' | 'monthly' | 'yearly' | 'lifetime';
+  addonBlocks?: number;
+  limits?: PlanLimitsData;
 };
 
 interface OnboardingContextType {
@@ -279,6 +306,9 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
             phone: result.user.phone || prev.phone,
             photoUrl: result.user.photoUrl || prev.photoUrl,
             resumeUrl: result.user.resumeUrl || prev.resumeUrl,
+            uploadedResumeUrl: result.user.uploadedResumeUrl !== undefined ? result.user.uploadedResumeUrl : prev.uploadedResumeUrl,
+            generatedResumeUrl: result.user.generatedResumeUrl !== undefined ? result.user.generatedResumeUrl : prev.generatedResumeUrl,
+            defaultResume: result.user.defaultResume || prev.defaultResume,
             aboutEntries: result.aboutEntries !== undefined ? ensureIdsAndDefaults(result.aboutEntries, 'about') : prev.aboutEntries,
             educationEntries: result.educationEntries !== undefined ? ensureIdsAndDefaults(result.educationEntries, 'education') : prev.educationEntries,
             experienceEntries: result.experienceEntries !== undefined ? ensureIdsAndDefaults(result.experienceEntries, 'experience') : prev.experienceEntries,
@@ -303,6 +333,9 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
             renewalMode: result.renewalMode || prev.renewalMode,
             expiresAt: result.expiresAt !== undefined ? result.expiresAt : prev.expiresAt,
             autopay: result.autopay !== undefined ? !!result.autopay : prev.autopay,
+            billingPeriod: result.billingPeriod || prev.billingPeriod,
+            addonBlocks: result.addonBlocks !== undefined ? result.addonBlocks : prev.addonBlocks,
+            limits: result.limits || prev.limits,
           }));
         }
       })

@@ -10,15 +10,23 @@ import {
   subscriptions,
   contactSubmissions,
   resumeParseAttempts,
+  assets,
 } from "@workspace/db";
 import { eq, and, desc, gt, sql } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { MARKETING_DEMO_HANDLE, getMarketingDemoProfile, isMarketingDemoHandle } from "../lib/marketingDemoProfile";
 import multer from "multer";
 import { createRequire } from "module";
-import { uploadToR2 } from "../lib/r2";
+import { uploadToR2, deleteFromR2 } from "../lib/r2";
 import { generateATSResume } from "../lib/resumeEngine";
 import { resolveSubscriptionState, syncStorageQuota } from "../lib/subscriptions";
+import {
+  ONBOARDING_PARSE_LIMIT,
+  consumeUpdate,
+  getParsesUsage,
+  getPlanLimits,
+  getUpdatesUsage,
+} from "../lib/entitlements";
 import { buildPublicProfile } from "../lib/publicProfile";
 import { enqueueEmail } from "../lib/emailOutbox";
 import {
@@ -56,6 +64,50 @@ async function getOrCreateProfile(userId: string): Promise<typeof profiles.$infe
   return profile;
 }
 
+/**
+ * Replace the user's uploaded resume: upload the new file, remove the old
+ * upload from R2 + assets, and adjust storage usage. Returns the new URL.
+ */
+async function replaceUploadedResume(
+  userId: string,
+  user: typeof users.$inferSelect,
+  file: { buffer: Buffer; originalname: string; mimetype: string; size: number },
+): Promise<string> {
+  const oldUrl = user.resumeUrl;
+  const newUrl = await uploadToR2(file.buffer, file.originalname, file.mimetype);
+
+  let reclaimedBytes = 0;
+  if (oldUrl) {
+    const [oldAsset] = await db
+      .select()
+      .from(assets)
+      .where(and(eq(assets.userId, userId), eq(assets.url, oldUrl)))
+      .limit(1);
+    if (oldAsset) {
+      reclaimedBytes = Number(oldAsset.sizeBytes) || 0;
+      await db.delete(assets).where(eq(assets.id, oldAsset.id));
+    }
+    await deleteFromR2(oldUrl);
+  }
+
+  await db.insert(assets).values({
+    userId,
+    name: file.originalname || "Uploaded resume",
+    url: newUrl,
+    sizeBytes: file.size,
+    sectionType: "resume",
+  }).onConflictDoNothing();
+
+  const currentUsed = Number(user.storageUsedBytes) || 0;
+  const newUsed = Math.max(0, currentUsed - reclaimedBytes) + file.size;
+  await db
+    .update(users)
+    .set({ resumeUrl: newUrl, storageUsedBytes: newUsed, defaultResume: "uploaded" })
+    .where(eq(users.id, userId));
+
+  return newUrl;
+}
+
 // GET /profile
 router.get("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<void> => {
   const userId = req.user!.id;
@@ -75,12 +127,21 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<voi
 
     const subscriptionState = await resolveSubscriptionState(userId);
     await syncStorageQuota(userId, subscriptionState.storageQuotaBytes, Number(user.storageQuotaBytes));
+    const limits = await getPlanLimits(subscriptionState.isPremium ? subscriptionState.plan : "free");
+    const updatesUsage = await getUpdatesUsage(user, limits.updatesPerMonth);
+    const parsesUsage = await getParsesUsage(user, limits.parsesPerMonth);
 
     const paymentsList = await db
       .select()
       .from(payments)
       .where(eq(payments.userId, userId))
       .orderBy(desc(payments.createdAt));
+
+    // Public download button follows the default-resume preference.
+    const effectiveResumeUrl =
+      user.defaultResume === "uploaded"
+        ? user.resumeUrl || user.generatedResumeUrl
+        : user.generatedResumeUrl || user.resumeUrl;
 
     res.json({
       profile,
@@ -91,7 +152,10 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<voi
         email: user.email,
         dob: user.dob,
         photoUrl: user.photoUrl,
-        resumeUrl: user.resumeUrl,
+        resumeUrl: effectiveResumeUrl,
+        uploadedResumeUrl: user.resumeUrl,
+        generatedResumeUrl: user.generatedResumeUrl,
+        defaultResume: user.defaultResume || "generated",
         profilePhotoAssetId: user.profilePhotoAssetId,
         storageUsedBytes: user.storageUsedBytes,
         storageQuotaBytes: subscriptionState.storageQuotaBytes,
@@ -110,6 +174,18 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<voi
       canBuy: subscriptionState.canBuy,
       renewalMode: subscriptionState.renewalMode,
       expiresAt: subscriptionState.expiresAt,
+      billingPeriod: subscriptionState.billingPeriod,
+      addonBlocks: subscriptionState.addonBlocks,
+      limits: {
+        parsesPerMonth: limits.parsesPerMonth,
+        updatesPerMonth: limits.updatesPerMonth,
+        updatesUsed: updatesUsage.used,
+        updatesRemaining: updatesUsage.remaining,
+        updatesDaysToReset: updatesUsage.daysToReset,
+        parsesUsed: parsesUsage.used,
+        parsesRemaining: parsesUsage.remaining,
+        parsesDaysToReset: parsesUsage.daysToReset,
+      },
       autopay: !!subscriptionState.subscription?.razorpaySubscriptionId,
       aboutEntries: getEntries("about"),
       educationEntries: getEntries("education"),
@@ -173,7 +249,9 @@ router.patch("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<v
         userUpdates.email = normalizedEmail;
       }
       if (photoUrl !== undefined) userUpdates.photoUrl = photoUrl;
-      if (resumeUrl !== undefined) userUpdates.resumeUrl = resumeUrl;
+      // resumeUrl is intentionally ignored here: the uploaded-resume slot is
+      // managed only by the dedicated resume-file endpoints so a client echoing
+      // a generated URL can never clobber a real upload.
       if (profilePhotoAssetId !== undefined) userUpdates.profilePhotoAssetId = profilePhotoAssetId;
       if (openToHire !== undefined) userUpdates.openToHire = !!openToHire;
       if (templateId !== undefined) userUpdates.templateId = templateId;
@@ -557,50 +635,31 @@ router.post("/resume", requireAuth, upload.single("resume"), async (req: Authent
     .orderBy(desc(resumeParseAttempts.createdAt))
     .limit(1);
 
-  let parsesCount = user.resumeParsesThisMonth || 0;
-  let resetTime = user.lastResumeParseReset ? new Date(user.lastResumeParseReset) : new Date();
-  const diffDays = Math.floor((now.getTime() - resetTime.getTime()) / (1000 * 60 * 60 * 24));
-  let limitDays = 30;
-  let limitParses = 2;
-  let planDisplay = "Onboarding";
-
   if (duringOnboarding) {
-    // Independent of payment: 2 successful parses during onboarding
+    // Independent of payment: 1 successful parse during onboarding
     const onboardingUsed = user.onboardingSuccessfulParses || 0;
-    if (!cached && onboardingUsed >= 2) {
+    if (!cached && onboardingUsed >= ONBOARDING_PARSE_LIMIT) {
       res.status(429).json({
-        error: "You have used both successful onboarding resume parses. Continue with manual edits, or finish onboarding to unlock plan-based parsing.",
+        error: "You have used your onboarding resume parse. Continue with manual edits, or finish onboarding to unlock plan-based parsing.",
       });
       return;
     }
   } else {
-    if (!plan || plan === "free") {
-      limitDays = 30;
-      limitParses = 2;
-      planDisplay = "Free";
-    } else if (plan === "lifetime") {
-      limitDays = 30;
-      limitParses = 3;
-      planDisplay = "Lifetime";
-    } else if (plan === "annual") {
-      limitDays = 30;
-      limitParses = 10;
-      planDisplay = "Annual";
-    }
+    const limits = await getPlanLimits(subscriptionState.isPremium ? plan : "free");
 
-    if (diffDays >= limitDays) {
-      parsesCount = 0;
-      resetTime = now;
-      await db
-        .update(users)
-        .set({ resumeParsesThisMonth: 0, lastResumeParseReset: now })
-        .where(eq(users.id, userId));
-    }
-
-    if (!cached && parsesCount >= limitParses) {
-      const daysToReset = Math.max(limitDays - diffDays, 1);
+    if (limits.parsesPerMonth <= 0) {
       res.status(429).json({
-        error: `You have reached your AI resume parsing limit of ${limitParses} successful parse(s) on the ${planDisplay} plan. Quota resets in ${daysToReset} days.`,
+        error: "AI resume parsing is a paid feature. Upgrade to Identity, Essential, Growth, or Student+ to parse resumes.",
+        code: "UPGRADE_REQUIRED",
+      });
+      return;
+    }
+
+    const usage = await getParsesUsage(user, limits.parsesPerMonth);
+    if (!cached && usage.remaining <= 0) {
+      res.status(429).json({
+        error: `You have reached your AI resume parsing limit of ${limits.parsesPerMonth} successful parse(s) on the ${limits.planDisplay} plan. Quota resets in ${usage.daysToReset} days.`,
+        code: "LIMIT_REACHED",
       });
       return;
     }
@@ -639,11 +698,7 @@ router.post("/resume", requireAuth, upload.single("resume"), async (req: Authent
     }
 
     try {
-      resumeUrl = await uploadToR2(file.buffer, file.originalname, file.mimetype);
-      await db
-        .update(users)
-        .set({ resumeUrl, storageUsedBytes: currentUsed + file.size })
-        .where(eq(users.id, userId));
+      resumeUrl = await replaceUploadedResume(userId, user, file);
       logger.info({ userId, resumeUrl }, "Successfully uploaded resume to R2 and updated user record");
     } catch (r2Err) {
       logger.error({ r2Err, userId }, "Failed to upload resume to R2");
@@ -1052,6 +1107,18 @@ router.post("/upload", requireAuth, upload.single("file"), async (req: Authentic
 
     const url = await uploadToR2(file.buffer, file.originalname, file.mimetype);
 
+    // Track every upload in the assets ledger for the storage manager
+    const sectionType = typeof req.body?.sectionType === "string" ? req.body.sectionType : null;
+    const entryId = typeof req.body?.entryId === "string" ? req.body.entryId : null;
+    await db.insert(assets).values({
+      userId,
+      name: file.originalname || "file",
+      url,
+      sizeBytes: file.size,
+      sectionType,
+      entryId,
+    }).onConflictDoNothing();
+
     // Update storage usage tracking
     if (user) {
       const newUsed = (Number(user.storageUsedBytes) || 0) + file.size;
@@ -1278,50 +1345,59 @@ router.get("/public/:handle", async (req, res): Promise<void> => {
   }
 });
 
-// Helper to auto-generate resume PDF if user does not have a custom uploaded resume
+/**
+ * Regenerate the system ATS resume into users.generatedResumeUrl.
+ * The old generated PDF is removed from R2. Generated resumes never count
+ * against the user's storage quota. Returns the new URL, or null on failure.
+ */
+async function regenerateSystemResume(userId: string): Promise<string | null> {
+  const userList = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  const user = userList[0];
+  if (!user) return null;
+
+  const profileList = await db.select().from(profiles).where(eq(profiles.userId, userId)).limit(1);
+  const profile = profileList[0];
+  if (!profile) return null;
+
+  const sections = await db.select().from(profileSections).where(eq(profileSections.profileId, profile.id));
+  const getEntries = (type: string) => (sections.find(s => s.type === type)?.entries || []) as any[];
+  const contactEntries = sections.find(s => s.type === "contact")?.entries as any;
+
+  const resumeBuffer = await generateATSResume({
+    name: user.name || "Portfolio Owner",
+    email: contactEntries?.email || user.email || undefined,
+    phone: contactEntries?.phone || user.phone || undefined,
+    linkedin: contactEntries?.linkedin || undefined,
+    github: contactEntries?.github || undefined,
+    headline: profile.headline || undefined,
+    bio: profile.bio || undefined,
+    photoUrl: user.photoUrl || undefined,
+    aboutEntries: getEntries("about"),
+    educationEntries: getEntries("education"),
+    experienceEntries: getEntries("experience"),
+    projectEntries: getEntries("projects"),
+    certificateEntries: getEntries("certificates"),
+    achievementEntries: getEntries("achievements"),
+    researchEntries: getEntries("research")
+  });
+
+  const filename = `${user.name?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'portfolio'}_resume.pdf`;
+  const generatedResumeUrl = await uploadToR2(resumeBuffer, filename, "application/pdf");
+
+  const oldGenerated = user.generatedResumeUrl;
+  await db.update(users).set({ generatedResumeUrl }).where(eq(users.id, userId));
+  if (oldGenerated && oldGenerated !== generatedResumeUrl) {
+    await deleteFromR2(oldGenerated);
+  }
+
+  logger.info({ userId, generatedResumeUrl }, "Regenerated system ATS resume");
+  return generatedResumeUrl;
+}
+
+// Keep the system resume in sync with profile edits.
 async function autoGenerateResumeIfNeeded(userId: string): Promise<void> {
   try {
-    const userList = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-    const user = userList[0];
-    if (!user) return;
-
-    // Check if resumeUrl is empty OR is auto-generated (ends with _resume.pdf)
-    const isAutoGenerated = !user.resumeUrl || user.resumeUrl.endsWith('_resume.pdf') || user.resumeUrl.includes('_resume.pdf');
-    if (!isAutoGenerated) {
-      return; // Do not overwrite custom uploaded resumes
-    }
-
-    const profileList = await db.select().from(profiles).where(eq(profiles.userId, userId)).limit(1);
-    const profile = profileList[0];
-    if (!profile) return;
-
-    const sections = await db.select().from(profileSections).where(eq(profileSections.profileId, profile.id));
-    const getEntries = (type: string) => (sections.find(s => s.type === type)?.entries || []) as any[];
-    const contactEntries = sections.find(s => s.type === "contact")?.entries as any;
-
-    const resumeBuffer = await generateATSResume({
-      name: user.name || "Portfolio Owner",
-      email: contactEntries?.email || user.email || undefined,
-      phone: contactEntries?.phone || user.phone || undefined,
-      linkedin: contactEntries?.linkedin || undefined,
-      github: contactEntries?.github || undefined,
-      headline: profile.headline || undefined,
-      bio: profile.bio || undefined,
-      photoUrl: user.photoUrl || undefined,
-      aboutEntries: getEntries("about"),
-      educationEntries: getEntries("education"),
-      experienceEntries: getEntries("experience"),
-      projectEntries: getEntries("projects"),
-      certificateEntries: getEntries("certificates"),
-      achievementEntries: getEntries("achievements"),
-      researchEntries: getEntries("research")
-    });
-
-    const filename = `${user.name?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'portfolio'}_resume.pdf`;
-    const resumeUrl = await uploadToR2(resumeBuffer, filename, "application/pdf");
-
-    await db.update(users).set({ resumeUrl }).where(eq(users.id, userId));
-    logger.info({ userId, resumeUrl }, "Successfully auto-generated and updated ATS resume");
+    await regenerateSystemResume(userId);
   } catch (err) {
     logger.error({ err, userId }, "Failed in autoGenerateResumeIfNeeded helper");
   }
@@ -1331,51 +1407,373 @@ async function autoGenerateResumeIfNeeded(userId: string): Promise<void> {
 router.post("/generate-resume", requireAuth, async (req: AuthenticatedRequest, res): Promise<void> => {
   const userId = req.user!.id;
   try {
-    const userList = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-    const user = userList[0];
+    const url = await regenerateSystemResume(userId);
+    if (!url) {
+      res.status(404).json({ error: "Profile not found" });
+      return;
+    }
+    res.json({ success: true, url });
+  } catch (err: any) {
+    logger.error({ err, userId }, "Error compiling ATS PDF resume");
+    res.status(500).json({ error: err.message || "Failed to generate professional resume PDF" });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Resume manager: store-only upload, remove, and default-resume preference
+// ---------------------------------------------------------------------------
+
+// POST /profile/resume-file — upload a resume without AI parsing (no parse quota)
+router.post("/resume-file", requireAuth, upload.single("resume"), async (req: AuthenticatedRequest, res): Promise<void> => {
+  const userId = req.user!.id;
+  const file = req.file;
+
+  if (!file) {
+    res.status(400).json({ error: "No resume file uploaded" });
+    return;
+  }
+  if (file.mimetype !== "application/pdf") {
+    res.status(400).json({ error: "Only PDF files are supported" });
+    return;
+  }
+
+  try {
+    const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
     if (!user) {
       res.status(404).json({ error: "User not found" });
       return;
     }
 
-    const profileList = await db.select().from(profiles).where(eq(profiles.userId, userId)).limit(1);
-    const profile = profileList[0];
-    if (!profile) {
-      res.status(404).json({ error: "Profile not found" });
+    const subscriptionState = await resolveSubscriptionState(userId);
+    const currentUsed = Number(user.storageUsedBytes) || 0;
+    // Replacing an old upload frees its bytes first
+    let reclaimable = 0;
+    if (user.resumeUrl) {
+      const [oldAsset] = await db
+        .select({ sizeBytes: assets.sizeBytes })
+        .from(assets)
+        .where(and(eq(assets.userId, userId), eq(assets.url, user.resumeUrl)))
+        .limit(1);
+      reclaimable = Number(oldAsset?.sizeBytes) || 0;
+    }
+    if (currentUsed - reclaimable + file.size > subscriptionState.storageQuotaBytes) {
+      res.status(403).json({ error: "Storage limit exceeded. Free up space or upgrade your plan." });
       return;
     }
 
-    const sections = await db.select().from(profileSections).where(eq(profileSections.profileId, profile.id));
-    const getEntries = (type: string) => (sections.find(s => s.type === type)?.entries || []) as any[];
-    const contactEntries = sections.find(s => s.type === "contact")?.entries as any;
+    const url = await replaceUploadedResume(userId, user, file);
+    res.json({ success: true, url, defaultResume: "uploaded", sizeBytes: file.size });
+  } catch (err: any) {
+    logger.error({ err, userId }, "Error uploading resume file");
+    res.status(500).json({ error: err.message || "Failed to upload resume" });
+  }
+});
 
-    const resumeBuffer = await generateATSResume({
-      name: user.name || "Portfolio Owner",
-      email: contactEntries?.email || user.email || undefined,
-      phone: contactEntries?.phone || user.phone || undefined,
-      linkedin: contactEntries?.linkedin || undefined,
-      github: contactEntries?.github || undefined,
-      headline: profile.headline || undefined,
-      bio: profile.bio || undefined,
-      photoUrl: user.photoUrl || undefined,
-      aboutEntries: getEntries("about"),
-      educationEntries: getEntries("education"),
-      experienceEntries: getEntries("experience"),
-      projectEntries: getEntries("projects"),
-      certificateEntries: getEntries("certificates"),
-      achievementEntries: getEntries("achievements"),
-      researchEntries: getEntries("research")
+// DELETE /profile/resume-file — remove the uploaded resume, fall back to generated
+router.delete("/resume-file", requireAuth, async (req: AuthenticatedRequest, res): Promise<void> => {
+  const userId = req.user!.id;
+  try {
+    const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+    if (!user) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+    if (!user.resumeUrl) {
+      res.status(404).json({ error: "No uploaded resume to remove." });
+      return;
+    }
+
+    const oldUrl = user.resumeUrl;
+    let reclaimedBytes = 0;
+    const [oldAsset] = await db
+      .select()
+      .from(assets)
+      .where(and(eq(assets.userId, userId), eq(assets.url, oldUrl)))
+      .limit(1);
+    if (oldAsset) {
+      reclaimedBytes = Number(oldAsset.sizeBytes) || 0;
+      await db.delete(assets).where(eq(assets.id, oldAsset.id));
+    }
+    await deleteFromR2(oldUrl);
+
+    const newUsed = Math.max(0, (Number(user.storageUsedBytes) || 0) - reclaimedBytes);
+    await db
+      .update(users)
+      .set({ resumeUrl: null, defaultResume: "generated", storageUsedBytes: newUsed })
+      .where(eq(users.id, userId));
+
+    // Public pages must reflect the change immediately
+    const [profile] = await db.select().from(profiles).where(eq(profiles.userId, userId)).limit(1);
+    if (profile?.handle) publicProfileCache.delete(profile.handle);
+
+    res.json({
+      success: true,
+      defaultResume: "generated",
+      generatedResumeUrl: user.generatedResumeUrl,
+      storageUsedBytes: newUsed,
+    });
+  } catch (err: any) {
+    logger.error({ err, userId }, "Error removing uploaded resume");
+    res.status(500).json({ error: err.message || "Failed to remove resume" });
+  }
+});
+
+// PATCH /profile/resume-preference — choose which resume backs the public download button
+router.patch("/resume-preference", requireAuth, async (req: AuthenticatedRequest, res): Promise<void> => {
+  const userId = req.user!.id;
+  const preference = req.body?.defaultResume;
+
+  if (preference !== "generated" && preference !== "uploaded") {
+    res.status(400).json({ error: "defaultResume must be 'generated' or 'uploaded'." });
+    return;
+  }
+
+  try {
+    const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+    if (!user) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+    if (preference === "uploaded" && !user.resumeUrl) {
+      res.status(409).json({ error: "Upload a resume first to make it the default." });
+      return;
+    }
+    if (preference === "generated" && !user.generatedResumeUrl) {
+      // Generate one on the spot so the toggle always works
+      const url = await regenerateSystemResume(userId);
+      if (!url) {
+        res.status(409).json({ error: "Could not generate a system resume yet. Add profile details first." });
+        return;
+      }
+    }
+
+    await db.update(users).set({ defaultResume: preference }).where(eq(users.id, userId));
+
+    const [profile] = await db.select().from(profiles).where(eq(profiles.userId, userId)).limit(1);
+    if (profile?.handle) publicProfileCache.delete(profile.handle);
+
+    res.json({ success: true, defaultResume: preference });
+  } catch (err: any) {
+    logger.error({ err, userId }, "Error updating resume preference");
+    res.status(500).json({ error: err.message || "Failed to update resume preference" });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Profile updates with hard monthly limits
+// ---------------------------------------------------------------------------
+
+const UPDATE_SECTION_MAP: Record<string, string> = {
+  education: "education",
+  experience: "experience",
+  project: "projects",
+  certificate: "certificates",
+  achievement: "achievements",
+  research: "research",
+};
+
+// POST /profile/updates — append one entry to a section, consuming an update credit
+router.post("/updates", requireAuth, async (req: AuthenticatedRequest, res): Promise<void> => {
+  const userId = req.user!.id;
+  const category = String(req.body?.category || "");
+  const entry = req.body?.entry;
+  const sectionType = UPDATE_SECTION_MAP[category];
+
+  if (!sectionType || !entry || typeof entry !== "object") {
+    res.status(400).json({ error: "Provide a valid category and entry." });
+    return;
+  }
+
+  try {
+    const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+    if (!user) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    const subscriptionState = await resolveSubscriptionState(userId);
+    const limits = await getPlanLimits(subscriptionState.isPremium ? subscriptionState.plan : "free");
+    const usage = await getUpdatesUsage(user, limits.updatesPerMonth);
+
+    if (usage.remaining <= 0) {
+      res.status(429).json({
+        error: `You have used all ${limits.updatesPerMonth} profile update(s) included in the ${limits.planDisplay} plan this month. Resets in ${usage.daysToReset} day(s).`,
+        code: "UPDATE_LIMIT_REACHED",
+        used: usage.used,
+        limit: usage.limit,
+        daysToReset: usage.daysToReset,
+      });
+      return;
+    }
+
+    const profile = await getOrCreateProfile(userId);
+    const [section] = await db
+      .select()
+      .from(profileSections)
+      .where(and(eq(profileSections.profileId, profile.id), eq(profileSections.type, sectionType)))
+      .limit(1);
+
+    const existingEntries = Array.isArray(section?.entries) ? (section!.entries as any[]) : [];
+    const newEntry = { ...entry, id: String(entry.id || Date.now()) };
+    const nextEntries = [...existingEntries, newEntry];
+
+    await db.insert(profileSections).values({
+      profileId: profile.id,
+      type: sectionType,
+      entries: nextEntries,
+      reviewedAt: new Date(),
+    }).onConflictDoUpdate({
+      target: [profileSections.profileId, profileSections.type],
+      set: { entries: nextEntries, reviewedAt: new Date() },
     });
 
-    const filename = `${user.name?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'portfolio'}_resume.pdf`;
-    const resumeUrl = await uploadToR2(resumeBuffer, filename, "application/pdf");
+    await consumeUpdate(userId);
+    await markOnboardingActivity(userId);
 
-    await db.update(users).set({ resumeUrl }).where(eq(users.id, userId));
+    // Keep the generated resume and public page in sync
+    await autoGenerateResumeIfNeeded(userId);
+    if (profile.handle) publicProfileCache.delete(profile.handle);
 
-    res.json({ success: true, url: resumeUrl });
+    res.json({
+      success: true,
+      entry: newEntry,
+      sectionType,
+      usage: {
+        used: usage.used + 1,
+        limit: usage.limit,
+        remaining: Math.max(0, usage.remaining - 1),
+        daysToReset: usage.daysToReset,
+      },
+    });
   } catch (err: any) {
-    logger.error({ err, userId }, "Error compiling ATS PDF resume");
-    res.status(500).json({ error: err.message || "Failed to generate professional resume PDF" });
+    logger.error({ err, userId, category }, "Error posting profile update");
+    res.status(500).json({ error: err.message || "Failed to post update" });
+  }
+});
+
+// GET /profile/updates/usage — remaining update credits for the dashboard
+router.get("/updates/usage", requireAuth, async (req: AuthenticatedRequest, res): Promise<void> => {
+  const userId = req.user!.id;
+  try {
+    const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+    if (!user) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+    const subscriptionState = await resolveSubscriptionState(userId);
+    const limits = await getPlanLimits(subscriptionState.isPremium ? subscriptionState.plan : "free");
+    const usage = await getUpdatesUsage(user, limits.updatesPerMonth);
+    res.json({ ...usage, plan: limits.planId, planDisplay: limits.planDisplay });
+  } catch (err: any) {
+    logger.error({ err, userId }, "Error reading updates usage");
+    res.status(500).json({ error: "Failed to read update usage" });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Assets & storage manager
+// ---------------------------------------------------------------------------
+
+// GET /profile/assets — all tracked files + server-side usage meter
+router.get("/assets", requireAuth, async (req: AuthenticatedRequest, res): Promise<void> => {
+  const userId = req.user!.id;
+  try {
+    const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+    if (!user) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+    const subscriptionState = await resolveSubscriptionState(userId);
+    const rows = await db
+      .select()
+      .from(assets)
+      .where(eq(assets.userId, userId))
+      .orderBy(desc(assets.createdAt));
+
+    res.json({
+      assets: rows,
+      storageUsedBytes: Number(user.storageUsedBytes) || 0,
+      storageQuotaBytes: subscriptionState.storageQuotaBytes,
+      addonBlocks: subscriptionState.addonBlocks,
+      addonBytes: subscriptionState.addonBytes,
+    });
+  } catch (err: any) {
+    logger.error({ err, userId }, "Error listing assets");
+    res.status(500).json({ error: "Failed to load assets" });
+  }
+});
+
+/** Remove an asset URL from any profile section entries that reference it. */
+async function detachAssetFromSections(userId: string, url: string): Promise<void> {
+  const [profile] = await db.select().from(profiles).where(eq(profiles.userId, userId)).limit(1);
+  if (!profile) return;
+  const sections = await db.select().from(profileSections).where(eq(profileSections.profileId, profile.id));
+
+  for (const section of sections) {
+    if (!Array.isArray(section.entries)) continue;
+    let changed = false;
+    const nextEntries = (section.entries as any[]).map((entry) => {
+      if (!entry || typeof entry !== "object" || !entry.assets || typeof entry.assets !== "object") return entry;
+      const filterList = (list: unknown) =>
+        Array.isArray(list) ? list.filter((item: any) => item?.url !== url) : list;
+      const images = filterList(entry.assets.images);
+      const pdfs = filterList(entry.assets.pdfs);
+      if (
+        (Array.isArray(entry.assets.images) && (images as any[]).length !== entry.assets.images.length) ||
+        (Array.isArray(entry.assets.pdfs) && (pdfs as any[]).length !== entry.assets.pdfs.length)
+      ) {
+        changed = true;
+        return { ...entry, assets: { ...entry.assets, images, pdfs } };
+      }
+      return entry;
+    });
+    if (changed) {
+      await db
+        .update(profileSections)
+        .set({ entries: nextEntries, reviewedAt: new Date() })
+        .where(eq(profileSections.id, section.id));
+    }
+  }
+
+  if (profile.handle) publicProfileCache.delete(profile.handle);
+}
+
+// DELETE /profile/assets/:id — remove from R2, reclaim quota, detach from sections
+router.delete("/assets/:id", requireAuth, async (req: AuthenticatedRequest, res): Promise<void> => {
+  const userId = req.user!.id;
+  const assetId = String(req.params.id || "");
+  try {
+    const [asset] = await db
+      .select()
+      .from(assets)
+      .where(and(eq(assets.id, assetId), eq(assets.userId, userId)))
+      .limit(1);
+    if (!asset) {
+      res.status(404).json({ error: "Asset not found" });
+      return;
+    }
+
+    const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+
+    await db.delete(assets).where(eq(assets.id, asset.id));
+    await deleteFromR2(asset.url);
+    await detachAssetFromSections(userId, asset.url);
+
+    // Uploaded resume deleted through the assets page must also clear the slot
+    if (user?.resumeUrl === asset.url) {
+      await db
+        .update(users)
+        .set({ resumeUrl: null, defaultResume: "generated" })
+        .where(eq(users.id, userId));
+    }
+
+    const newUsed = Math.max(0, (Number(user?.storageUsedBytes) || 0) - (Number(asset.sizeBytes) || 0));
+    await db.update(users).set({ storageUsedBytes: newUsed }).where(eq(users.id, userId));
+
+    res.json({ success: true, storageUsedBytes: newUsed, reclaimedBytes: Number(asset.sizeBytes) || 0 });
+  } catch (err: any) {
+    logger.error({ err, userId, assetId }, "Error deleting asset");
+    res.status(500).json({ error: "Failed to delete asset" });
   }
 });
 

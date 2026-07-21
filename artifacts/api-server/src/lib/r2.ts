@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { logger } from "./logger";
 
 let s3Client: S3Client | null = null;
@@ -70,4 +70,38 @@ export async function uploadToR2(
   );
 
   return `${publicUrl.replace(/\/$/, "")}/${uniqueName}`;
+}
+
+/**
+ * Delete an object previously uploaded via uploadToR2, given its public URL.
+ * Never throws — cleanup is best-effort and must not break user flows.
+ */
+export async function deleteFromR2(fileUrl: string | null | undefined): Promise<boolean> {
+  if (!fileUrl) return false;
+
+  const client = getR2Client();
+  const bucketName = process.env.R2_BUCKET_NAME;
+  const publicUrl = process.env.R2_PUBLIC_URL;
+
+  if (!client || !bucketName || !publicUrl) {
+    logger.warn({ fileUrl }, "R2 not configured — skipping object delete");
+    return false;
+  }
+
+  const base = publicUrl.replace(/\/$/, "") + "/";
+  if (!fileUrl.startsWith(base)) {
+    // Not one of ours (simulation URL or external) — nothing to delete
+    return false;
+  }
+
+  const key = decodeURIComponent(fileUrl.slice(base.length).split("?")[0]);
+  if (!key) return false;
+
+  try {
+    await client.send(new DeleteObjectCommand({ Bucket: bucketName, Key: key }));
+    return true;
+  } catch (err) {
+    logger.warn({ err, key }, "Failed to delete R2 object");
+    return false;
+  }
 }

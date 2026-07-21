@@ -1,14 +1,21 @@
 import { useEffect, useState } from "react";
-import {
-  ANNUAL_STORAGE_BYTES,
-  FREE_STORAGE_BYTES,
-  LIFETIME_STORAGE_BYTES,
-  PLAN_PRICES_INR,
-  type PlanPricesInr,
-} from "@/lib/pricing";
+import { FALLBACK_PLAN_CATALOG, PLAN_PRICES_INR, type PlanPricesInr } from "@/lib/pricing";
+
+export type PublicPlanId = "free" | "identity" | "essential" | "growth" | "studentplus" | "storage_addon";
+
+export type PricingBreakdown = {
+  base: number;
+  discount: number;
+  subtotal: number;
+  gst: number;
+  total: number;
+  totalPaise?: number;
+  coupon: string | null;
+  gstRate: number;
+};
 
 export type PublicPricingPlan = {
-  id: "free" | "annual" | "lifetime";
+  id: PublicPlanId;
   displayName: string;
   subtitle: string | null;
   priceInrExGst: number;
@@ -16,6 +23,11 @@ export type PublicPricingPlan = {
   isPurchasable: boolean;
   isHighlighted: boolean;
   features: string[];
+  billingPeriod: "free" | "monthly" | "yearly" | "lifetime";
+  parsesPerMonth?: number;
+  updatesPerMonth?: number;
+  sortOrder?: number;
+  pricing?: PricingBreakdown | null;
 };
 
 export type PricingApiResponse = {
@@ -27,44 +39,19 @@ export type PricingApiResponse = {
 const FALLBACK: PricingApiResponse = {
   currency: "INR",
   gstRate: 0.18,
-  plans: [
-    {
-      id: "free",
-      displayName: "Free",
-      subtitle: null,
-      priceInrExGst: 0,
-      storageBytes: FREE_STORAGE_BYTES,
-      isPurchasable: true,
-      isHighlighted: false,
-      features: [],
-    },
-    {
-      id: "annual",
-      displayName: "Yearly",
-      subtitle: null,
-      priceInrExGst: PLAN_PRICES_INR.annual,
-      storageBytes: ANNUAL_STORAGE_BYTES,
-      isPurchasable: true,
-      isHighlighted: true,
-      features: [],
-    },
-    {
-      id: "lifetime",
-      displayName: "Lifetime",
-      subtitle: null,
-      priceInrExGst: PLAN_PRICES_INR.lifetime,
-      storageBytes: LIFETIME_STORAGE_BYTES,
-      isPurchasable: true,
-      isHighlighted: false,
-      features: [],
-    },
-  ],
+  plans: FALLBACK_PLAN_CATALOG,
 };
 
 export function plansToPriceMap(plans: PublicPricingPlan[]): PlanPricesInr {
-  const annual = plans.find((p) => p.id === "annual")?.priceInrExGst ?? PLAN_PRICES_INR.annual;
-  const lifetime = plans.find((p) => p.id === "lifetime")?.priceInrExGst ?? PLAN_PRICES_INR.lifetime;
-  return { annual, lifetime };
+  const price = (id: PublicPlanId, fallback: number) =>
+    plans.find((p) => p.id === id)?.priceInrExGst ?? fallback;
+  return {
+    identity: price("identity", PLAN_PRICES_INR.identity),
+    essential: price("essential", PLAN_PRICES_INR.essential),
+    growth: price("growth", PLAN_PRICES_INR.growth),
+    studentplus: price("studentplus", PLAN_PRICES_INR.studentplus),
+    storage_addon: price("storage_addon", PLAN_PRICES_INR.storage_addon),
+  };
 }
 
 export function usePricing() {
@@ -79,7 +66,9 @@ export function usePricing() {
         if (!res.ok) throw new Error("pricing fetch failed");
         const json = (await res.json()) as PricingApiResponse;
         if (!cancelled && Array.isArray(json.plans) && json.plans.length > 0) {
-          setData(json);
+          // Only accept the new catalog shape; legacy annual/lifetime payloads fall back
+          const hasNewCatalog = json.plans.some((p) => p.id === "identity" || p.id === "growth");
+          setData(hasNewCatalog ? json : FALLBACK);
         }
       } catch {
         if (!cancelled) setData(FALLBACK);
@@ -93,12 +82,16 @@ export function usePricing() {
   }, []);
 
   const prices = plansToPriceMap(data.plans);
-  const planById = (id: PublicPricingPlan["id"]) => data.plans.find((p) => p.id === id);
+  const planById = (id: PublicPlanId | string) => data.plans.find((p) => p.id === id);
+  /** Paid base plans in display order (excludes free + storage add-on). */
+  const paidPlans = data.plans
+    .filter((p) => p.isPurchasable && p.priceInrExGst > 0 && p.id !== "storage_addon")
+    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
 
-  return { ...data, loading, prices, planById };
+  return { ...data, loading, prices, planById, paidPlans };
 }
 
-export async function validateCouponApi(plan: "annual" | "lifetime", couponCode: string) {
+export async function validateCouponApi(plan: string, couponCode: string) {
   const res = await fetch("/api/pricing/validate-coupon", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -108,14 +101,6 @@ export async function validateCouponApi(plan: "annual" | "lifetime", couponCode:
     valid: boolean;
     message?: string;
     coupon?: string;
-    pricing?: {
-      base: number;
-      discount: number;
-      subtotal: number;
-      gst: number;
-      total: number;
-      coupon: string | null;
-      gstRate: number;
-    };
+    pricing?: PricingBreakdown;
   }>;
 }
