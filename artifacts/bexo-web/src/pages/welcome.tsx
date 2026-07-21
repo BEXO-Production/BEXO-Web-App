@@ -530,19 +530,31 @@ export default function WelcomeSuccess() {
               </div>
             </div>
 
-            <motion.a
-              href={live?.href || "#"}
-              target="_blank"
-              rel="noopener noreferrer"
-              whileHover={{ scale: 1.015 }}
-              whileTap={{ scale: 0.98 }}
-              className={cn(
-                "inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-indigo-600 text-sm font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700",
-                !live && "pointer-events-none opacity-40",
-              )}
-            >
-              Open live site <ExternalLink className="h-4 w-4" />
-            </motion.a>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <motion.a
+                href={live?.href || "#"}
+                target="_blank"
+                rel="noopener noreferrer"
+                whileHover={{ scale: 1.015 }}
+                whileTap={{ scale: 0.98 }}
+                className={cn(
+                  "inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-indigo-600 text-sm font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700",
+                  !live && "pointer-events-none opacity-40",
+                )}
+              >
+                Open live site <ExternalLink className="h-4 w-4" />
+              </motion.a>
+              <motion.button
+                type="button"
+                onClick={goDashboard}
+                whileHover={{ scale: 1.015 }}
+                whileTap={{ scale: 0.98 }}
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-slate-900 text-sm font-bold text-white shadow-lg shadow-slate-900/15 transition hover:bg-slate-800"
+              >
+                <LayoutDashboard className="h-4 w-4" />
+                Go to Dashboard
+              </motion.button>
+            </div>
 
             <ul className="space-y-2 text-left text-xs text-slate-500">
               {[
