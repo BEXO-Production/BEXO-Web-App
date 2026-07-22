@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useOnboarding, AssetMode, AssetData, FileAsset, LinkAsset } from '../context/OnboardingContext';
 import { Button, Input, Label, Card } from '../design-system/primitives';
-import { ArrowRight, Plus, Pencil, Trash2, GripVertical, CheckCircle2, Upload, FileText, Image as ImageIcon, Link as LinkIcon, AlertCircle, X, ArrowUp, ArrowDown } from 'lucide-react';
+import { ArrowRight, Plus, Pencil, Trash2, GripVertical, CheckCircle2, Upload, FileText, Image as ImageIcon, Link as LinkIcon, AlertCircle, X, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
 import { cn } from '../design-system/primitives';
+import { AssetPreviewModal, PreviewTarget } from '../components/AssetPreviewModal';
 
 import { FREE_STORAGE_BYTES } from '../lib/pricing';
 
@@ -50,6 +51,12 @@ export default function Step6Review() {
   const [isSwooshing, setIsSwooshing] = useState(false);
   const [editForm, setEditForm] = useState<any>({});
   const [contactErrors, setContactErrors] = useState<any>({});
+  const [previewTarget, setPreviewTarget] = useState<PreviewTarget>(null);
+
+  // State for managing custom / extracted links
+  const [isAddingLink, setIsAddingLink] = useState(false);
+  const [newLinkName, setNewLinkName] = useState('');
+  const [newLinkUrl, setNewLinkUrl] = useState('');
 
   // Sync state when context data finishes fetching asynchronously
   useEffect(() => {
@@ -210,11 +217,50 @@ export default function Step6Review() {
 
   const validateContact = () => {
     const errors: any = {};
-    if (!contactData.email || !/^\S+@\S+\.\S+$/.test(contactData.email)) {
-      errors.email = 'Valid email is required';
+    const emailVal = (contactData?.email || '').trim();
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!emailVal) {
+      errors.email = 'Email address is required';
+    } else if (!emailRegex.test(emailVal)) {
+      errors.email = 'Please enter a valid email address (e.g. name@example.com)';
     }
+
+    const rawPhone = (contactData?.phone || data?.phone || '').replace(/^\+?91/, '').replace(/\D/g, '');
+    if (!rawPhone) {
+      errors.phone = 'Phone number is required';
+    } else if (rawPhone.length !== 10) {
+      errors.phone = 'Please enter a valid 10-digit phone number';
+    }
+
     setContactErrors(errors);
     return Object.keys(errors).length === 0;
+  };
+
+  const handleSaveNewLink = () => {
+    if (!newLinkName.trim() || !newLinkUrl.trim()) return;
+    
+    let formattedUrl = newLinkUrl.trim();
+    if (!/^https?:\/\//i.test(formattedUrl)) {
+      formattedUrl = `https://${formattedUrl}`;
+    }
+
+    const currentLinks = contactData?.customLinks || [];
+    const updatedLinks = [...currentLinks, { name: newLinkName.trim(), url: formattedUrl }];
+    const updatedContact = { ...contactData, customLinks: updatedLinks };
+    setContactData(updatedContact);
+    updateData({ contactData: updatedContact });
+    
+    setNewLinkName('');
+    setNewLinkUrl('');
+    setIsAddingLink(false);
+  };
+
+  const handleRemoveCustomLink = (index: number) => {
+    const currentLinks = contactData?.customLinks || [];
+    const updatedLinks = currentLinks.filter((_, i) => i !== index);
+    const updatedContact = { ...contactData, customLinks: updatedLinks };
+    setContactData(updatedContact);
+    updateData({ contactData: updatedContact });
   };
 
   const handleContinue = () => {
@@ -222,6 +268,11 @@ export default function Step6Review() {
       setActiveTab('contact');
       return;
     }
+    const formattedPhone = contactData?.phone || data?.phone || '';
+    const finalContact = {
+      ...contactData,
+      phone: formattedPhone
+    };
     updateData({ 
       aboutEntries: sections.about,
       educationEntries: sections.education,
@@ -230,8 +281,8 @@ export default function Step6Review() {
       certificateEntries: sections.certificates,
       achievementEntries: sections.achievements,
       researchEntries: sections.research,
-      phone: contactData.phone || data.phone || '',
-      contactData
+      phone: formattedPhone,
+      contactData: finalContact
     });
     // Trigger swoosh animation, then navigate
     setIsSwooshing(true);
@@ -240,13 +291,13 @@ export default function Step6Review() {
     }, 600);
   };
 
+
   // Asset Handlers for the form
   const handleAssetModeChange = (mode: AssetMode) => {
     setEditForm({ ...editForm, assets: { ...editForm.assets, mode } });
   };
 
   const handleFileUpload = (type: 'images' | 'pdfs') => {
-    if (isStorageFull) return;
     const maxSlots = type === 'images' ? 5 : 2;
     const current = editForm.assets[type] || [];
     if (current.length >= maxSlots) return;
@@ -264,23 +315,11 @@ export default function Step6Review() {
         alert(`Only ${slotsLeft} more ${type === 'images' ? 'image' : 'PDF'} slot(s) available — uploading the first ${slotsLeft}.`);
       }
       const files = picked.slice(0, slotsLeft);
-
-      // Enforce the quota across the whole batch, not per file
-      let projectedUsage = usedStorage;
-      const accepted: File[] = [];
-      for (const file of files) {
-        if (projectedUsage + file.size > storageLimit) {
-          alert(`"${file.name}" would exceed your ${(storageLimit / 1024 / 1024).toFixed(0)}MB storage quota and was skipped.`);
-          continue;
-        }
-        projectedUsage += file.size;
-        accepted.push(file);
-      }
-      if (accepted.length === 0) return;
+      if (files.length === 0) return;
 
       const token = localStorage.getItem('token');
 
-      accepted.forEach((file, idx) => {
+      files.forEach((file, idx) => {
         // Temporary local preview shown immediately while uploading
         const localUrl = URL.createObjectURL(file);
         const tempId = `temp-${Date.now()}-${idx}`;
@@ -349,22 +388,57 @@ export default function Step6Review() {
     input.click();
   };
 
-  const handleRemoveAsset = (type: 'images' | 'pdfs' | 'links', id: string) => {
+  const handleRemoveAsset = (type: 'images' | 'pdfs' | 'links', id: string, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    const currentList = editForm.assets?.[type] || [];
     setEditForm({
       ...editForm,
       assets: {
         ...editForm.assets,
-        [type]: editForm.assets[type].filter((a: any) => a.id !== id)
+        [type]: currentList.filter((a: any) => a.id !== id)
+      }
+    });
+  };
+
+  const handleMoveAsset = (type: 'images' | 'pdfs' | 'links', fromIndex: number, direction: -1 | 1) => {
+    const items = [...(editForm.assets[type] || [])];
+    const toIndex = fromIndex + direction;
+    if (toIndex < 0 || toIndex >= items.length) return;
+    const [moved] = items.splice(fromIndex, 1);
+    items.splice(toIndex, 0, moved);
+    setEditForm({
+      ...editForm,
+      assets: {
+        ...editForm.assets,
+        [type]: items
+      }
+    });
+  };
+
+  const handleReorderAsset = (type: 'images' | 'pdfs' | 'links', fromIndex: number, toIndex: number) => {
+    const items = [...(editForm.assets[type] || [])];
+    if (fromIndex === toIndex || fromIndex < 0 || fromIndex >= items.length || toIndex < 0 || toIndex >= items.length) return;
+    const [moved] = items.splice(fromIndex, 1);
+    items.splice(toIndex, 0, moved);
+    setEditForm({
+      ...editForm,
+      assets: {
+        ...editForm.assets,
+        [type]: items
       }
     });
   };
 
   const handleAddLink = () => {
-    if (editForm.assets.links.length >= 3) return;
-    const newLink: LinkAsset = { id: Date.now().toString(), name: 'New Link', url: '' };
+    const current = editForm.assets?.links || [];
+    if (current.length >= 3) return;
+    const newLink = { id: Date.now().toString(), name: '', url: '' };
     setEditForm({
       ...editForm,
-      assets: { ...editForm.assets, links: [...editForm.assets.links, newLink] }
+      assets: { ...editForm.assets, links: [...current, newLink] }
     });
   };
 
@@ -378,7 +452,7 @@ export default function Step6Review() {
         <div className="flex items-center gap-2 mb-1">
           <Label className="text-base block">Supporting Materials</Label>
         </div>
-        <p className="text-xs text-slate-400 mb-3">Add images, documents, or links to showcase your work.</p>
+        <p className="text-xs text-slate-400 mb-3">Add images, documents, or links to showcase your work. Drag items or use arrows to reorder.</p>
         
         {/* Mode Toggle */}
         <div className="flex p-1 bg-slate-100 rounded-lg mb-4 w-fit">
@@ -397,26 +471,119 @@ export default function Step6Review() {
         <div className="bg-slate-50 rounded-xl p-4 border border-slate-100 min-h-[140px]">
           {assets.mode === 'images' && (
             <div className="space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-slate-500">{assets.images.length} of 5 images used</span>
-                <Button type="button" variant="outline" size="sm" onClick={() => handleFileUpload('images')} disabled={assets.images.length >= 5 || isStorageFull}>
+              <div className="flex justify-between items-center flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-slate-600">{(assets.images || []).length} of 5 images used</span>
+                  {(assets.images || []).length > 1 && (
+                    <span className="text-[11px] text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full flex items-center gap-1 font-medium">
+                      <GripVertical className="w-3 h-3" /> Reorder enabled
+                    </span>
+                  )}
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={() => handleFileUpload('images')} disabled={(assets.images || []).length >= 5}>
                   <Upload className="w-4 h-4 mr-2" /> Attach Image
                 </Button>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {assets.images.map(img => (
-                  <div key={img.id} className="relative group bg-white border border-slate-200 rounded-lg p-2 flex items-center justify-center h-20 overflow-hidden">
-                    {img.url && (img.url.startsWith('data:image/') || img.url.startsWith('http') || img.url.startsWith('/')) ? (
-                      <a href={img.url} target="_blank" rel="noopener noreferrer" className="w-full h-full flex items-center justify-center">
-                        <img src={img.url} alt={img.name} className="w-full h-full object-cover rounded" />
-                      </a>
-                    ) : (
-                      <ImageIcon className="w-8 h-8 text-slate-300" />
+                {(assets.images || []).map((img, idx) => (
+                  <div
+                    key={img.id}
+                    draggable={(assets.images || []).length > 1}
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData('text/plain', String(idx));
+                    }}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const fromIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
+                      if (!isNaN(fromIdx)) handleReorderAsset('images', fromIdx, idx);
+                    }}
+                    className={cn(
+                      "relative group bg-white border rounded-xl p-2 flex flex-col items-center justify-center h-28 overflow-hidden transition-all duration-200 shadow-sm hover:shadow-md",
+                      idx === 0 ? "border-indigo-400 ring-2 ring-indigo-400/20" : "border-slate-200 hover:border-slate-300",
+                      (assets.images || []).length > 1 ? "cursor-grab active:cursor-grabbing" : ""
                     )}
-                    <button type="button" onClick={() => handleRemoveAsset('images', img.id)} className="absolute -top-2 -right-2 w-6 h-6 bg-white border border-slate-200 rounded-full flex items-center justify-center text-red-500 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm hover:bg-red-50 z-10">
-                      <X className="w-3 h-3" />
+                  >
+                    {/* Order Tag / Cover Label */}
+                    <div className="absolute top-1.5 left-1.5 z-10 flex items-center gap-1">
+                      <span className={cn(
+                        "text-[10px] font-bold px-1.5 py-0.5 rounded-md shadow-sm",
+                        idx === 0 ? "bg-indigo-600 text-white" : "bg-slate-900/70 text-white"
+                      )}>
+                        {idx === 0 ? "1st (Cover)" : `#${idx + 1}`}
+                      </span>
+                    </div>
+
+                    {/* Delete button top-right */}
+                    <button 
+                      type="button" 
+                      onClick={(e) => handleRemoveAsset('images', img.id, e)} 
+                      className="absolute top-1.5 right-1.5 w-6 h-6 bg-white/95 border border-slate-200 rounded-full flex items-center justify-center text-red-500 opacity-90 group-hover:opacity-100 transition-opacity shadow-sm hover:bg-red-50 z-30 cursor-pointer"
+                      title="Remove image"
+                    >
+                      <X className="w-3.5 h-3.5" />
                     </button>
-                    <span className="absolute bottom-1 left-1 right-1 text-[10px] text-center truncate text-slate-500 bg-white/70 px-1 py-0.5 rounded">{(img.sizeBytes / 1024 / 1024).toFixed(1)}MB</span>
+
+                    {/* Image Preview */}
+                    {img.url && (img.url.startsWith('data:image/') || img.url.startsWith('http') || img.url.startsWith('/')) ? (
+                      <div
+                        onClick={() => setPreviewTarget({ type: 'images', index: idx, items: assets.images })}
+                        className="w-full h-full flex items-center justify-center pt-2 cursor-pointer group/img relative"
+                        title="Click to preview image"
+                      >
+                        <img src={img.url} alt={img.name} className="w-full h-full object-cover rounded-lg group-hover/img:brightness-90 transition-all" />
+                        <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover/img:opacity-100 flex items-center justify-center transition-opacity rounded-lg">
+                          <Eye className="w-5 h-5 text-white drop-shadow-md" />
+                        </div>
+                      </div>
+                    ) : (
+                      <div 
+                        onClick={() => setPreviewTarget({ type: 'images', index: idx, items: assets.images })}
+                        className="w-full h-full flex items-center justify-center cursor-pointer"
+                      >
+                        <ImageIcon className="w-8 h-8 text-slate-300" />
+                      </div>
+                    )}
+
+                    {/* Bottom controls overlay */}
+                    <div className="absolute bottom-0 inset-x-0 bg-slate-900/85 backdrop-blur-sm py-1 px-1.5 flex items-center justify-between z-10 text-white">
+                      <span className="text-[9px] font-medium text-slate-200 truncate max-w-[50%]">
+                        {(img.sizeBytes / 1024 / 1024).toFixed(1)}MB
+                      </span>
+                      
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setPreviewTarget({ type: 'images', index: idx, items: assets.images })}
+                          className="w-5 h-5 rounded bg-indigo-600/80 hover:bg-indigo-600 flex items-center justify-center transition-colors cursor-pointer"
+                          title="Preview full image"
+                        >
+                          <Eye className="w-3 h-3 text-white" />
+                        </button>
+                        {(assets.images || []).length > 1 && (
+                          <>
+                            <button
+                              type="button"
+                              disabled={idx === 0}
+                              onClick={() => handleMoveAsset('images', idx, -1)}
+                              className="w-5 h-5 rounded bg-white/20 hover:bg-white/40 disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center transition-colors cursor-pointer"
+                              title="Move left"
+                            >
+                              <ChevronLeft className="w-3.5 h-3.5 text-white" />
+                            </button>
+                            <button
+                              type="button"
+                              disabled={idx === (assets.images || []).length - 1}
+                              onClick={() => handleMoveAsset('images', idx, 1)}
+                              className="w-5 h-5 rounded bg-white/20 hover:bg-white/40 disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center transition-colors cursor-pointer"
+                              title="Move right"
+                            >
+                              <ChevronRight className="w-3.5 h-3.5 text-white" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -425,25 +592,102 @@ export default function Step6Review() {
 
           {assets.mode === 'pdfs' && (
             <div className="space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-slate-500">{assets.pdfs.length} of 2 PDFs used</span>
-                <Button type="button" variant="outline" size="sm" onClick={() => handleFileUpload('pdfs')} disabled={assets.pdfs.length >= 2 || isStorageFull}>
+              <div className="flex justify-between items-center flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-slate-600">{(assets.pdfs || []).length} of 2 PDFs used</span>
+                  {(assets.pdfs || []).length > 1 && (
+                    <span className="text-[11px] text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full flex items-center gap-1 font-medium">
+                      <GripVertical className="w-3 h-3" /> Reorder enabled
+                    </span>
+                  )}
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={() => handleFileUpload('pdfs')} disabled={(assets.pdfs || []).length >= 2}>
                   <Upload className="w-4 h-4 mr-2" /> Attach PDF
                 </Button>
               </div>
               <div className="flex flex-col gap-2">
-                {assets.pdfs.map(pdf => (
-                  <div key={pdf.id} className="flex items-center justify-between bg-white border border-slate-200 rounded-lg px-3 py-2">
-                    <div className="flex items-center gap-2 overflow-hidden">
-                      <a href={pdf.url} download={pdf.name} className="flex items-center gap-2 overflow-hidden hover:underline">
-                        <FileText className="w-5 h-5 text-red-400 shrink-0" />
-                        <span className="text-sm text-slate-700 truncate">{pdf.name}</span>
-                      </a>
-                      <span className="text-xs text-slate-400 shrink-0">{(pdf.sizeBytes / 1024 / 1024).toFixed(1)}MB</span>
+                {(assets.pdfs || []).map((pdf, idx) => (
+                  <div
+                    key={pdf.id}
+                    draggable={(assets.pdfs || []).length > 1}
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData('text/plain', String(idx));
+                    }}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const fromIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
+                      if (!isNaN(fromIdx)) handleReorderAsset('pdfs', fromIdx, idx);
+                    }}
+                    className={cn(
+                      "flex items-center justify-between bg-white border rounded-xl px-3 py-2.5 shadow-sm transition-all duration-200 hover:border-slate-300",
+                      idx === 0 ? "border-indigo-300 bg-indigo-50/20" : "border-slate-200"
+                    )}
+                  >
+                    <div className="flex items-center gap-3 overflow-hidden flex-1">
+                      <div className="flex items-center gap-1.5 shrink-0 text-slate-400">
+                        {(assets.pdfs || []).length > 1 && (
+                          <GripVertical className="w-4 h-4 cursor-grab text-slate-400 hover:text-slate-600" />
+                        )}
+                        <span className={cn(
+                          "text-[10px] font-bold px-1.5 py-0.5 rounded-md",
+                          idx === 0 ? "bg-indigo-600 text-white" : "bg-slate-200 text-slate-700"
+                        )}>
+                          {idx === 0 ? "1st" : `#${idx + 1}`}
+                        </span>
+                      </div>
+
+                      <div
+                        onClick={() => setPreviewTarget({ type: 'pdfs', index: idx, items: assets.pdfs })}
+                        className="flex items-center gap-2 overflow-hidden hover:underline min-w-0 cursor-pointer group/pdf"
+                        title="Click to preview PDF"
+                      >
+                        <FileText className="w-5 h-5 text-red-500 shrink-0 group-hover/pdf:scale-110 transition-transform" />
+                        <span className="text-sm font-medium text-slate-800 truncate">{pdf.name}</span>
+                      </div>
+                      <span className="text-xs text-slate-400 shrink-0 tabular-nums">{(pdf.sizeBytes / 1024 / 1024).toFixed(1)}MB</span>
                     </div>
-                    <button type="button" onClick={() => handleRemoveAsset('pdfs', pdf.id)} className="text-slate-400 hover:text-red-500 p-1">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+
+                    <div className="flex items-center gap-1 shrink-0 ml-2">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewTarget({ type: 'pdfs', index: idx, items: assets.pdfs })}
+                        className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                        title="Preview PDF"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+                      {(assets.pdfs || []).length > 1 && (
+                        <>
+                          <button
+                            type="button"
+                            disabled={idx === 0}
+                            onClick={() => handleMoveAsset('pdfs', idx, -1)}
+                            className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-20 disabled:pointer-events-none transition-colors cursor-pointer"
+                            title="Move up"
+                          >
+                            <ArrowUp className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={idx === (assets.pdfs || []).length - 1}
+                            onClick={() => handleMoveAsset('pdfs', idx, 1)}
+                            className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-20 disabled:pointer-events-none transition-colors cursor-pointer"
+                            title="Move down"
+                          >
+                            <ArrowDown className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        onClick={(e) => handleRemoveAsset('pdfs', pdf.id, e)}
+                        className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                        title="Remove PDF"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -483,9 +727,19 @@ export default function Step6Review() {
                         className="h-9 text-sm"
                       />
                     </div>
-                    <button type="button" onClick={() => handleRemoveAsset('links', link.id)} className="text-slate-400 hover:text-red-500 p-2 mt-1">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-1 mt-1">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewTarget({ type: 'links', index: idx, items: assets.links })}
+                        className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                        title="Preview link"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+                      <button type="button" onClick={(e) => handleRemoveAsset('links', link.id, e)} className="text-slate-400 hover:text-red-500 p-2 cursor-pointer" title="Remove link">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -542,7 +796,7 @@ export default function Step6Review() {
                       type="checkbox" 
                       checked={editForm.endYear === 'Present'} 
                       onChange={e => setEditForm({...editForm, endYear: e.target.checked ? 'Present' : ''})} 
-                      className="rounded border-slate-350 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                      className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
                     />
                     Still there
                   </label>
@@ -586,7 +840,7 @@ export default function Step6Review() {
                       type="checkbox" 
                       checked={editForm.endYear === 'Present'} 
                       onChange={e => setEditForm({...editForm, endYear: e.target.checked ? 'Present' : ''})} 
-                      className="rounded border-slate-350 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                      className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
                     />
                     Still there
                   </label>
@@ -717,64 +971,163 @@ export default function Step6Review() {
             <div className="space-y-6 max-w-xl animate-in fade-in">
               <h3 className="text-xl font-bold text-slate-900 mb-4">Contact Information</h3>
               <div className="space-y-4">
+                {/* Email Field */}
                 <div className="space-y-2">
-                  <Label className={contactErrors.email ? "text-red-500" : ""}>Email (Required)</Label>
+                  <Label className={contactErrors.email ? "text-red-500 font-semibold" : ""}>Email (Required)</Label>
                   <Input 
-                    value={contactData.email} 
-                    onChange={e => { setContactData({...contactData, email: e.target.value}); setContactErrors({...contactErrors, email: ''}); }} 
+                    value={contactData?.email || ''} 
+                    onChange={e => { 
+                      setContactData({...contactData, email: e.target.value}); 
+                      if (contactErrors.email) setContactErrors({...contactErrors, email: ''}); 
+                    }} 
+                    placeholder="e.g. name@example.com"
                     className={contactErrors.email ? "border-red-500 focus-visible:ring-red-500" : ""}
                   />
-                  {contactErrors.email && <p className="text-sm text-red-500">{contactErrors.email}</p>}
-                </div>
-                <div className="space-y-2">
-                  <Label>Phone Number</Label>
-                  <div className="flex relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-medium">+91</span>
-                    <Input 
-                      value={(contactData.phone || data.phone || '').replace(/^\+?91/, '').trim()} 
-                      onChange={e => {
-                        const val = e.target.value.replace(/\D/g, '').slice(0, 10);
-                        setContactData({...contactData, phone: val ? `+91${val}` : ''});
-                      }} 
-                      placeholder="98765 43210" 
-                      className="pl-12 text-sm font-medium tracking-wide h-12 rounded-xl"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>LinkedIn URL</Label>
-                  <Input value={contactData.linkedin} onChange={e => setContactData({...contactData, linkedin: e.target.value})} placeholder="linkedin.com/in/username" />
-                </div>
-                <div className="space-y-2">
-                  <Label>GitHub URL</Label>
-                  <Input value={contactData.github} onChange={e => setContactData({...contactData, github: e.target.value})} placeholder="github.com/username" />
+                  {contactErrors.email && (
+                    <p className="text-xs font-medium text-red-500 flex items-center gap-1 mt-1">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      {contactErrors.email}
+                    </p>
+                  )}
                 </div>
 
-                {/* Custom Extracted Links */}
-                {contactData.customLinks && contactData.customLinks.length > 0 && (
-                  <div className="pt-4 border-t border-slate-100">
-                    <Label className="text-slate-700 font-semibold mb-2 block text-xs">Extracted Links</Label>
+                {/* Phone Field */}
+                <div className="space-y-2">
+                  <Label className={contactErrors.phone ? "text-red-500 font-semibold" : ""}>Phone Number (Required)</Label>
+                  <div className="flex relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-medium text-sm">+91</span>
+                    <Input 
+                      value={(contactData?.phone || data?.phone || '').replace(/^\+?91/, '').trim()} 
+                      onChange={e => {
+                        const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                        const formatted = val ? `+91${val}` : '';
+                        setContactData({...contactData, phone: formatted});
+                        if (contactErrors.phone && val.length === 10) {
+                          setContactErrors({...contactErrors, phone: ''});
+                        }
+                      }} 
+                      placeholder="98765 43210" 
+                      className={cn("pl-12 text-sm font-medium tracking-wide h-12 rounded-xl", contactErrors.phone ? "border-red-500 focus-visible:ring-red-500" : "")}
+                    />
+                  </div>
+                  {contactErrors.phone && (
+                    <p className="text-xs font-medium text-red-500 flex items-center gap-1 mt-1">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      {contactErrors.phone}
+                    </p>
+                  )}
+                </div>
+
+                {/* LinkedIn Field */}
+                <div className="space-y-2">
+                  <Label>LinkedIn URL</Label>
+                  <Input 
+                    value={contactData?.linkedin || ''} 
+                    onChange={e => setContactData({...contactData, linkedin: e.target.value})} 
+                    placeholder="linkedin.com/in/username" 
+                  />
+                </div>
+
+                {/* GitHub Field */}
+                <div className="space-y-2">
+                  <Label>GitHub URL</Label>
+                  <Input 
+                    value={contactData?.github || ''} 
+                    onChange={e => setContactData({...contactData, github: e.target.value})} 
+                    placeholder="github.com/username" 
+                  />
+                </div>
+
+                {/* Extracted & Custom Links Section */}
+                <div className="pt-4 border-t border-slate-100 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-slate-800 font-bold text-sm block">Extracted & Custom Links</Label>
+                      <p className="text-xs text-slate-400">Manage links extracted from your resume or add custom links.</p>
+                    </div>
+                    {!isAddingLink && (
+                      <Button 
+                        type="button" 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => setIsAddingLink(true)}
+                        className="text-indigo-600 border-indigo-200 hover:bg-indigo-50 text-xs font-semibold"
+                      >
+                        <Plus className="w-3.5 h-3.5 mr-1" /> Add Link
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Add Custom Link Form */}
+                  {isAddingLink && (
+                    <Card className="p-3.5 border-indigo-200 bg-indigo-50/40 space-y-3 animate-in fade-in">
+                      <p className="text-xs font-semibold text-indigo-900">Add Custom Link</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <Input 
+                          placeholder="Link Title (e.g. Personal Portfolio)" 
+                          value={newLinkName} 
+                          onChange={e => setNewLinkName(e.target.value)} 
+                          className="h-9 text-xs"
+                        />
+                        <Input 
+                          placeholder="URL (e.g. kavin.cyou or https://...)" 
+                          value={newLinkUrl} 
+                          onChange={e => setNewLinkUrl(e.target.value)} 
+                          className="h-9 text-xs"
+                        />
+                      </div>
+                      <div className="flex justify-end gap-2 pt-1">
+                        <Button type="button" variant="ghost" size="sm" className="h-8 text-xs" onClick={() => { setIsAddingLink(false); setNewLinkName(''); setNewLinkUrl(''); }}>
+                          Cancel
+                        </Button>
+                        <Button type="button" size="sm" className="h-8 text-xs bg-indigo-600 hover:bg-indigo-700 text-white" onClick={handleSaveNewLink}>
+                          Save Link
+                        </Button>
+                      </div>
+                    </Card>
+                  )}
+
+                  {/* Links Display List */}
+                  {(!contactData?.customLinks || contactData.customLinks.length === 0) ? (
+                    <div className="p-4 border border-dashed border-slate-200 rounded-xl text-center text-xs text-slate-400">
+                      No extracted or custom links added yet. Click "+ Add Link" to add your links.
+                    </div>
+                  ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       {contactData.customLinks.map((link: any, idx: number) => (
-                        <a 
+                        <div 
                           key={idx}
-                          href={link.url.startsWith('http') ? link.url : `https://${link.url}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-2.5 p-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-indigo-50/50 hover:border-indigo-200 transition-all group"
+                          className="flex items-center justify-between p-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-white hover:border-indigo-200 transition-all group shadow-sm"
                         >
-                          <div className="w-8 h-8 rounded-lg bg-white border border-slate-150 flex items-center justify-center shrink-0 shadow-sm group-hover:border-indigo-100">
-                            <LinkIcon className="w-4.5 h-4.5 text-slate-400 group-hover:text-indigo-500" />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-xs font-semibold text-slate-700 truncate group-hover:text-indigo-600">{link.name || 'Link'}</p>
-                            <p className="text-[10px] text-slate-400 truncate">{link.url}</p>
-                          </div>
-                        </a>
+                          <a 
+                            href={link.url.startsWith('http') ? link.url : `https://${link.url}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2.5 min-w-0 flex-1 mr-2"
+                          >
+                            <div className="w-8 h-8 rounded-lg bg-white border border-slate-150 flex items-center justify-center shrink-0 shadow-sm group-hover:border-indigo-200">
+                              <LinkIcon className="w-4 h-4 text-slate-400 group-hover:text-indigo-500" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-semibold text-slate-700 truncate group-hover:text-indigo-600">
+                                {link.name || 'Link'}
+                              </p>
+                              <p className="text-[10px] text-slate-400 truncate">{link.url}</p>
+                            </div>
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveCustomLink(idx)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors shrink-0 cursor-pointer"
+                            title="Remove link"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       ))}
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </div>
           ) : activeTab === 'about' ? (
@@ -914,7 +1267,7 @@ export default function Step6Review() {
                   <div className="space-y-2">
                     <span className="text-[10px] uppercase tracking-wider text-indigo-500 font-bold bg-indigo-50 px-2.5 py-1 rounded-full">Summary of the Fetched Data</span>
                     <Card className="p-4 bg-white border border-slate-200 mt-2">
-                      <p className="text-sm text-slate-650 leading-relaxed font-normal whitespace-pre-wrap">
+                      <p className="text-sm text-slate-600 leading-relaxed font-normal whitespace-pre-wrap">
                         {sections.about[0]?.description || <span className="text-slate-400 italic">No summary provided. Upload your resume or click Edit to add one.</span>}
                       </p>
                     </Card>
@@ -1036,6 +1389,9 @@ export default function Step6Review() {
           <span className="btn-label">Verify & Continue</span>
         </button>
       </div>
+
+      {/* Instant In-Browser Asset Preview Modal */}
+      <AssetPreviewModal target={previewTarget} onClose={() => setPreviewTarget(null)} />
     </div>
   );
 }

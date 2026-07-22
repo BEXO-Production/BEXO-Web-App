@@ -20,7 +20,7 @@ export type PlanLimits = {
 };
 
 const FALLBACK_LIMITS: Record<PlanId, { parses: number; updates: number; display: string }> = {
-  free: { parses: 0, updates: 1, display: "Free" },
+  free: { parses: 0, updates: 3, display: "Free" },
   identity: { parses: 1, updates: 3, display: "Identity" },
   essential: { parses: 3, updates: 10, display: "Essential" },
   growth: { parses: 3, updates: 10, display: "Growth" },

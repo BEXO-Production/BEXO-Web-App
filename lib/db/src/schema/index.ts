@@ -29,6 +29,12 @@ export const users = pgTable("users", {
   onboardingSuccessfulParses: integer("onboarding_successful_parses").default(0),
   onboardingCompletedAt: timestamp("onboarding_completed_at", { withTimezone: true }),
   lastOnboardingActivityAt: timestamp("last_onboarding_activity_at", { withTimezone: true }),
+  // Public site access: live | grace (still serving) | paused (banner)
+  siteStatus: text("site_status").notNull().default("live"),
+  pauseReason: text("pause_reason"), // payment_failed | storage_exceeded | subscription_ended | manual
+  graceUntil: timestamp("grace_until", { withTimezone: true }),
+  cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
+  paymentFailedAt: timestamp("payment_failed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });
 
@@ -144,10 +150,11 @@ export const payments = pgTable("payments", {
   razorpayPaymentId: text("razorpay_payment_id").unique(),
   razorpaySubscriptionId: text("razorpay_subscription_id"),
   plan: text("plan"), // 'annual' | 'lifetime' | null (legacy rows)
-  kind: text("kind").notNull().default("order"), // 'order' | 'subscription'
+  kind: text("kind").notNull().default("order"), // 'order' | 'subscription' | 'addon_increase'
   amount: integer("amount").notNull(), // in paise
   status: text("status").notNull(), // 'pending' | 'success' | 'failed'
   invoiceUrl: text("invoice_url"),
+  couponCode: text("coupon_code"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });
 
@@ -165,6 +172,7 @@ export const contactSubmissions = pgTable("contact_submissions", {
   attemptCount: integer("attempt_count").default(0).notNull(),
   lastError: text("last_error"),
   ipHash: text("ip_hash"),
+  readAt: timestamp("read_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
@@ -172,7 +180,7 @@ export const contactSubmissions = pgTable("contact_submissions", {
 // 12. Email Deliveries Outbox
 export const emailDeliveries = pgTable("email_deliveries", {
   id: uuid("id").defaultRandom().primaryKey(),
-  eventType: text("event_type").notNull(), // billing_receipt | activation | welcome | site_live | recovery | cart_recovery | renewal_reminder | contact
+  eventType: text("event_type").notNull(), // billing_receipt | activation | welcome | site_live | recovery | cart_recovery | renewal_reminder | contact | lead_reply
   recipient: text("recipient").notNull(),
   subject: text("subject").notNull(),
   dedupeKey: text("dedupe_key").unique().notNull(),
@@ -186,6 +194,27 @@ export const emailDeliveries = pgTable("email_deliveries", {
   relatedId: text("related_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  sentAt: timestamp("sent_at", { withTimezone: true }),
+});
+
+// 12b. Owner replies to portfolio contact leads (Essential / Growth)
+export const leadReplies = pgTable("lead_replies", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  contactSubmissionId: uuid("contact_submission_id")
+    .references(() => contactSubmissions.id, { onDelete: "cascade" })
+    .notNull(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  toEmail: text("to_email").notNull(),
+  toName: text("to_name"),
+  fromName: text("from_name"),
+  replyToEmail: text("reply_to_email"),
+  subject: text("subject").notNull(),
+  body: text("body").notNull(),
+  status: text("status").notNull().default("queued"), // queued | sent | failed | skipped
+  emailDeliveryId: uuid("email_delivery_id").references(() => emailDeliveries.id, { onDelete: "set null" }),
+  providerMessageId: text("provider_message_id"),
+  lastError: text("last_error"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   sentAt: timestamp("sent_at", { withTimezone: true }),
 });
 
@@ -247,6 +276,63 @@ export const pricingCoupons = pgTable("pricing_coupons", {
   maxUses: integer("max_uses"),
   usedCount: integer("used_count").notNull().default(0),
   isActive: boolean("is_active").notNull().default(true),
+  appliesOnce: boolean("applies_once").notNull().default(true),
+  razorpayOfferId: text("razorpay_offer_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
+
+// 16b. Per-user coupon redemptions (one redemption per account per coupon)
+export const couponRedemptions = pgTable("coupon_redemptions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  couponId: uuid("coupon_id").references(() => pricingCoupons.id, { onDelete: "cascade" }).notNull(),
+  paymentId: uuid("payment_id").references(() => payments.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  userCouponUniq: unique("coupon_redemptions_user_coupon_uniq").on(table.userId, table.couponId),
+}));
+
+// 17. Internal web-app product analytics (BEXO ops)
+export const analyticsEvents = pgTable("analytics_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").references(() => users.id),
+  sessionId: text("session_id"),
+  eventName: text("event_name").notNull(),
+  props: jsonb("props").notNull().default({}),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});
+
+// 18. Portfolio visit hourly buckets (high-write counters)
+export const portfolioVisitBuckets = pgTable("portfolio_visit_buckets", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  profileId: uuid("profile_id").references(() => profiles.id).notNull(),
+  bucketStart: timestamp("bucket_start", { withTimezone: true }).notNull(),
+  path: text("path").notNull().default("/"),
+  device: text("device").notNull().default("unknown"),
+  referrerHost: text("referrer_host").notNull().default(""),
+  viewCount: integer("view_count").notNull().default(0),
+  uniqueApprox: integer("unique_approx").notNull().default(0),
+}, (table) => ({
+  bucketUniq: unique("portfolio_visit_buckets_uniq").on(
+    table.profileId,
+    table.bucketStart,
+    table.path,
+    table.device,
+    table.referrerHost,
+  ),
+}));
+
+// 19. Portfolio daily stats rollups (owner dashboards)
+export const portfolioStatsDaily = pgTable("portfolio_stats_daily", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  profileId: uuid("profile_id").references(() => profiles.id).notNull(),
+  day: date("day").notNull(),
+  views: integer("views").notNull().default(0),
+  uniquesApprox: integer("uniques_approx").notNull().default(0),
+  leads: integer("leads").notNull().default(0),
+  topReferrers: jsonb("top_referrers").notNull().default([]),
+  devices: jsonb("devices").notNull().default({}),
+}, (table) => ({
+  dayUniq: unique("portfolio_stats_daily_uniq").on(table.profileId, table.day),
+}));

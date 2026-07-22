@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useLocation } from 'wouter';
 import { useOnboarding, AssetMode, AssetData, FileAsset, LinkAsset } from '../context/OnboardingContext';
 import { Card, Button, Input, Label } from '../design-system/primitives';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../components/ui/dialog';
@@ -33,15 +34,21 @@ import {
   AlertCircle,
   ArrowUp,
   ArrowDown,
+  ChevronRight,
   CreditCard,
   CalendarClock,
   Crown,
   Database,
   Share2,
   Lock,
-  Eye
+  Eye,
+  BarChart3,
+  TrendingUp,
+  Inbox,
+  MousePointerClick,
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
+import { AssetPreviewModal, PreviewTarget } from '../components/AssetPreviewModal';
 import { cn } from '../design-system/primitives';
 import logo from '../assets/bexo-logo.png';
 import { supabase } from '../lib/supabase';
@@ -53,6 +60,7 @@ import {
   DEFAULT_TEMPLATE_ID,
   FREE_FALLBACK_TEMPLATE_ID,
   getDemoPreviewUrl,
+  getTemplatePreviewUrl,
   getSelectableTemplates,
   isPremiumTemplate,
   MARKETING_DEMO_HANDLE,
@@ -60,6 +68,8 @@ import {
 } from '../lib/templates';
 import { PLATFORM_DOMAIN, portfolioHostname, portfolioPublicUrl } from '../lib/platform';
 import { apiUrl } from '../lib/api';
+import { track } from '../lib/track';
+import { computeCanBuy, normalizeClientPlanId, PLAN_LABELS } from '../lib/pricing';
 
 const TABS = [
   { id: 'about', label: 'About' },
@@ -100,7 +110,16 @@ type BillingStatus = {
   addonBlocks?: number;
   addonBytes?: number;
   addon?: { blocks: number; status: string; currentEnd: string | null; autopay: boolean } | null;
-  limits?: { parsesPerMonth: number; updatesPerMonth: number };
+  limits?: {
+    parsesPerMonth: number;
+    updatesPerMonth: number;
+    updatesUsed?: number;
+    updatesRemaining?: number;
+    updatesDaysToReset?: number;
+    parsesUsed?: number;
+    parsesRemaining?: number;
+    parsesDaysToReset?: number;
+  };
   canBuy?: Record<string, boolean>;
   renewalMode?: 'purchase' | 'renew' | 'addon';
   subscription?: {
@@ -120,8 +139,9 @@ type BillingStatus = {
 };
 
 export default function Dashboard() {
-  const { data, updateData, setToken } = useOnboarding();
+  const { data, updateData, setToken, refreshProfile } = useOnboarding();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
 
   usePageSeo({
     title: "Dashboard — BEXO",
@@ -158,6 +178,116 @@ export default function Dashboard() {
   const [assetsLoading, setAssetsLoading] = useState(false);
   const [assetsUsage, setAssetsUsage] = useState<{ used: number; quota: number; addonBlocks: number } | null>(null);
   const [deletingAssetId, setDeletingAssetId] = useState<string | null>(null);
+  const [analyticsSummary, setAnalyticsSummary] = useState<any>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [leadsList, setLeadsList] = useState<any[]>([]);
+
+  // Deep-link: /dashboard?view=settings&tab=assets etc.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const view = params.get('view');
+    const tab = params.get('tab');
+    if (view === 'edit-profile' || view === 'updates' || view === 'settings' || view === 'overview') {
+      setCurrentView(view);
+    }
+    if (tab === 'parse' || tab === 'post') setUpdatesTab(tab);
+    if (tab === 'profile' || tab === 'design' || tab === 'storage' || tab === 'assets' || tab === 'billing') {
+      setSettingsSubTab(tab);
+    }
+  }, []);
+
+  const loadAnalytics = useCallback(async (silent = false) => {
+    if (!silent) setAnalyticsLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(apiUrl('/api/analytics/portfolio/summary?days=30'), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const result = await res.json().catch(() => ({}));
+      if (res.ok) setAnalyticsSummary(result);
+    } catch (err) {
+      console.error('Analytics load error:', err);
+    } finally {
+      if (!silent) setAnalyticsLoading(false);
+    }
+  }, []);
+
+  const loadLeads = useCallback(async (silent = false) => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(apiUrl('/api/analytics/leads'), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const result = await res.json().catch(() => ({}));
+      if (res.ok) setLeadsList(result.leads || []);
+      else if (res.status === 403) setLeadsList([]);
+    } catch (err) {
+      console.error('Leads load error:', err);
+    }
+  }, []);
+
+  const loadAssets = useCallback(async (silent = false) => {
+    if (!silent) setAssetsLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(apiUrl('/api/profile/assets'), {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(result.error || 'Failed to load assets');
+      setAssetsList(result.assets || []);
+      setAssetsUsage({
+        used: result.storageUsedBytes || 0,
+        quota: result.storageQuotaBytes || (10 * 1024 * 1024),
+        addonBlocks: result.addonBlocks || 0,
+      });
+    } catch (err) {
+      console.error('Assets load error:', err);
+    } finally {
+      if (!silent) setAssetsLoading(false);
+    }
+  }, []);
+
+  const performSoftRefresh = useCallback(() => {
+    if (typeof refreshProfile === 'function') {
+      refreshProfile(true);
+    }
+    loadAnalytics(true);
+    loadLeads(true);
+    loadAssets(true);
+  }, [refreshProfile, loadAnalytics, loadLeads, loadAssets]);
+
+  // Automated background soft data refresh (runs every 15s + on window focus)
+  useEffect(() => {
+    loadAnalytics(false);
+    loadLeads(false);
+    loadAssets(true);
+
+    const intervalId = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        performSoftRefresh();
+      }
+    }, 15000);
+
+    const handleFocusSync = () => {
+      if (document.visibilityState === 'visible') {
+        performSoftRefresh();
+      }
+    };
+
+    window.addEventListener('visibilitychange', handleFocusSync);
+    window.addEventListener('focus', handleFocusSync);
+
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener('visibilitychange', handleFocusSync);
+      window.removeEventListener('focus', handleFocusSync);
+    };
+  }, [performSoftRefresh, loadAnalytics, loadLeads, loadAssets]);
+
+  useEffect(() => {
+    track('dashboard_tab', { view: currentView });
+  }, [currentView]);
 
 
   // Click outside listener for FAB
@@ -191,6 +321,7 @@ export default function Dashboard() {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
 
   const [showCompletionModal, setShowCompletionModal] = useState(false);
+  const [isModalGeneratingResume, setIsModalGeneratingResume] = useState(false);
   const [isCompileDialogOpen, setIsCompileDialogOpen] = useState(false);
   const [hasAcceptedDeclaration, setHasAcceptedDeclaration] = useState(false);
   const [isCompiling, setIsCompiling] = useState(false);
@@ -304,27 +435,6 @@ export default function Dashboard() {
   };
 
   // ----- Assets & storage manager -----
-  const loadAssets = async () => {
-    setAssetsLoading(true);
-    try {
-      const token = localStorage.getItem('token');
-      const res = await fetch(apiUrl('/api/profile/assets'), {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      const result = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(result.error || 'Failed to load assets');
-      setAssetsList(result.assets || []);
-      setAssetsUsage({
-        used: result.storageUsedBytes || 0,
-        quota: result.storageQuotaBytes || storageLimit,
-        addonBlocks: result.addonBlocks || 0,
-      });
-    } catch (err) {
-      console.error('Assets load error:', err);
-    } finally {
-      setAssetsLoading(false);
-    }
-  };
 
   const handleDeleteAssetRow = async (asset: any) => {
     if (deletingAssetId) return;
@@ -372,30 +482,65 @@ export default function Dashboard() {
   };
 
   const handleUploadResume = async (file: File) => {
+    // Dedicated endpoint: replaces any old upload, tracks storage, and sets
+    // users.resumeUrl + defaultResume so completion survives reloads.
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("resume", file);
     const token = localStorage.getItem('token');
     try {
-      const res = await fetch("/api/profile/upload", {
+      const res = await fetch(apiUrl("/api/profile/resume-file"), {
         method: "POST",
         headers: {
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
         body: formData
       });
-      if (!res.ok) throw new Error("Upload failed");
-      const result = await res.json();
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(result.error || "Upload failed");
       if (result.url) {
         updateData({ 
           resumeUrl: result.url,
+          uploadedResumeUrl: result.url,
+          defaultResume: 'uploaded',
           resumeFileName: file.name,
           resumeFileSize: file.size
         });
         toast({ title: "Resume Updated", description: "Resume uploaded successfully." });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      toast({ title: "Upload Failed", description: "Failed to upload resume.", variant: "destructive" });
+      toast({ title: "Upload Failed", description: err.message || "Failed to upload resume.", variant: "destructive" });
+    }
+  };
+
+  // Generates the ATS resume from portfolio data and marks the checklist item done.
+  const handleModalGenerateResume = async () => {
+    if (isModalGeneratingResume) return;
+    setIsModalGeneratingResume(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(apiUrl('/api/profile/generate-resume'), {
+        method: 'POST',
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+      });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(result.error || 'Generation failed');
+      updateData({
+        generatedResumeUrl: result.url,
+        defaultResume: 'generated',
+      });
+      toast({
+        title: 'Resume Generated',
+        description: 'An ATS resume was compiled from your portfolio and set as your default download.',
+      });
+    } catch (err: any) {
+      toast({
+        title: 'Generation Failed',
+        description: err.message || 'Could not generate the resume. Add more portfolio details and try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsModalGeneratingResume(false);
     }
   };
   // Storage limit and simulation states
@@ -495,18 +640,28 @@ export default function Dashboard() {
 
       setBillingStatus(result);
       setStorageLimit(result.storageQuotaBytes || storageLimit);
+      const planId = normalizeClientPlanId(result.plan) || result.plan;
       updateData({
-        plan: result.plan,
+        plan: planId,
         isPremium: result.isPremium,
         storageQuotaBytes: result.storageQuotaBytes,
         storageBonusBytes: result.storageBonusBytes ?? 0,
-        canBuy: result.canBuy || { annual: true, lifetime: !result.isPremium },
+        canBuy: result.canBuy || computeCanBuy(!!result.isPremium, planId),
         renewalMode: result.renewalMode || 'purchase',
         expiresAt: result.expiresAt,
         autopay: result.subscription?.autopay ?? false,
         billingPeriod: result.billingPeriod,
         addonBlocks: result.addonBlocks ?? 0,
+        addonHasAutopay: result.addonHasAutopay ?? result.addon?.hasAutopay ?? false,
         limits: result.limits,
+        siteStatus: result.siteStatus,
+        pauseReason: result.pauseReason,
+        graceUntil: result.graceUntil,
+        cancelAtPeriodEnd: !!result.cancelAtPeriodEnd,
+        paymentFailedAt: result.paymentFailedAt,
+        isInPaymentGrace: !!result.isInPaymentGrace,
+        isPausedForVisitors: !!result.isPausedForVisitors,
+        overStorage: !!result.overStorage,
         ...(Array.isArray(result.payments) ? { payments: result.payments } : {}),
       });
     } catch (err) {
@@ -521,8 +676,18 @@ export default function Dashboard() {
   }, []);
 
   const openBilling = () => {
-    window.location.href = '/billing';
+    setLocation('/billing');
   };
+
+  // A resume counts whether it was uploaded during onboarding (uploadedResumeUrl /
+  // resumeUrl), generated by the system, or attached in this session (resumeFileName).
+  const hasResume = Boolean(
+    data.resumeFileName || data.uploadedResumeUrl || data.generatedResumeUrl || data.resumeUrl
+  );
+  const resumeDoneLabel = data.resumeFileName
+    || (data.uploadedResumeUrl || (data.resumeUrl && data.resumeUrl !== data.generatedResumeUrl)
+      ? 'Uploaded resume'
+      : 'Generated resume');
 
   // Compute profile completion percentage
   const calculateCompletion = () => {
@@ -530,7 +695,7 @@ export default function Dashboard() {
     if (data.name) score += 10;
     if (data.phone) score += 10;
     if (data.photoUrl) score += 10;
-    if (data.resumeFileName) score += 20;
+    if (hasResume) score += 20;
     if (data.aboutEntries && data.aboutEntries.length > 0) score += 10;
     if (data.educationEntries && data.educationEntries.length > 0) score += 10;
     if (data.experienceEntries && data.experienceEntries.length > 0) score += 10;
@@ -540,10 +705,18 @@ export default function Dashboard() {
   };
 
   const completionScore = calculateCompletion();
-  const activePlanId = billingStatus?.plan || data.plan || 'free';
+  const hasAnalyticsAccess = data.plan === 'essential' || data.plan === 'growth';
+  const analyticsSeries: Array<{ day: string; displayViews?: number; views?: number }> = Array.isArray(analyticsSummary?.series)
+    ? analyticsSummary.series
+    : [];
+  const sparkValues = analyticsSeries.map((d) => Number(d.displayViews ?? d.views ?? 0));
+  const sparkMax = Math.max(1, ...sparkValues);
+  const activePlanId = normalizeClientPlanId(billingStatus?.plan || data.plan) || 'free';
+  const planShortLabel = PLAN_LABELS[activePlanId] || (data.isPremium ? 'Pro' : 'Free');
   const planName = billingStatus?.isPremium || data.isPremium
-    ? `${PLAN_DISPLAY_NAMES[activePlanId] || 'Pro'} Plan`
+    ? `${planShortLabel} Plan`
     : 'Free';
+  const planBadgeLabel = data.isPremium ? planShortLabel : 'Free';
   const isLifetimePlan = activePlanId === 'studentplus' || activePlanId === 'lifetime';
   const planRenewal = billingStatus?.expiresAt
     ? `${billingStatus?.subscription?.autopay ? 'Renews' : 'Expires'} ${new Date(billingStatus.expiresAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`
@@ -561,7 +734,7 @@ export default function Dashboard() {
   ].reduce((sum, entries) => sum + (entries?.length || 0), 0);
   const nextAction = completionScore < 90
     ? { label: 'Complete portfolio', detail: 'Add the missing profile sections before sharing widely.', action: () => setShowCompletionModal(true), icon: CheckCircle2 }
-      : !data.resumeFileName
+      : !hasResume
       ? { label: 'Attach resume', detail: 'A resume improves the downloadable version and future parsing.', action: () => { setCurrentView('updates'); setUpdatesTab('parse'); }, icon: FileText }
       : !data.isPremium
         ? { label: 'Unlock Pro publishing', detail: 'Move to custom subdomain, premium templates, and 100MB Yearly storage.', action: openBilling, icon: Crown }
@@ -604,6 +777,7 @@ export default function Dashboard() {
 
   // Edit Profile tab and form states
   const [activeEditorTab, setActiveEditorTab] = useState('about');
+  const [previewTarget, setPreviewTarget] = useState<PreviewTarget>(null);
   const [sections, setSections] = useState({
     about: data.aboutEntries || [],
     education: data.educationEntries || [],
@@ -618,6 +792,11 @@ export default function Dashboard() {
   const isNewEntry = editingId !== null && !sections[activeEditorTab as keyof typeof sections]?.some((e: any) => e.id === editingId);
   const [editForm, setEditForm] = useState<any>({});
   const [contactErrors, setContactErrors] = useState<any>({});
+
+  const [isAddingDashboardLink, setIsAddingDashboardLink] = useState(false);
+  const [newDashboardLinkName, setNewDashboardLinkName] = useState('');
+  const [newDashboardLinkUrl, setNewDashboardLinkUrl] = useState('');
+
 
   // Sync edit profile sections when context loads/updates
   useEffect(() => {
@@ -749,17 +928,67 @@ export default function Dashboard() {
   };
 
   const handleSaveContact = () => {
-    if (!contactData.email || !/^\S+@\S+\.\S+$/.test(contactData.email)) {
-      setContactErrors({ email: 'Valid email is required' });
+    const errors: any = {};
+    const emailVal = (contactData?.email || '').trim();
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!emailVal) {
+      errors.email = 'Email address is required';
+    } else if (!emailRegex.test(emailVal)) {
+      errors.email = 'Please enter a valid email address (e.g. name@example.com)';
+    }
+
+    const rawPhone = (contactData?.phone || data?.phone || '').replace(/^\+?91/, '').replace(/\D/g, '');
+    if (!rawPhone) {
+      errors.phone = 'Phone number is required';
+    } else if (rawPhone.length !== 10) {
+      errors.phone = 'Please enter a valid 10-digit phone number';
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setContactErrors(errors);
       return;
     }
+
     setContactErrors({});
-    updateData({ contactData });
+    const formattedPhone = contactData?.phone || data?.phone || '';
+    const finalContact = {
+      ...contactData,
+      phone: formattedPhone
+    };
+    updateData({ phone: formattedPhone, contactData: finalContact });
     toast({
       title: 'Saved',
       description: 'Contact information updated.',
     });
   };
+
+  const handleSaveDashboardLink = () => {
+    if (!newDashboardLinkName.trim() || !newDashboardLinkUrl.trim()) return;
+    
+    let formattedUrl = newDashboardLinkUrl.trim();
+    if (!/^https?:\/\//i.test(formattedUrl)) {
+      formattedUrl = `https://${formattedUrl}`;
+    }
+
+    const currentLinks = contactData?.customLinks || [];
+    const updatedLinks = [...currentLinks, { name: newDashboardLinkName.trim(), url: formattedUrl }];
+    const updatedContact = { ...contactData, customLinks: updatedLinks };
+    setContactData(updatedContact);
+    updateData({ contactData: updatedContact });
+    
+    setNewDashboardLinkName('');
+    setNewDashboardLinkUrl('');
+    setIsAddingDashboardLink(false);
+  };
+
+  const handleRemoveDashboardLink = (index: number) => {
+    const currentLinks = contactData?.customLinks || [];
+    const updatedLinks = currentLinks.filter((_, i) => i !== index);
+    const updatedContact = { ...contactData, customLinks: updatedLinks };
+    setContactData(updatedContact);
+    updateData({ contactData: updatedContact });
+  };
+
 
   // Asset handlers
   const handleAssetModeChange = (mode: AssetMode) => {
@@ -1006,12 +1235,17 @@ export default function Dashboard() {
     input.click();
   };
 
-  const handleRemoveAsset = (type: 'images' | 'pdfs' | 'links', id: string) => {
+  const handleRemoveAsset = (type: 'images' | 'pdfs' | 'links', id: string, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    const currentList = editForm.assets?.[type] || [];
     setEditForm({
       ...editForm,
       assets: {
         ...editForm.assets,
-        [type]: editForm.assets[type].filter((a: any) => a.id !== id)
+        [type]: currentList.filter((a: any) => a.id !== id)
       }
     });
   };
@@ -1023,6 +1257,29 @@ export default function Dashboard() {
     setEditForm({
       ...editForm,
       assets: { ...editForm.assets, links: [...current, newLink] }
+    });
+  };
+
+  const handleMoveAsset = (type: 'images' | 'pdfs' | 'links', fromIndex: number, direction: -1 | 1) => {
+    const items = [...(editForm.assets?.[type] || [])];
+    const toIndex = fromIndex + direction;
+    if (toIndex < 0 || toIndex >= items.length) return;
+    const [moved] = items.splice(fromIndex, 1);
+    items.splice(toIndex, 0, moved);
+    setEditForm({
+      ...editForm,
+      assets: { ...editForm.assets, [type]: items }
+    });
+  };
+
+  const handleReorderAsset = (type: 'images' | 'pdfs' | 'links', fromIndex: number, toIndex: number) => {
+    const items = [...(editForm.assets?.[type] || [])];
+    if (fromIndex === toIndex || fromIndex < 0 || fromIndex >= items.length || toIndex < 0 || toIndex >= items.length) return;
+    const [moved] = items.splice(fromIndex, 1);
+    items.splice(toIndex, 0, moved);
+    setEditForm({
+      ...editForm,
+      assets: { ...editForm.assets, [type]: items }
     });
   };
 
@@ -1169,7 +1426,7 @@ export default function Dashboard() {
     return (
       <div className="mt-4 pt-4 border-t border-slate-100">
         <Label className="text-sm font-semibold text-slate-700 block mb-1">Supporting Materials</Label>
-        <p className="text-xs text-slate-400 mb-3">Attach images, documents, or external links.</p>
+        <p className="text-xs text-slate-400 mb-3">Attach images, documents, or external links. Drag or use arrows to reorder.</p>
         
         <div className="flex p-1 bg-slate-100 rounded-lg mb-3 w-fit">
           <button type="button" onClick={() => handleAssetModeChange('images')} className={cn("flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold transition-colors", assets.mode === 'images' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700")}>
@@ -1186,26 +1443,116 @@ export default function Dashboard() {
         <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 min-h-[100px]">
           {assets.mode === 'images' && (
             <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <span className="text-xs text-slate-400">{(assets.images || []).length} / 5 images used</span>
+              <div className="flex justify-between items-center flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-400">{(assets.images || []).length} / 5 images used</span>
+                  {(assets.images || []).length > 1 && (
+                    <span className="text-[10px] text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full flex items-center gap-1 font-medium">
+                      <GripVertical className="w-3 h-3" /> Reorder enabled
+                    </span>
+                  )}
+                </div>
                 <Button type="button" variant="outline" size="sm" className="h-8 text-xs px-3" onClick={() => handleFileUpload('images')} disabled={(assets.images || []).length >= 5 || isStorageFull}>
                   <Upload className="w-3.5 h-3.5 mr-1.5" /> Attach Image
                 </Button>
               </div>
-              <div className="grid grid-cols-3 gap-2">
-                {(assets.images || []).map(img => (
-                  <div key={img.id} className="relative group bg-white border border-slate-200 rounded-lg p-1.5 flex items-center justify-center h-16 overflow-hidden">
-                    {img.url && (img.url.startsWith('data:image/') || img.url.startsWith('http') || img.url.startsWith('/')) ? (
-                      <a href={img.url} target="_blank" rel="noopener noreferrer" className="w-full h-full flex items-center justify-center">
-                        <img src={img.url} alt={img.name} className="w-full h-full object-cover rounded" />
-                      </a>
-                    ) : (
-                      <ImageIcon className="w-6 h-6 text-slate-300" />
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {(assets.images || []).map((img, idx) => (
+                  <div
+                    key={img.id}
+                    draggable={(assets.images || []).length > 1}
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData('text/plain', String(idx));
+                    }}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const fromIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
+                      if (!isNaN(fromIdx)) handleReorderAsset('images', fromIdx, idx);
+                    }}
+                    className={cn(
+                      "relative group bg-white border rounded-xl p-1.5 flex flex-col items-center justify-center h-24 overflow-hidden transition-all duration-200 shadow-sm hover:shadow-md",
+                      idx === 0 ? "border-indigo-400 ring-2 ring-indigo-400/20" : "border-slate-200 hover:border-slate-300",
+                      (assets.images || []).length > 1 ? "cursor-grab active:cursor-grabbing" : ""
                     )}
-                    <button type="button" onClick={() => handleRemoveAsset('images', img.id)} className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-white border border-slate-200 rounded-full flex items-center justify-center text-red-500 shadow-sm hover:bg-red-50 z-10">
-                      <X className="w-2.5 h-2.5" />
+                  >
+                    {/* Order Tag / Cover Label */}
+                    <div className="absolute top-1 left-1 z-10 flex items-center gap-1">
+                      <span className={cn(
+                        "text-[9px] font-bold px-1.5 py-0.2 rounded shadow-sm",
+                        idx === 0 ? "bg-indigo-600 text-white" : "bg-slate-900/70 text-white"
+                      )}>
+                        {idx === 0 ? "1st (Cover)" : `#${idx + 1}`}
+                      </span>
+                    </div>
+
+                    <button 
+                      type="button" 
+                      onClick={(e) => handleRemoveAsset('images', img.id, e)} 
+                      className="absolute top-1 right-1 w-5 h-5 bg-white/95 border border-slate-200 rounded-full flex items-center justify-center text-red-500 opacity-90 group-hover:opacity-100 transition-opacity shadow-sm hover:bg-red-50 z-30 cursor-pointer"
+                      title="Remove image"
+                    >
+                      <X className="w-3 h-3" />
                     </button>
-                    <span className="absolute bottom-0.5 left-0.5 right-0.5 text-[9px] text-center truncate text-slate-500 bg-white/70 px-1 py-0.2 rounded">{(img.sizeBytes / 1024 / 1024).toFixed(1)}MB</span>
+
+                    {img.url && (img.url.startsWith('data:image/') || img.url.startsWith('http') || img.url.startsWith('/')) ? (
+                      <div
+                        onClick={() => setPreviewTarget({ type: 'images', index: idx, items: assets.images })}
+                        className="w-full h-full flex items-center justify-center pt-2 cursor-pointer group/img relative"
+                        title="Click to preview image"
+                      >
+                        <img src={img.url} alt={img.name} className="w-full h-full object-cover rounded-lg group-hover/img:brightness-90 transition-all" />
+                        <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover/img:opacity-100 flex items-center justify-center transition-opacity rounded-lg">
+                          <Eye className="w-4 h-4 text-white drop-shadow-md" />
+                        </div>
+                      </div>
+                    ) : (
+                      <div
+                        onClick={() => setPreviewTarget({ type: 'images', index: idx, items: assets.images })}
+                        className="w-full h-full flex items-center justify-center cursor-pointer"
+                      >
+                        <ImageIcon className="w-6 h-6 text-slate-300" />
+                      </div>
+                    )}
+
+                    <div className="absolute bottom-0 inset-x-0 bg-slate-900/85 backdrop-blur-sm py-0.5 px-1 flex items-center justify-between z-10 text-white">
+                      <span className="text-[9px] font-medium text-slate-200 truncate max-w-[50%]">
+                        {(img.sizeBytes / 1024 / 1024).toFixed(1)}MB
+                      </span>
+                      
+                      <div className="flex items-center gap-0.5">
+                        <button
+                          type="button"
+                          onClick={() => setPreviewTarget({ type: 'images', index: idx, items: assets.images })}
+                          className="w-4 h-4 rounded bg-indigo-600/80 hover:bg-indigo-600 flex items-center justify-center transition-colors cursor-pointer"
+                          title="Preview full image"
+                        >
+                          <Eye className="w-3 h-3 text-white" />
+                        </button>
+                        {(assets.images || []).length > 1 && (
+                          <>
+                            <button
+                              type="button"
+                              disabled={idx === 0}
+                              onClick={() => handleMoveAsset('images', idx, -1)}
+                              className="w-4 h-4 rounded bg-white/20 hover:bg-white/40 disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center transition-colors cursor-pointer"
+                              title="Move left"
+                            >
+                              <ChevronLeft className="w-3 h-3 text-white" />
+                            </button>
+                            <button
+                              type="button"
+                              disabled={idx === (assets.images || []).length - 1}
+                              onClick={() => handleMoveAsset('images', idx, 1)}
+                              className="w-4 h-4 rounded bg-white/20 hover:bg-white/40 disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center transition-colors cursor-pointer"
+                              title="Move right"
+                            >
+                              <ChevronRight className="w-3 h-3 text-white" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1214,25 +1561,102 @@ export default function Dashboard() {
 
           {assets.mode === 'pdfs' && (
             <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <span className="text-xs text-slate-400">{(assets.pdfs || []).length} / 2 PDFs used</span>
+              <div className="flex justify-between items-center flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-400">{(assets.pdfs || []).length} / 2 PDFs used</span>
+                  {(assets.pdfs || []).length > 1 && (
+                    <span className="text-[10px] text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full flex items-center gap-1 font-medium">
+                      <GripVertical className="w-3 h-3" /> Reorder enabled
+                    </span>
+                  )}
+                </div>
                 <Button type="button" variant="outline" size="sm" className="h-8 text-xs px-3" onClick={() => handleFileUpload('pdfs')} disabled={(assets.pdfs || []).length >= 2 || isStorageFull}>
                   <Upload className="w-3.5 h-3.5 mr-1.5" /> Attach PDF
                 </Button>
               </div>
               <div className="flex flex-col gap-1.5">
-                {(assets.pdfs || []).map(pdf => (
-                  <div key={pdf.id} className="flex items-center justify-between bg-white border border-slate-200 rounded-lg px-2.5 py-1.5">
-                    <div className="flex items-center gap-1.5 overflow-hidden">
-                      <a href={pdf.url} download={pdf.name} className="flex items-center gap-1.5 overflow-hidden hover:underline">
-                        <FileText className="w-4 h-4 text-red-400 shrink-0" />
-                        <span className="text-xs text-slate-700 truncate max-w-[150px]">{pdf.name}</span>
-                      </a>
-                      <span className="text-[10px] text-slate-400">{(pdf.sizeBytes / 1024 / 1024).toFixed(1)}MB</span>
+                {(assets.pdfs || []).map((pdf, idx) => (
+                  <div
+                    key={pdf.id}
+                    draggable={(assets.pdfs || []).length > 1}
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData('text/plain', String(idx));
+                    }}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const fromIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
+                      if (!isNaN(fromIdx)) handleReorderAsset('pdfs', fromIdx, idx);
+                    }}
+                    className={cn(
+                      "flex items-center justify-between bg-white border rounded-xl px-2.5 py-1.5 shadow-sm transition-all duration-200 hover:border-slate-300",
+                      idx === 0 ? "border-indigo-300 bg-indigo-50/20" : "border-slate-200"
+                    )}
+                  >
+                    <div className="flex items-center gap-2 overflow-hidden flex-1">
+                      <div className="flex items-center gap-1 shrink-0 text-slate-400">
+                        {(assets.pdfs || []).length > 1 && (
+                          <GripVertical className="w-3.5 h-3.5 cursor-grab text-slate-400 hover:text-slate-600" />
+                        )}
+                        <span className={cn(
+                          "text-[9px] font-bold px-1.5 py-0.2 rounded",
+                          idx === 0 ? "bg-indigo-600 text-white" : "bg-slate-200 text-slate-700"
+                        )}>
+                          {idx === 0 ? "1st" : `#${idx + 1}`}
+                        </span>
+                      </div>
+
+                      <div
+                        onClick={() => setPreviewTarget({ type: 'pdfs', index: idx, items: assets.pdfs })}
+                        className="flex items-center gap-1.5 overflow-hidden hover:underline min-w-0 cursor-pointer group/pdf"
+                        title="Click to preview PDF"
+                      >
+                        <FileText className="w-4 h-4 text-red-500 shrink-0 group-hover/pdf:scale-110 transition-transform" />
+                        <span className="text-xs font-medium text-slate-700 truncate max-w-[150px]">{pdf.name}</span>
+                      </div>
+                      <span className="text-[10px] text-slate-400 tabular-nums">{(pdf.sizeBytes / 1024 / 1024).toFixed(1)}MB</span>
                     </div>
-                    <button type="button" onClick={() => handleRemoveAsset('pdfs', pdf.id)} className="text-slate-400 hover:text-red-500">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+
+                    <div className="flex items-center gap-1 shrink-0 ml-2">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewTarget({ type: 'pdfs', index: idx, items: assets.pdfs })}
+                        className="p-1 text-indigo-600 hover:bg-indigo-50 rounded transition-colors cursor-pointer"
+                        title="Preview PDF"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                      </button>
+                      {(assets.pdfs || []).length > 1 && (
+                        <>
+                          <button
+                            type="button"
+                            disabled={idx === 0}
+                            onClick={() => handleMoveAsset('pdfs', idx, -1)}
+                            className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-20 disabled:pointer-events-none transition-colors cursor-pointer"
+                            title="Move up"
+                          >
+                            <ArrowUp className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={idx === (assets.pdfs || []).length - 1}
+                            onClick={() => handleMoveAsset('pdfs', idx, 1)}
+                            className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-20 disabled:pointer-events-none transition-colors cursor-pointer"
+                            title="Move down"
+                          >
+                            <ArrowDown className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        onClick={(e) => handleRemoveAsset('pdfs', pdf.id, e)}
+                        className="text-slate-400 hover:text-red-500 p-1 cursor-pointer"
+                        title="Remove PDF"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1272,9 +1696,19 @@ export default function Dashboard() {
                         className="h-8 text-xs px-2.5"
                       />
                     </div>
-                    <button type="button" onClick={() => handleRemoveAsset('links', link.id)} className="text-slate-400 hover:text-red-500 p-1.5 mt-0.5">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewTarget({ type: 'links', index: idx, items: assets.links })}
+                        className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded transition-colors cursor-pointer"
+                        title="Preview link"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                      </button>
+                      <button type="button" onClick={(e) => handleRemoveAsset('links', link.id, e)} className="text-slate-400 hover:text-red-500 p-1.5 cursor-pointer" title="Remove link">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1330,12 +1764,12 @@ export default function Dashboard() {
                     placeholder="e.g. 2024" 
                     className="flex-1 text-sm h-10 px-3 rounded-xl border border-slate-200"
                   />
-                  <label className="flex items-center gap-1.5 text-xs text-slate-650 font-medium cursor-pointer shrink-0">
+                  <label className="flex items-center gap-1.5 text-xs text-slate-600 font-medium cursor-pointer shrink-0">
                     <input 
                       type="checkbox" 
                       checked={editForm.endYear === 'Present'} 
                       onChange={e => setEditForm({...editForm, endYear: e.target.checked ? 'Present' : ''})} 
-                      className="rounded border-slate-350 text-indigo-650 focus:ring-indigo-500 h-4 w-4"
+                      className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
                     />
                     Still there
                   </label>
@@ -1379,7 +1813,7 @@ export default function Dashboard() {
                       type="checkbox" 
                       checked={editForm.endYear === 'Present'} 
                       onChange={e => setEditForm({...editForm, endYear: e.target.checked ? 'Present' : ''})} 
-                      className="rounded border-slate-350 text-indigo-650 focus:ring-indigo-500 h-4 w-4"
+                      className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
                     />
                     Still there
                   </label>
@@ -1627,11 +2061,11 @@ export default function Dashboard() {
             <div className="absolute right-0 top-full mt-2 w-[min(18rem,calc(100vw-1.5rem))] bg-white rounded-2xl border border-slate-200 shadow-xl py-3 z-30 animate-in fade-in slide-in-from-top-2 duration-200">
               {/* Header with user info */}
               <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold border border-indigo-105 overflow-hidden shrink-0">
+                <div className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold border border-indigo-100 overflow-hidden shrink-0">
                   {data.photoUrl ? <img src={data.photoUrl} alt="Profile" className="w-full h-full object-cover" /> : (data.name ? data.name.charAt(0) : 'U')}
                 </div>
                 <div className="truncate">
-                  <h4 className="font-semibold text-slate-850 text-sm truncate">{data.name || 'Bexo User'}</h4>
+                  <h4 className="font-semibold text-slate-800 text-sm truncate">{data.name || 'Bexo User'}</h4>
                   <p className="text-xs text-slate-400 truncate">{data.contactData?.email || 'No email set'}</p>
                 </div>
               </div>
@@ -1640,7 +2074,7 @@ export default function Dashboard() {
               <div className="mx-3 my-2 px-3 py-2 bg-slate-50 rounded-xl border border-slate-100">
                 <div className="flex justify-between items-center text-xs">
                   <span className="text-slate-500 font-medium">Workspace Plan</span>
-                  <span className="font-bold text-indigo-650 bg-indigo-50 px-2 py-0.5 rounded-full capitalize">
+                  <span className="font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full capitalize">
                     {planName}
                   </span>
                 </div>
@@ -1703,10 +2137,10 @@ export default function Dashboard() {
               </div>
               
               {/* Sign out */}
-              <div className="border-t border-slate-105 px-3 pt-2 mt-2">
+              <div className="border-t border-slate-100 px-3 pt-2 mt-2">
                 <button 
                   onClick={handleLogout}
-                  className="w-full text-center px-4 py-2 bg-red-50 text-red-650 hover:bg-red-100 rounded-xl text-xs font-bold transition-all duration-200 select-none"
+                  className="w-full text-center px-4 py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl text-xs font-bold transition-all duration-200 select-none"
                 >
                   Sign Out
                 </button>
@@ -1724,21 +2158,57 @@ export default function Dashboard() {
       >
         {/* Main Dashboard Overview */}
         {currentView === 'overview' && (
-          <div className="space-y-5 sm:space-y-8 animate-in fade-in duration-300">
-            <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3 sm:gap-4">
+          <div className="space-y-5 sm:space-y-8 dash-stagger">
+            {(data.isInPaymentGrace || data.siteStatus === 'grace') && (
+              <Card className="p-4 border-amber-200 bg-amber-50 text-amber-950">
+                <p className="text-sm font-bold">Autopay payment failed</p>
+                <p className="text-xs mt-1 text-amber-800/90">
+                  Your portfolio stays live during a 15-day grace period
+                  {data.graceUntil
+                    ? ` (pauses on ${new Date(data.graceUntil).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })})`
+                    : ''}
+                  . Update billing to avoid a public pause page.
+                </p>
+                <Button size="sm" className="mt-3 h-9 text-xs" onClick={openBilling}>Fix billing</Button>
+              </Card>
+            )}
+            {(data.isPausedForVisitors || data.overStorage || data.siteStatus === 'paused') && (
+              <Card className="p-4 border-rose-200 bg-rose-50 text-rose-950">
+                <p className="text-sm font-bold">Public portfolio paused</p>
+                <p className="text-xs mt-1 text-rose-800/90">
+                  {data.pauseReason === 'storage_exceeded' || data.overStorage
+                    ? 'Visitors see a pause page because storage is over your plan limit. Delete assets or add storage to remount.'
+                    : data.pauseReason === 'payment_failed'
+                      ? 'Visitors see a pause page because auto-renew failed and the grace window ended. Update billing to remount.'
+                      : 'Visitors currently see a pause page instead of your portfolio.'}
+                </p>
+                <div className="flex flex-wrap gap-2 mt-3">
+                  <Button size="sm" className="h-9 text-xs" onClick={openBilling}>Open billing</Button>
+                  <Button size="sm" variant="outline" className="h-9 text-xs" onClick={() => { setCurrentView('settings'); setSettingsSubTab('assets'); loadAssets(); setLocation('/dashboard?view=settings&tab=assets'); }}>
+                    Manage assets
+                  </Button>
+                </div>
+              </Card>
+            )}
+            <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3.5 sm:gap-4">
               <div className="min-w-0">
-                <p className="text-[10px] sm:text-xs font-bold uppercase tracking-[0.14em] text-slate-400 mb-1.5 sm:mb-2">Portfolio command center</p>
-                <h1 className="font-serif text-2xl sm:text-3xl md:text-4xl font-bold text-slate-900 tracking-tight break-words">
+                <div className="flex items-center gap-2 mb-1.5 sm:mb-2">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-100 bg-indigo-50/70 px-2.5 py-1 text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.12em] text-indigo-600">
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
+                    Command center
+                  </span>
+                </div>
+                <h1 className="font-serif text-[1.65rem] leading-tight sm:text-3xl md:text-4xl font-bold text-slate-900 tracking-tight break-words">
                   Welcome back, {data.name?.split(' ')[0] || 'there'}
                 </h1>
-                <p className="text-sm sm:text-base text-slate-500 max-w-2xl mt-1.5 leading-relaxed">Keep your public portfolio ready for applications, recruiters, and campus opportunities.</p>
+                <p className="text-[13px] sm:text-base text-slate-500 max-w-2xl mt-1.5 leading-relaxed">Keep your public portfolio ready for applications, recruiters, and campus opportunities.</p>
               </div>
               <div className="grid grid-cols-2 gap-2 w-full md:w-auto md:flex md:flex-wrap md:items-center">
-                <Button onClick={() => setCurrentView('edit-profile')} className="h-10 px-3 sm:px-4 text-xs gap-1.5 sm:gap-2 w-full md:w-auto">
+                <Button onClick={() => setCurrentView('edit-profile')} className="tap-scale h-11 md:h-10 px-3 sm:px-4 text-xs gap-1.5 sm:gap-2 w-full md:w-auto">
                   <Pencil className="w-4 h-4 shrink-0" /> Edit profile
                 </Button>
                 <a href={correctVisitUrl} target="_blank" rel="noreferrer" className="w-full md:w-auto">
-                  <Button variant="outline" className="h-10 px-3 sm:px-4 text-xs gap-1.5 sm:gap-2 w-full">
+                  <Button variant="outline" className="tap-scale h-11 md:h-10 px-3 sm:px-4 text-xs gap-1.5 sm:gap-2 w-full">
                     <ExternalLink className="w-4 h-4 shrink-0" /> View live
                   </Button>
                 </a>
@@ -1773,31 +2243,36 @@ export default function Dashboard() {
             )}
 
             <div className="grid lg:grid-cols-[1.35fr_0.85fr] gap-4 sm:gap-6 items-stretch">
-              <Card className="p-4 sm:p-6 bg-slate-950 text-slate-100 border border-slate-900 shadow-sm overflow-hidden min-w-0">
-                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 sm:gap-5">
+              <Card className="relative p-4 sm:p-6 bg-slate-950 text-slate-100 border border-slate-900 shadow-lg shadow-slate-950/10 overflow-hidden min-w-0">
+                <div className="pointer-events-none absolute -top-24 -right-16 h-56 w-56 rounded-full bg-indigo-600/25 blur-3xl" />
+                <div className="pointer-events-none absolute -bottom-28 -left-10 h-48 w-48 rounded-full bg-emerald-500/10 blur-3xl" />
+                <div className="relative flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 sm:gap-5">
                   <div className="space-y-4 sm:space-y-5 min-w-0">
                     <div>
-                      <p className="text-[10px] sm:text-xs font-bold uppercase tracking-[0.14em] text-slate-400">Next best action</p>
+                      <p className="text-[10px] sm:text-xs font-bold uppercase tracking-[0.14em] text-indigo-300/80">Next best action</p>
                       <h2 className="text-xl sm:text-2xl font-bold mt-1.5 sm:mt-2 leading-snug">{nextAction.label}</h2>
-                      <p className="text-sm text-slate-300 mt-1 max-w-xl leading-relaxed">{nextAction.detail}</p>
+                      <p className="text-[13px] sm:text-sm text-slate-300 mt-1 max-w-xl leading-relaxed">{nextAction.detail}</p>
                     </div>
                     <Button
                       onClick={nextAction.action}
-                      className="h-10 sm:h-11 px-4 bg-slate-100 text-slate-950 hover:bg-white border-none shadow-none gap-2 w-full sm:w-auto"
+                      className="tap-scale h-11 px-4 bg-slate-100 text-slate-950 hover:bg-white border-none shadow-none gap-2 w-full sm:w-auto"
                     >
                       <NextActionIcon className="w-4 h-4" /> Continue
                     </Button>
                   </div>
                   <div className="grid grid-cols-3 sm:grid-cols-1 gap-2 sm:gap-3 sm:w-36 min-w-0">
-                    <div className="rounded-xl bg-slate-900 border border-slate-800 p-2.5 sm:p-3 min-w-0">
+                    <div className="rounded-xl bg-white/[0.06] border border-white/10 backdrop-blur-sm p-2.5 sm:p-3 min-w-0">
                       <p className="text-[10px] sm:text-[11px] text-slate-400 font-semibold">Readiness</p>
                       <p className="text-lg sm:text-xl font-bold mt-0.5 sm:mt-1 tabular-nums">{completionScore}%</p>
+                      <div className="mt-1.5 h-1 w-full rounded-full bg-white/10 overflow-hidden">
+                        <div className="h-full rounded-full bg-indigo-400 transition-all duration-700" style={{ width: `${completionScore}%` }} />
+                      </div>
                     </div>
-                    <div className="rounded-xl bg-slate-900 border border-slate-800 p-2.5 sm:p-3 min-w-0">
+                    <div className="rounded-xl bg-white/[0.06] border border-white/10 backdrop-blur-sm p-2.5 sm:p-3 min-w-0">
                       <p className="text-[10px] sm:text-[11px] text-slate-400 font-semibold">Entries</p>
                       <p className="text-lg sm:text-xl font-bold mt-0.5 sm:mt-1 tabular-nums">{totalEntries}</p>
                     </div>
-                    <div className="rounded-xl bg-slate-900 border border-slate-800 p-2.5 sm:p-3 min-w-0">
+                    <div className="rounded-xl bg-white/[0.06] border border-white/10 backdrop-blur-sm p-2.5 sm:p-3 min-w-0">
                       <p className="text-[10px] sm:text-[11px] text-slate-400 font-semibold">Plan</p>
                       <p className="text-xs sm:text-sm font-bold mt-0.5 sm:mt-1 truncate">{planName}</p>
                     </div>
@@ -1819,7 +2294,7 @@ export default function Dashboard() {
                     data.isPremium ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"
                   )}>
                     {data.isPremium ? <Crown className="w-3.5 h-3.5" /> : <CreditCard className="w-3.5 h-3.5" />}
-                    {data.isPremium ? 'Pro active' : 'Free'}
+                    {planBadgeLabel}
                   </span>
                 </div>
                 <div className="mt-5 sm:mt-6 space-y-3">
@@ -1834,13 +2309,242 @@ export default function Dashboard() {
                     />
                   </div>
                   <Button variant="outline" onClick={openBilling} className="w-full h-10 text-xs gap-2">
-                    <CreditCard className="w-4 h-4" /> Manage billing
+                    <CreditCard className="w-4 h-4" /> Billing · upgrade or cancel
                   </Button>
                 </div>
               </Card>
             </div>
 
-            <div className="grid md:grid-cols-3 gap-4 sm:gap-6">
+            {/* Review live portfolio — primary surface */}
+            <Card className="relative overflow-hidden border-slate-200/80 bg-white shadow-sm min-w-0">
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_rgba(99,102,241,0.08),_transparent_55%)]" />
+              <div className="relative p-4 sm:p-6">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch lg:justify-between">
+                  <div className="min-w-0 flex-1 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+                          <Eye className="w-4 h-4" />
+                        </span>
+                        <div>
+                          <p className="text-[10px] sm:text-xs font-bold uppercase tracking-[0.14em] text-slate-400">Review portfolio</p>
+                          <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-tight">Your live public site</h2>
+                        </div>
+                      </div>
+                      <span className={cn(
+                        "inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0",
+                        data.isPausedForVisitors || data.siteStatus === 'paused'
+                          ? "text-rose-700 bg-rose-50"
+                          : "text-emerald-700 bg-emerald-50"
+                      )}>
+                        <span className={cn(
+                          "w-1.5 h-1.5 rounded-full",
+                          data.isPausedForVisitors || data.siteStatus === 'paused' ? "bg-rose-500" : "bg-emerald-500 animate-pulse"
+                        )} />
+                        {data.isPausedForVisitors || data.siteStatus === 'paused' ? 'Paused' : 'Online'}
+                      </span>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-100 bg-slate-50/80 px-3.5 py-3 sm:px-4 sm:py-3.5">
+                      <div className="flex items-start gap-2.5 min-w-0">
+                        <Globe className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Public URL</p>
+                          <p className="font-mono text-sm sm:text-base text-slate-900 break-all leading-snug">
+                            https://<span className="text-indigo-600 font-semibold">{url}</span>
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap">
+                      <Button variant="outline" size="sm" onClick={handleCopyUrl} className="tap-scale h-10 sm:h-9 px-2 sm:px-3 text-xs gap-1.5 justify-center">
+                        {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                        {copied ? 'Copied' : 'Copy'}
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={handleShareUrl} className="tap-scale h-10 sm:h-9 px-2 sm:px-3 text-xs gap-1.5 justify-center">
+                        <Share2 className="w-3.5 h-3.5 text-indigo-500" />
+                        Share
+                      </Button>
+                      <a href={correctVisitUrl} target="_blank" rel="noreferrer" className="contents">
+                        <Button size="sm" className="tap-scale h-10 sm:h-9 px-3 text-xs gap-1.5 justify-center w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white border-none">
+                          Visit live <ExternalLink className="w-3.5 h-3.5" />
+                        </Button>
+                      </a>
+                    </div>
+                  </div>
+
+                  <div className="hidden sm:flex lg:w-44 shrink-0 flex-col justify-between rounded-2xl border border-indigo-100/80 bg-gradient-to-b from-indigo-50 to-white p-4">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-indigo-400">Readiness</p>
+                      <p className="mt-1 text-3xl font-bold tabular-nums text-slate-900 tracking-tight">{completionScore}%</p>
+                      <div className="mt-2.5 h-1.5 w-full rounded-full bg-indigo-100 overflow-hidden">
+                        <div className="h-full rounded-full bg-indigo-500 transition-all duration-700" style={{ width: `${completionScore}%` }} />
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-slate-500 leading-snug mt-4">
+                      {completionScore >= 90 ? 'Ready for recruiters and applications.' : 'Finish a few details to look sharper live.'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </Card>
+
+            {/* Analytics — sits directly under review portfolio */}
+            <Card className="relative overflow-hidden border-slate-200/80 bg-white shadow-sm min-w-0">
+              <div className="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rounded-full bg-emerald-400/10 blur-3xl" />
+              <div className="relative p-4 sm:p-6">
+                <div className="flex items-start justify-between gap-3 mb-4">
+                  <button
+                    type="button"
+                    onClick={() => hasAnalyticsAccess && setLocation('/dashboard/analytics')}
+                    className={`flex items-start gap-2.5 min-w-0 text-left ${hasAnalyticsAccess ? 'hover:opacity-90' : ''}`}
+                  >
+                    <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 shrink-0">
+                      <BarChart3 className="w-4 h-4" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-[10px] sm:text-xs font-bold uppercase tracking-[0.14em] text-slate-400">Portfolio analytics</p>
+                      <h3 className="text-base sm:text-lg font-bold text-slate-900 leading-tight">Visits, leads & readiness</h3>
+                      <p className="text-xs text-slate-500 mt-0.5 hidden sm:block">
+                        {hasAnalyticsAccess ? 'Last 30 days · tap for full report' : 'See who finds you — unlock on Essential or Growth'}
+                      </p>
+                    </div>
+                  </button>
+                  {hasAnalyticsAccess && (
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 text-xs"
+                        onClick={() => setLocation('/dashboard/analytics')}
+                      >
+                        Open
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 text-xs shrink-0"
+                        onClick={() => { loadAnalytics(); loadLeads(); }}
+                        disabled={analyticsLoading}
+                      >
+                        {analyticsLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Refresh'}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                {hasAnalyticsAccess ? (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-[1.1fr_0.9fr] gap-3 sm:gap-4">
+                      <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-3.5 sm:p-4">
+                        <div className="flex items-center justify-between gap-2 mb-3">
+                          <div>
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Traffic pulse</p>
+                            <p className="text-2xl font-bold tabular-nums text-slate-900 tracking-tight">
+                              {analyticsSummary?.totals?.displayViews ?? (analyticsLoading ? '—' : 0)}
+                              <span className="ml-1.5 text-xs font-semibold text-slate-400">visits</span>
+                            </p>
+                          </div>
+                          <span className="inline-flex items-center gap-1 rounded-full bg-white border border-slate-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                            <TrendingUp className="w-3 h-3" /> 30d
+                          </span>
+                        </div>
+                        <div className="flex items-end gap-[3px] h-14" aria-hidden>
+                          {(sparkValues.length > 0 ? sparkValues : Array.from({ length: 14 }, () => 0)).slice(-21).map((v, i, arr) => (
+                            <div
+                              key={i}
+                              className="flex-1 rounded-t-sm bg-indigo-400/80 origin-bottom transition-[height] duration-500"
+                              style={{
+                                height: `${Math.max(8, (v / sparkMax) * 100)}%`,
+                                opacity: 0.35 + (i / Math.max(1, arr.length - 1)) * 0.65,
+                              }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <div className="rounded-2xl border border-slate-100 bg-white p-3.5">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Uniques</p>
+                          <p className="mt-1 text-xl font-bold tabular-nums text-slate-900">
+                            {analyticsSummary?.totals?.uniquesApprox ?? (analyticsLoading ? '—' : 0)}
+                          </p>
+                          <p className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
+                            <MousePointerClick className="w-3 h-3" /> Approx.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setLocation('/dashboard/inbox')}
+                          className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-3.5 text-left hover:border-indigo-200 hover:bg-indigo-50 transition-colors group"
+                        >
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-400">Leads</p>
+                          <p className="mt-1 text-xl font-bold tabular-nums text-slate-900">
+                            {Math.max(
+                              leadsList.length,
+                              Number(analyticsSummary?.totals?.leads) || 0,
+                            )}
+                          </p>
+                          <p className="text-[11px] font-semibold text-indigo-600 mt-1 flex items-center gap-1 group-hover:gap-1.5 transition-all">
+                            <Inbox className="w-3 h-3" /> Open inbox
+                          </p>
+                        </button>
+                        <div className="col-span-2 rounded-2xl border border-slate-100 bg-slate-50/80 px-3.5 py-3 flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Portfolio readiness</p>
+                            <p className="text-sm font-bold text-slate-800 tabular-nums">{completionScore}% complete</p>
+                          </div>
+                          <div className="h-1.5 w-20 rounded-full bg-slate-200 overflow-hidden shrink-0">
+                            <div className="h-full rounded-full bg-indigo-500" style={{ width: `${completionScore}%` }} />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {Array.isArray(analyticsSummary?.totals?.topReferrers) && analyticsSummary.totals.topReferrers.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-[11px] font-semibold text-slate-400 mr-1">Top sources</span>
+                        {analyticsSummary.totals.topReferrers.slice(0, 3).map((r: any) => (
+                          <span key={r.host} className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600">
+                            {r.host}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="relative overflow-hidden rounded-2xl border border-dashed border-indigo-200/90 bg-gradient-to-br from-indigo-50/80 via-white to-emerald-50/40 p-4 sm:p-5">
+                    <div className="pointer-events-none absolute right-3 top-3 opacity-[0.12]">
+                      <BarChart3 className="w-24 h-24 text-indigo-700" />
+                    </div>
+                    <div className="relative grid sm:grid-cols-[1fr_auto] gap-4 items-center">
+                      <div>
+                        <div className="inline-flex items-center gap-1.5 rounded-full bg-white/80 border border-indigo-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-indigo-600 mb-2">
+                          <Lock className="w-3 h-3" /> Essential · Growth
+                        </div>
+                        <p className="text-sm sm:text-base font-bold text-slate-900">Know who visits your portfolio</p>
+                        <p className="text-xs sm:text-[13px] text-slate-500 mt-1.5 max-w-md leading-relaxed">
+                          Unlock visits, approximate uniques, top referrers, and a contact leads inbox — built for recruiters and campus outreach.
+                        </p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {['Visits sparkline', 'Leads inbox', 'Referrer top 3'].map((label) => (
+                            <span key={label} className="rounded-full bg-white/90 border border-slate-200 px-2.5 py-1 text-[10px] font-semibold text-slate-500">
+                              {label}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <Button size="sm" className="h-10 text-xs shrink-0 w-full sm:w-auto" onClick={openBilling}>
+                        Upgrade to Essential
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </Card>
+
+            <div className="dash-carousel md:grid md:grid-cols-3 md:gap-6">
               {/* Profile Completion / Status Card */}
               {completionScore >= 90 ? (
                 data.isPremium ? (
@@ -1857,17 +2561,17 @@ export default function Dashboard() {
                           <Sparkles className="w-5 h-5" />
                         </div>
                         <div>
-                          <h4 className="text-sm font-bold text-slate-900">SEO Optimized</h4>
+                          <h4 className="text-sm font-bold text-slate-900">Portfolio ready</h4>
                           <p className="text-xs text-slate-500">All core details are configured.</p>
                         </div>
                       </div>
                       <p className="text-xs text-slate-400 leading-normal">
-                        Your portfolio structure is fully optimized and search engines can index it properly.
+                        Your portfolio structure is complete. Pro plans can enable search indexing for public discovery.
                       </p>
                     </div>
                   </Card>
                 ) : (
-                  <Card className="p-4 sm:p-6 bg-white border border-slate-200 shadow-sm flex flex-col justify-between hover:border-indigo-105 hover:shadow-md transition-all duration-300 min-w-0">
+                  <Card className="p-4 sm:p-6 bg-white border border-slate-200 shadow-sm flex flex-col justify-between hover:border-indigo-100 hover:shadow-md transition-all duration-300 min-w-0">
                     <div>
                       <div className="flex justify-between items-center mb-4 gap-2">
                         <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Portfolio Status</p>
@@ -1880,12 +2584,12 @@ export default function Dashboard() {
                           <AlertCircle className="w-5 h-5 text-slate-600" />
                         </div>
                         <div>
-                          <h4 className="text-sm font-bold text-slate-900">SEO Disabled (Free)</h4>
-                          <p className="text-xs text-slate-500">Upgrade to index on search engines.</p>
+                          <h4 className="text-sm font-bold text-slate-900">Indexing locked (Free)</h4>
+                          <p className="text-xs text-slate-500">Upgrade to enable search indexing.</p>
                         </div>
                       </div>
                       <p className="text-xs text-slate-400 leading-normal">
-                        Your details are complete! Upgrade to Pro to enable search engine optimization and go live.
+                        Your details are complete. Upgrade to Pro to enable search engine indexing and go live on discovery.
                       </p>
                     </div>
                   </Card>
@@ -1936,21 +2640,51 @@ export default function Dashboard() {
                 </button>
               </Card>
 
-              {/* Plan Status Card */}
+              {/* Monthly Usage Card */}
               <Card className="p-4 sm:p-6 bg-white border border-slate-200 shadow-sm flex flex-col justify-between transition-all duration-300 min-w-0">
                 <div>
-                  <p className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Workspace tier</p>
-                  <h3 className="text-xl sm:text-2xl font-bold text-slate-900 capitalize flex items-center gap-2">
-                    {planName}
-                  </h3>
+                  <div className="flex justify-between items-center mb-3 gap-2">
+                    <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">Monthly usage</p>
+                    <span className="text-[10px] sm:text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full capitalize shrink-0 whitespace-nowrap">{planName}</span>
+                  </div>
+                  <div className="space-y-3">
+                    <div>
+                      <div className="flex items-center justify-between text-xs font-semibold text-slate-600 mb-1">
+                        <span>Content updates</span>
+                        <span className="tabular-nums text-slate-900">
+                          {typeof data.limits?.updatesRemaining === 'number' ? `${data.limits.updatesRemaining} left` : '—'}
+                        </span>
+                      </div>
+                      <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-indigo-500 transition-all duration-700"
+                          style={{ width: typeof data.limits?.updatesUsed === 'number' && data.limits.updatesPerMonth > 0 ? `${Math.min(100, (data.limits.updatesUsed / data.limits.updatesPerMonth) * 100)}%` : '0%' }}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between text-xs font-semibold text-slate-600 mb-1">
+                        <span>AI resume parses</span>
+                        <span className="tabular-nums text-slate-900">
+                          {typeof data.limits?.parsesRemaining === 'number' ? `${data.limits.parsesRemaining} left` : '—'}
+                        </span>
+                      </div>
+                      <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-purple-500 transition-all duration-700"
+                          style={{ width: typeof data.limits?.parsesUsed === 'number' && data.limits.parsesPerMonth > 0 ? `${Math.min(100, (data.limits.parsesUsed / data.limits.parsesPerMonth) * 100)}%` : '0%' }}
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 {data.isPremium ? (
-                  <div className="flex items-center text-xs font-semibold text-emerald-700 bg-emerald-50 w-fit px-3 py-1 rounded-full mt-4">
-                    <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> Pro features unlocked
-                  </div>
+                  <p className="text-[11px] text-slate-400 mt-3.5">
+                    Resets in {data.limits?.updatesDaysToReset ?? 30} day{(data.limits?.updatesDaysToReset ?? 30) === 1 ? '' : 's'}
+                  </p>
                 ) : (
-                  <button onClick={openBilling} className="flex items-center text-xs font-semibold text-indigo-700 bg-indigo-50 w-fit px-3 py-1 rounded-full mt-4 hover:bg-indigo-100 transition-colors">
-                    <CreditCard className="w-3.5 h-3.5 mr-1.5" /> Upgrade path ready
+                  <button onClick={openBilling} className="flex items-center text-xs font-semibold text-indigo-700 bg-indigo-50 w-fit px-3 py-1 rounded-full mt-3.5 hover:bg-indigo-100 transition-colors">
+                    <CreditCard className="w-3.5 h-3.5 mr-1.5" /> Get more with Pro
                   </button>
                 )}
               </Card>
@@ -2012,52 +2746,30 @@ export default function Dashboard() {
               </Card>
             )}
 
-            {/* Public URL Box */}
-            <Card className="p-4 sm:p-6 bg-white border border-slate-200 shadow-sm min-w-0">
-              <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Public Domain</p>
-              <div className="flex flex-col gap-3 sm:gap-4 bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-100 min-w-0">
-                <div className="flex items-start gap-2 text-slate-900 font-medium min-w-0">
-                  <Globe className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
-                  <span className="text-sm sm:text-lg font-mono break-all leading-snug">
-                    https://<span className="text-indigo-600 font-semibold">{url}</span>
-                  </span>
-                </div>
-                <div className="grid grid-cols-3 gap-2 sm:flex sm:items-center sm:flex-wrap">
-                  <Button variant="outline" size="sm" onClick={handleCopyUrl} className="h-9 px-2 sm:px-3 text-xs flex gap-1 justify-center">
-                    {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                    {copied ? 'Copied' : 'Copy'}
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={handleShareUrl} className="h-9 px-2 sm:px-3 text-xs flex gap-1 justify-center">
-                    <Share2 className="w-3.5 h-3.5 text-indigo-500" />
-                    Share
-                  </Button>
-                  <a href={correctVisitUrl} target="_blank" rel="noreferrer" className="contents sm:contents">
-                    <Button variant="secondary" size="sm" className="h-9 px-2 sm:px-3 text-xs flex gap-1 justify-center w-full">
-                      Visit <ExternalLink className="w-3.5 h-3.5" />
-                    </Button>
-                  </a>
+            {/* Actions Grid — compact tappable rows on mobile, cards on desktop */}
+            <div>
+              <div className="flex items-end justify-between gap-3 mb-3 sm:mb-4">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400 mb-1">Shortcuts</p>
+                  <h2 className="text-base sm:text-lg font-bold text-slate-900">Quick portfolio actions</h2>
                 </div>
               </div>
-            </Card>
-
-            {/* Actions Grid */}
-            <div>
-              <h2 className="text-base sm:text-lg font-bold text-slate-900 mb-3 sm:mb-4">Quick Portfolio Actions</h2>
-              <div className="grid md:grid-cols-3 gap-4 sm:gap-6">
+              <div className="flex flex-col gap-2.5 md:grid md:grid-cols-3 md:gap-6">
                 <Card 
                   onClick={() => setCurrentView('edit-profile')} 
-                  className="p-4 sm:p-6 hover:shadow-md transition-shadow group cursor-pointer border-slate-200 bg-white flex flex-col justify-between min-w-0"
+                  className="tap-scale p-3.5 md:p-6 hover:shadow-md transition-shadow group cursor-pointer border-slate-200 bg-white flex flex-row items-center gap-3.5 md:flex-col md:items-stretch md:justify-between min-w-0"
                 >
-                  <div>
-                    <div className="w-10 h-10 rounded-xl bg-blue-50 text-indigo-600 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
-                      <User className="w-5 h-5" />
+                  <div className="w-11 h-11 md:w-10 md:h-10 rounded-xl bg-blue-50 text-indigo-600 flex items-center justify-center shrink-0 md:mb-4 group-hover:scale-105 transition-transform">
+                    <User className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-bold text-slate-900 text-sm md:text-base md:mb-1">Edit Profile Details</h3>
+                    <p className="text-[11px] md:text-xs text-slate-500 leading-relaxed truncate md:whitespace-normal md:mb-4">Add projects, skills, certificates, and work experience manually.</p>
+                    <div className="hidden md:flex items-center text-xs font-bold text-indigo-600 group-hover:translate-x-1 transition-transform">
+                      Open Editor <ArrowRight className="w-3.5 h-3.5 ml-1" />
                     </div>
-                    <h3 className="font-bold text-slate-900 mb-1">Edit Profile Details</h3>
-                    <p className="text-xs text-slate-500 leading-relaxed mb-4">Add projects, skills, certificates, and work experience manually.</p>
                   </div>
-                  <div className="flex items-center text-xs font-bold text-indigo-600 group-hover:translate-x-1 transition-transform">
-                    Open Editor <ArrowRight className="w-3.5 h-3.5 ml-1" />
-                  </div>
+                  <ChevronRight className="w-5 h-5 text-slate-300 shrink-0 md:hidden" />
                 </Card>
 
                 <Card 
@@ -2065,34 +2777,36 @@ export default function Dashboard() {
                     setCurrentView('updates');
                     setUpdatesTab('parse');
                   }} 
-                  className="p-6 hover:shadow-md transition-shadow group cursor-pointer border-slate-200 bg-white flex flex-col justify-between"
+                  className="tap-scale p-3.5 md:p-6 hover:shadow-md transition-shadow group cursor-pointer border-slate-200 bg-white flex flex-row items-center gap-3.5 md:flex-col md:items-stretch md:justify-between min-w-0"
                 >
-                  <div>
-                    <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
-                      <FileText className="w-5 h-5" />
+                  <div className="w-11 h-11 md:w-10 md:h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0 md:mb-4 group-hover:scale-105 transition-transform">
+                    <FileText className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-bold text-slate-900 text-sm md:text-base md:mb-1">Manage Resume</h3>
+                    <p className="text-[11px] md:text-xs text-slate-500 leading-relaxed truncate md:whitespace-normal md:mb-4">Upload a PDF resume to automatically parse and refresh your experience details.</p>
+                    <div className="hidden md:flex items-center text-xs font-bold text-purple-600 group-hover:translate-x-1 transition-transform">
+                      Upload PDF <ArrowRight className="w-3.5 h-3.5 ml-1" />
                     </div>
-                    <h3 className="font-bold text-slate-900 mb-1">Manage Resume</h3>
-                    <p className="text-xs text-slate-500 leading-relaxed mb-4">Upload a PDF resume to automatically parse and refresh your experience details.</p>
                   </div>
-                  <div className="flex items-center text-xs font-bold text-purple-600 group-hover:translate-x-1 transition-transform">
-                    Upload PDF <ArrowRight className="w-3.5 h-3.5 ml-1" />
-                  </div>
+                  <ChevronRight className="w-5 h-5 text-slate-300 shrink-0 md:hidden" />
                 </Card>
 
                 <Card 
                   onClick={() => setCurrentView('settings')} 
-                  className="p-6 hover:shadow-md transition-shadow group cursor-pointer border-slate-200 bg-white flex flex-col justify-between"
+                  className="tap-scale p-3.5 md:p-6 hover:shadow-md transition-shadow group cursor-pointer border-slate-200 bg-white flex flex-row items-center gap-3.5 md:flex-col md:items-stretch md:justify-between min-w-0"
                 >
-                  <div>
-                    <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
-                      <Settings className="w-5 h-5" />
+                  <div className="w-11 h-11 md:w-10 md:h-10 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center shrink-0 md:mb-4 group-hover:scale-105 transition-transform">
+                    <Settings className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-bold text-slate-900 text-sm md:text-base md:mb-1">Appearance & Settings</h3>
+                    <p className="text-[11px] md:text-xs text-slate-500 leading-relaxed truncate md:whitespace-normal md:mb-4">Change color theme accent, website template layouts, and usernames.</p>
+                    <div className="hidden md:flex items-center text-xs font-bold text-slate-600 group-hover:translate-x-1 transition-transform">
+                      Customize <ArrowRight className="w-3.5 h-3.5 ml-1" />
                     </div>
-                    <h3 className="font-bold text-slate-900 mb-1">Appearance & Settings</h3>
-                    <p className="text-xs text-slate-500 leading-relaxed mb-4">Change color theme accent, website template layouts, and usernames.</p>
                   </div>
-                  <div className="flex items-center text-xs font-bold text-slate-600 group-hover:translate-x-1 transition-transform">
-                    Customize <ArrowRight className="w-3.5 h-3.5 ml-1" />
-                  </div>
+                  <ChevronRight className="w-5 h-5 text-slate-300 shrink-0 md:hidden" />
                 </Card>
               </div>
             </div>
@@ -2165,37 +2879,162 @@ export default function Dashboard() {
                   <div className="space-y-6 max-w-xl">
                     <h3 className="text-lg font-bold text-slate-900 border-b pb-2">Contact Details</h3>
                     <div className="space-y-4">
+                      {/* Email Field */}
                       <div className="space-y-1.5">
-                        <Label className={contactErrors.email ? "text-red-500" : ""}>Email address (Required)</Label>
+                        <Label className={contactErrors.email ? "text-red-500 font-semibold" : ""}>Email address (Required)</Label>
                         <Input 
-                          value={contactData.email} 
-                          onChange={e => { setContactData({...contactData, email: e.target.value}); setContactErrors({...contactErrors, email: ''}); }} 
+                          value={contactData?.email || ''} 
+                          onChange={e => { 
+                            setContactData({...contactData, email: e.target.value}); 
+                            if (contactErrors.email) setContactErrors({...contactErrors, email: ''}); 
+                          }} 
+                          placeholder="e.g. name@example.com"
                           className={contactErrors.email ? "border-red-500 focus-visible:ring-red-500" : ""}
                         />
-                        {contactErrors.email && <p className="text-xs text-red-500">{contactErrors.email}</p>}
+                        {contactErrors.email && (
+                          <p className="text-xs font-medium text-red-500 flex items-center gap-1 mt-1">
+                            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                            {contactErrors.email}
+                          </p>
+                        )}
                       </div>
+
+                      {/* Phone Field */}
                       <div className="space-y-1.5">
-                        <Label>LinkedIn URL</Label>
-                        <Input value={contactData.linkedin} onChange={e => setContactData({...contactData, linkedin: e.target.value})} placeholder="linkedin.com/in/username" />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label>GitHub URL</Label>
-                        <Input value={contactData.github} onChange={e => setContactData({...contactData, github: e.target.value})} placeholder="github.com/username" />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label>Phone Number</Label>
+                        <Label className={contactErrors.phone ? "text-red-500 font-semibold" : ""}>Phone Number (Required)</Label>
                         <div className="flex relative">
-                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-medium">+91</span>
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-medium text-sm">+91</span>
                           <Input 
-                            value={(contactData.phone || data.phone || '').replace(/^\+?91/, '').trim()} 
+                            value={(contactData?.phone || data?.phone || '').replace(/^\+?91/, '').trim()} 
                             onChange={e => {
                               const val = e.target.value.replace(/\D/g, '').slice(0, 10);
-                              setContactData({...contactData, phone: val ? `+91${val}` : ''});
+                              const formatted = val ? `+91${val}` : '';
+                              setContactData({...contactData, phone: formatted});
+                              if (contactErrors.phone && val.length === 10) {
+                                setContactErrors({...contactErrors, phone: ''});
+                              }
                             }} 
                             placeholder="98765 43210" 
-                            className="pl-12 text-sm font-medium tracking-wide h-10 rounded-xl"
+                            className={cn("pl-12 text-sm font-medium tracking-wide h-10 rounded-xl", contactErrors.phone ? "border-red-500 focus-visible:ring-red-500" : "")}
                           />
                         </div>
+                        {contactErrors.phone && (
+                          <p className="text-xs font-medium text-red-500 flex items-center gap-1 mt-1">
+                            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                            {contactErrors.phone}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* LinkedIn URL */}
+                      <div className="space-y-1.5">
+                        <Label>LinkedIn URL</Label>
+                        <Input 
+                          value={contactData?.linkedin || ''} 
+                          onChange={e => setContactData({...contactData, linkedin: e.target.value})} 
+                          placeholder="linkedin.com/in/username" 
+                        />
+                      </div>
+
+                      {/* GitHub URL */}
+                      <div className="space-y-1.5">
+                        <Label>GitHub URL</Label>
+                        <Input 
+                          value={contactData?.github || ''} 
+                          onChange={e => setContactData({...contactData, github: e.target.value})} 
+                          placeholder="github.com/username" 
+                        />
+                      </div>
+
+                      {/* Extracted & Custom Links Section */}
+                      <div className="pt-4 border-t border-slate-100 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <Label className="text-slate-800 font-bold text-sm block">Extracted & Custom Links</Label>
+                            <p className="text-xs text-slate-400">Manage links extracted from your resume or add custom links.</p>
+                          </div>
+                          {!isAddingDashboardLink && (
+                            <Button 
+                              type="button" 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => setIsAddingDashboardLink(true)}
+                              className="text-indigo-600 border-indigo-200 hover:bg-indigo-50 text-xs font-semibold"
+                            >
+                              <Plus className="w-3.5 h-3.5 mr-1" /> Add Link
+                            </Button>
+                          )}
+                        </div>
+
+                        {/* Add Custom Link Form */}
+                        {isAddingDashboardLink && (
+                          <Card className="p-3.5 border-indigo-200 bg-indigo-50/40 space-y-3 animate-in fade-in">
+                            <p className="text-xs font-semibold text-indigo-900">Add Custom Link</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              <Input 
+                                placeholder="Link Title (e.g. Personal Portfolio)" 
+                                value={newDashboardLinkName} 
+                                onChange={e => setNewDashboardLinkName(e.target.value)} 
+                                className="h-9 text-xs"
+                              />
+                              <Input 
+                                placeholder="URL (e.g. kavin.cyou or https://...)" 
+                                value={newDashboardLinkUrl} 
+                                onChange={e => setNewDashboardLinkUrl(e.target.value)} 
+                                className="h-9 text-xs"
+                              />
+                            </div>
+                            <div className="flex justify-end gap-2 pt-1">
+                              <Button type="button" variant="ghost" size="sm" className="h-8 text-xs" onClick={() => { setIsAddingDashboardLink(false); setNewDashboardLinkName(''); setNewDashboardLinkUrl(''); }}>
+                                Cancel
+                              </Button>
+                              <Button type="button" size="sm" className="h-8 text-xs bg-indigo-600 hover:bg-indigo-700 text-white" onClick={handleSaveDashboardLink}>
+                                Save Link
+                              </Button>
+                            </div>
+                          </Card>
+                        )}
+
+                        {/* Links Display List */}
+                        {(!contactData?.customLinks || contactData.customLinks.length === 0) ? (
+                          <div className="p-4 border border-dashed border-slate-200 rounded-xl text-center text-xs text-slate-400">
+                            No extracted or custom links added yet. Click "+ Add Link" to add your links.
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {contactData.customLinks.map((link: any, idx: number) => (
+                              <div 
+                                key={idx}
+                                className="flex items-center justify-between p-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-white hover:border-indigo-200 transition-all group shadow-sm"
+                              >
+                                <a 
+                                  href={link.url.startsWith('http') ? link.url : `https://${link.url}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-2.5 min-w-0 flex-1 mr-2"
+                                >
+                                  <div className="w-8 h-8 rounded-lg bg-white border border-slate-150 flex items-center justify-center shrink-0 shadow-sm group-hover:border-indigo-200">
+                                    <LinkIcon className="w-4 h-4 text-slate-400 group-hover:text-indigo-500" />
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-xs font-semibold text-slate-700 truncate group-hover:text-indigo-600">
+                                      {link.name || 'Link'}
+                                    </p>
+                                    <p className="text-[10px] text-slate-400 truncate">{link.url}</p>
+                                  </div>
+                                </a>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveDashboardLink(idx)}
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors shrink-0 cursor-pointer"
+                                  title="Remove link"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
 
                       {/* Hiring Availability Toggle */}
@@ -2355,7 +3194,7 @@ export default function Dashboard() {
                           </div>
                         </div>
 
-                        <div className="flex justify-end gap-2 pt-4 border-t border-slate-105 mt-4">
+                        <div className="flex justify-end gap-2 pt-4 border-t border-slate-100 mt-4">
                           <Button variant="ghost" onClick={() => setEditingId(null)}>Cancel</Button>
                           <Button onClick={() => {
                             updateData({
@@ -2415,7 +3254,7 @@ export default function Dashboard() {
                         <div className="space-y-2">
                           <span className="text-[10px] uppercase tracking-wider text-indigo-550 font-bold bg-indigo-50 px-2.5 py-1 rounded-full">Summary of Fetched Data</span>
                           <div className="p-4 bg-white border border-slate-200 rounded-xl mt-2">
-                            <p className="text-sm text-slate-650 leading-relaxed whitespace-pre-wrap">
+                            <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">
                               {sections.about[0]?.description || <span className="text-slate-400 italic">No summary provided. Upload your resume or click Edit to add one.</span>}
                             </p>
                           </div>
@@ -2673,7 +3512,7 @@ export default function Dashboard() {
                               href={data.resumeUrl} 
                               target="_blank" 
                               rel="noreferrer" 
-                              className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-650 hover:text-indigo-850 hover:underline"
+                              className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-800 hover:underline"
                             >
                               View / Download <ExternalLink className="w-3.5 h-3.5" />
                             </a>
@@ -3244,7 +4083,7 @@ export default function Dashboard() {
                 </button>
                 
                 <button
-                  onClick={() => setSettingsSubTab('storage')}
+                  onClick={() => { setSettingsSubTab('storage'); loadAssets(); }}
                   className={cn(
                     "flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-sm font-semibold transition-all text-left md:w-full whitespace-nowrap shrink-0",
                     settingsSubTab === 'storage' 
@@ -3712,7 +4551,7 @@ export default function Dashboard() {
                           <div className="relative w-full overflow-hidden h-[400px] sm:h-[480px] md:h-[540px] lg:h-[min(68vh,720px)] xl:h-[min(72vh,820px)]">
                             <iframe
                               key={`${activeTemplateId}-${data.themeColor || 'indigo'}-${data.themeBg || 'grid'}-demo`}
-                              src={getDemoPreviewUrl(activeTemplateId)}
+                              src={getTemplatePreviewUrl(activeTemplateId, data.handle)}
                               title="Live Portfolio Preview"
                               className="absolute top-0 left-0 border-0 bg-white"
                               style={{
@@ -3735,37 +4574,89 @@ export default function Dashboard() {
                   </div>
                 )}
 
-                {settingsSubTab === 'storage' && (
+                {settingsSubTab === 'storage' && (() => {
+                  // Server-side truth when loaded; falls back to local estimate
+                  const srvUsed = assetsUsage?.used ?? usedStorage;
+                  const srvQuota = assetsUsage?.quota ?? storageLimit;
+                  const srvPct = srvQuota > 0 ? Math.min((srvUsed / srvQuota) * 100, 100) : 0;
+                  const srvFull = srvUsed >= srvQuota;
+                  const addonBlocks = assetsUsage?.addonBlocks ?? data.addonBlocks ?? 0;
+                  const imageCount = assetsList.filter(a => /\.(png|jpe?g|gif|webp|svg|avif)(\?|$)/i.test(a.url || '')).length;
+                  const pdfCount = assetsList.filter(a => /\.pdf(\?|$)/i.test(a.url || '')).length;
+                  const otherCount = Math.max(0, assetsList.length - imageCount - pdfCount);
+                  const fmtMb = (b: number) => `${(b / 1024 / 1024).toFixed(1)}MB`;
+                  return (
                   <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-6 animate-in fade-in duration-200">
-                    <div>
-                      <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                        <FileText className="w-4 h-4 text-indigo-500" /> Cloud Storage
-                      </h3>
-                      <p className="text-slate-500 text-xs mt-0.5">Manage files, resume storage limits, and active server capacity.</p>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                          <FileText className="w-4 h-4 text-indigo-500" /> Cloud Storage
+                        </h3>
+                        <p className="text-slate-500 text-xs mt-0.5">Live server usage across every file in your workspace.</p>
+                      </div>
+                      <Button variant="outline" size="sm" className="h-8 text-xs shrink-0" onClick={() => loadAssets()} disabled={assetsLoading}>
+                        {assetsLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Refresh'}
+                      </Button>
                     </div>
 
                     <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 space-y-4">
                       <div>
                         <div className="flex justify-between items-center mb-1.5 text-xs font-bold text-slate-700">
                           <span>Usage Details</span>
-                          <span>{(usedStorage / 1024 / 1024).toFixed(1)}MB / {(storageLimit / 1024 / 1024).toFixed(0)}MB</span>
+                          <span className="tabular-nums">{fmtMb(srvUsed)} / {(srvQuota / 1024 / 1024).toFixed(0)}MB</span>
                         </div>
                         <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden">
                           <div 
-                            className={cn("h-full rounded-full transition-all duration-500", isStorageFull ? "bg-red-500" : "bg-indigo-650")}
-                            style={{ width: `${storagePercentage}%` }}
+                            className={cn(
+                              "h-full rounded-full transition-all duration-500",
+                              srvFull ? "bg-red-500" : srvPct >= 85 ? "bg-amber-500" : "bg-indigo-600",
+                            )}
+                            style={{ width: `${srvPct}%` }}
                           />
                         </div>
+                        <p className="text-[11px] text-slate-400 mt-1.5">
+                          {srvFull
+                            ? 'Storage full — uploads are blocked until you free space or add storage.'
+                            : `${fmtMb(Math.max(0, srvQuota - srvUsed))} free of your ${(srvQuota / 1024 / 1024).toFixed(0)}MB plan capacity.`}
+                          {addonBlocks > 0 && ` Includes ${addonBlocks} add-on block${addonBlocks === 1 ? '' : 's'} (+${addonBlocks * 50}MB).`}
+                        </p>
                       </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="rounded-xl bg-white border border-slate-100 p-3 text-center">
+                          <p className="text-lg font-bold text-slate-900 tabular-nums">{assetsLoading ? '—' : imageCount}</p>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Images</p>
+                        </div>
+                        <div className="rounded-xl bg-white border border-slate-100 p-3 text-center">
+                          <p className="text-lg font-bold text-slate-900 tabular-nums">{assetsLoading ? '—' : pdfCount}</p>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">PDFs</p>
+                        </div>
+                        <div className="rounded-xl bg-white border border-slate-100 p-3 text-center">
+                          <p className="text-lg font-bold text-slate-900 tabular-nums">{assetsLoading ? '—' : otherCount}</p>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Other</p>
+                        </div>
+                      </div>
+
+                      <p className="text-[11px] text-slate-400">
+                        System-generated resumes are free and never count against your storage.
+                      </p>
                       
-                      <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                      <div className="flex flex-col sm:flex-row gap-3 pt-1">
+                        <Button
+                          onClick={() => { setSettingsSubTab('assets'); loadAssets(); }}
+                          size="sm"
+                          variant="outline"
+                          className="h-10 text-xs px-4 flex-1"
+                        >
+                          <ImageIcon className="w-3.5 h-3.5 mr-1.5" /> View & manage files
+                        </Button>
                         {data.isPremium ? (
                           <Button 
                             onClick={openBilling}
                             size="sm" 
                             className="h-10 text-xs px-4 bg-indigo-50 text-indigo-900 hover:bg-indigo-100 flex-1 border border-indigo-200 shadow-none"
                           >
-                            Manage Billing
+                            {srvPct >= 85 ? 'Add +50MB storage' : 'Manage Billing'}
                           </Button>
                         ) : (
                           <Button 
@@ -3773,13 +4664,14 @@ export default function Dashboard() {
                             size="sm" 
                             className="h-10 text-xs px-4 bg-indigo-600 text-white hover:bg-indigo-700 flex-1 border-none shadow-md font-semibold"
                           >
-                            Upgrade to Pro (100MB Yearly)
+                            Upgrade for more storage
                           </Button>
                         )}
                       </div>
                     </div>
                   </Card>
-                )}
+                  );
+                })()}
 
                 {settingsSubTab === 'assets' && (() => {
                   const fmtSize = (bytes: number) => {
@@ -3802,7 +4694,7 @@ export default function Dashboard() {
                           Every file in your account — deleting here frees storage instantly.
                         </p>
                       </div>
-                      <Button variant="outline" size="sm" className="h-8 text-xs" onClick={loadAssets} disabled={assetsLoading}>
+                      <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => loadAssets()} disabled={assetsLoading}>
                         {assetsLoading ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : null}
                         Refresh
                       </Button>
@@ -3957,7 +4849,7 @@ export default function Dashboard() {
                                       href={payment.invoiceUrl} 
                                       target="_blank" 
                                       rel="noreferrer" 
-                                      className="text-xs font-bold text-indigo-650 bg-indigo-50 hover:bg-indigo-100/70 px-3 py-1.5 rounded-lg border border-indigo-100 transition-colors flex items-center gap-1.5 shrink-0 select-none"
+                                      className="text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100/70 px-3 py-1.5 rounded-lg border border-indigo-100 transition-colors flex items-center gap-1.5 shrink-0 select-none"
                                     >
                                       <FileText className="w-3.5 h-3.5" /> Download Invoice
                                     </a>
@@ -3996,7 +4888,7 @@ export default function Dashboard() {
                 <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
                   <Sparkles className="w-5 h-5 text-indigo-500" /> Complete Your Profile
                 </h2>
-                <p className="text-xs text-slate-500 mt-1">Fill in the missing details to fully optimize your portfolio and increase SEO visibility.</p>
+                <p className="text-xs text-slate-500 mt-1">Fill in the missing details to fully optimize your portfolio and raise portfolio readiness.</p>
               </div>
 
               {/* Progress */}
@@ -4024,7 +4916,7 @@ export default function Dashboard() {
                       ) : (
                         <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
                       )}
-                      <span className="text-xs font-bold text-slate-850">Profile Picture</span>
+                      <span className="text-xs font-bold text-slate-800">Profile Picture</span>
                     </div>
                     {data.photoUrl && (
                       <span className="text-[10px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-semibold">Done</span>
@@ -4057,38 +4949,53 @@ export default function Dashboard() {
                 <div className="border border-slate-100 rounded-xl p-4 bg-white shadow-sm flex flex-col gap-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      {data.resumeFileName ? (
+                      {hasResume ? (
                         <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
                       ) : (
                         <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
                       )}
-                      <span className="text-xs font-bold text-slate-850">PDF Resume</span>
+                      <span className="text-xs font-bold text-slate-800">PDF Resume</span>
                     </div>
-                    {data.resumeFileName && (
+                    {hasResume && (
                       <span className="text-[10px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-semibold truncate max-w-[150px]">
-                        {data.resumeFileName}
+                        {resumeDoneLabel}
                       </span>
                     )}
                   </div>
-                  {!data.resumeFileName && (
-                    <div className="flex items-center gap-3">
-                      <input 
-                        type="file" 
-                        id="modal-resume-upload" 
-                        accept="application/pdf"
-                        className="hidden" 
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) handleUploadResume(file);
-                        }}
-                      />
-                      <label 
-                        htmlFor="modal-resume-upload"
-                        className="cursor-pointer inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold border border-indigo-200 transition-colors"
-                      >
-                        <Upload className="w-3.5 h-3.5" /> Upload PDF
-                      </label>
-                      <span className="text-[10px] text-slate-400">Required for auto-parsing</span>
+                  {!hasResume && (
+                    <div className="flex flex-col gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input 
+                          type="file" 
+                          id="modal-resume-upload" 
+                          accept="application/pdf"
+                          className="hidden" 
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleUploadResume(file);
+                          }}
+                        />
+                        <label 
+                          htmlFor="modal-resume-upload"
+                          className="cursor-pointer inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold border border-indigo-200 transition-colors"
+                        >
+                          <Upload className="w-3.5 h-3.5" /> Upload PDF
+                        </label>
+                        <button
+                          type="button"
+                          disabled={isModalGeneratingResume}
+                          onClick={handleModalGenerateResume}
+                          className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition-colors disabled:opacity-60"
+                        >
+                          {isModalGeneratingResume ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Sparkles className="w-3.5 h-3.5" />
+                          )}
+                          {isModalGeneratingResume ? 'Generating…' : 'Generate from profile'}
+                        </button>
+                      </div>
+                      <span className="text-[10px] text-slate-400">Upload your own PDF, or let BEXO compile an ATS resume from your portfolio details.</span>
                     </div>
                   )}
                 </div>
@@ -4187,7 +5094,7 @@ export default function Dashboard() {
                     <div className="flex gap-2">
                       <Button 
                         size="sm" 
-                        className="h-8 text-[11px] px-3 bg-white border border-slate-200 text-slate-850 hover:bg-slate-50 flex-1 shadow-none"
+                        className="h-8 text-[11px] px-3 bg-white border border-slate-200 text-slate-800 hover:bg-slate-50 flex-1 shadow-none"
                         onClick={() => {
                           setCurrentView('edit-profile');
                           setActiveEditorTab('education');
@@ -4198,7 +5105,7 @@ export default function Dashboard() {
                       </Button>
                       <Button 
                         size="sm" 
-                        className="h-8 text-[11px] px-3 bg-white border border-slate-200 text-slate-850 hover:bg-slate-50 flex-1 shadow-none"
+                        className="h-8 text-[11px] px-3 bg-white border border-slate-200 text-slate-800 hover:bg-slate-50 flex-1 shadow-none"
                         onClick={() => {
                           setCurrentView('edit-profile');
                           setActiveEditorTab('projects');
@@ -4280,6 +5187,9 @@ export default function Dashboard() {
 
       </main>
 
+      {/* Instant In-Browser Asset Preview Modal */}
+      <AssetPreviewModal target={previewTarget} onClose={() => setPreviewTarget(null)} />
+
       {/* Fullscreen template preview — free users see Pro templates with their own live data */}
       {previewTemplateId && (() => {
         const tpl = TEMPLATES.find(t => t.id === previewTemplateId);
@@ -4318,7 +5228,7 @@ export default function Dashboard() {
               {/* Iframe */}
               <div className="flex-1 w-full relative bg-white">
                 <iframe
-                  src={getDemoPreviewUrl(tpl.id)}
+                  src={getTemplatePreviewUrl(tpl.id, data.handle)}
                   title={`${tpl.name} preview`}
                   className="w-full h-full border-0 bg-white"
                   allow="clipboard-write"

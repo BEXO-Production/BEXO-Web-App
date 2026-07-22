@@ -1,6 +1,6 @@
 import { Router } from "express";
 import crypto from "crypto";
-import { requireAuth, AuthenticatedRequest } from "../middlewares/auth";
+import { requireAuth, optionalAuth, AuthenticatedRequest } from "../middlewares/auth";
 import {
   db,
   users,
@@ -19,7 +19,8 @@ import multer from "multer";
 import { createRequire } from "module";
 import { uploadToR2, deleteFromR2 } from "../lib/r2";
 import { generateATSResume } from "../lib/resumeEngine";
-import { resolveSubscriptionState, syncStorageQuota } from "../lib/subscriptions";
+import { resolveSubscriptionState, syncStorageQuota, recomputeUserQuota } from "../lib/subscriptions";
+import { resolveSiteAccess } from "../lib/siteAccess";
 import {
   ONBOARDING_PARSE_LIMIT,
   consumeUpdate,
@@ -51,15 +52,24 @@ async function getOrCreateProfile(userId: string): Promise<typeof profiles.$infe
   let profile = profileList[0];
 
   if (!profile) {
-    const inserted = await db.insert(profiles).values({
-      userId,
-      headline: "",
-      careerGoal: "",
-      bio: "",
-      completionPct: 0
-    }).returning();
-    profile = inserted[0];
-    logger.info({ userId, profileId: profile.id }, "Created new empty profile");
+    try {
+      const inserted = await db.insert(profiles).values({
+        userId,
+        headline: "",
+        careerGoal: "",
+        bio: "",
+        completionPct: 0
+      }).returning();
+      profile = inserted[0];
+      logger.info({ userId, profileId: profile.id }, "Created new empty profile");
+    } catch (err: any) {
+      profileList = await db.select().from(profiles).where(eq(profiles.userId, userId)).limit(1);
+      if (profileList[0]) {
+        profile = profileList[0];
+      } else {
+        throw err;
+      }
+    }
   }
   return profile;
 }
@@ -127,6 +137,7 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<voi
 
     const subscriptionState = await resolveSubscriptionState(userId);
     await syncStorageQuota(userId, subscriptionState.storageQuotaBytes, Number(user.storageQuotaBytes));
+    const siteAccess = await resolveSiteAccess(userId);
     const limits = await getPlanLimits(subscriptionState.isPremium ? subscriptionState.plan : "free");
     const updatesUsage = await getUpdatesUsage(user, limits.updatesPerMonth);
     const parsesUsage = await getParsesUsage(user, limits.parsesPerMonth);
@@ -176,6 +187,14 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<voi
       expiresAt: subscriptionState.expiresAt,
       billingPeriod: subscriptionState.billingPeriod,
       addonBlocks: subscriptionState.addonBlocks,
+      siteStatus: siteAccess.siteStatus,
+      pauseReason: siteAccess.pauseReason,
+      graceUntil: siteAccess.graceUntil,
+      cancelAtPeriodEnd: siteAccess.cancelAtPeriodEnd,
+      paymentFailedAt: siteAccess.paymentFailedAt,
+      isInPaymentGrace: siteAccess.isInPaymentGrace,
+      isPausedForVisitors: siteAccess.isPausedForVisitors,
+      overStorage: siteAccess.overStorage,
       limits: {
         parsesPerMonth: limits.parsesPerMonth,
         updatesPerMonth: limits.updatesPerMonth,
@@ -348,7 +367,7 @@ router.patch("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<v
 });
 
 // GET /profile/check-handle
-router.get("/check-handle", requireAuth, async (req: AuthenticatedRequest, res): Promise<void> => {
+router.get("/check-handle", optionalAuth, async (req: AuthenticatedRequest, res): Promise<void> => {
   const handle = req.query.handle as string;
   if (!handle) {
     res.status(400).json({ error: "Handle query parameter is required" });
@@ -368,7 +387,7 @@ router.get("/check-handle", requireAuth, async (req: AuthenticatedRequest, res):
       return;
     }
     const existing = await db.select().from(profiles).where(eq(profiles.handle, handle)).limit(1);
-    const taken = existing.length > 0 && existing[0].userId !== req.user!.id;
+    const taken = existing.length > 0 && (!req.user || existing[0].userId !== req.user.id);
     res.json({ available: !taken });
   } catch (err) {
     logger.error({ err, handle }, "Error checking handle availability");
@@ -377,7 +396,7 @@ router.get("/check-handle", requireAuth, async (req: AuthenticatedRequest, res):
 });
 
 // GET /profile/suggest-handle
-router.get("/suggest-handle", requireAuth, async (req: AuthenticatedRequest, res): Promise<void> => {
+router.get("/suggest-handle", optionalAuth, async (req: AuthenticatedRequest, res): Promise<void> => {
   const firstName = (req.query.firstName as string || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
   const lastName = (req.query.lastName as string || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
   
@@ -688,7 +707,7 @@ router.post("/resume", requireAuth, upload.single("resume"), async (req: Authent
     // Storage quota guard (same spirit as /upload)
     const quota = subscriptionState.storageQuotaBytes;
     const currentUsed = Number(user.storageUsedBytes) || 0;
-    if (currentUsed + file.size > quota) {
+    if (user.onboardingCompletedAt && currentUsed + file.size > quota) {
       await db
         .update(resumeParseAttempts)
         .set({ status: "failed", errorMessage: "Storage quota exceeded", completedAt: new Date() })
@@ -996,7 +1015,7 @@ router.post("/resume", requireAuth, upload.single("resume"), async (req: Authent
             linkedin: existingContact.linkedin || newContact.linkedin || "",
             github: existingContact.github || newContact.github || "",
             portfolio: existingContact.portfolio || newContact.portfolio || "",
-            customLinks: Array.isArray(existingContact.customLinks) ? existingContact.customLinks : (newContact.customLinks || [])
+            customLinks: Array.isArray(newContact.customLinks) ? newContact.customLinks : (Array.isArray(existingContact.customLinks) ? existingContact.customLinks : [])
           };
         } else {
           // For list-based sections (education, experience, projects, certificates, achievements)
@@ -1094,7 +1113,7 @@ router.post("/upload", requireAuth, upload.single("file"), async (req: Authentic
       await syncStorageQuota(userId, quota, Number(user.storageQuotaBytes));
 
       const currentUsed = Number(user.storageUsedBytes) || 0;
-      if (currentUsed + file.size > quota) {
+      if (user.onboardingCompletedAt && currentUsed + file.size > quota) {
         const usedMB = (currentUsed / 1024 / 1024).toFixed(1);
         const quotaMB = (quota / 1024 / 1024).toFixed(0);
         const fileMB = (file.size / 1024 / 1024).toFixed(1);
@@ -1289,14 +1308,27 @@ router.get("/public/:handle", async (req, res): Promise<void> => {
     }
 
     // Independent lookups — run them in parallel to cut latency
-    const [userList, sections, subscriptionState] = await Promise.all([
+    const [userList, sections, subscriptionState, siteAccess] = await Promise.all([
       db.select().from(users).where(eq(users.id, profile.userId)).limit(1),
       db.select().from(profileSections).where(eq(profileSections.profileId, profile.id)),
       resolveSubscriptionState(profile.userId),
+      resolveSiteAccess(profile.userId),
     ]);
     const user = userList[0];
     if (!user) {
       res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    if (siteAccess.isPausedForVisitors) {
+      res.status(503).json({
+        error: "Portfolio paused",
+        paused: true,
+        pauseReason: siteAccess.pauseReason,
+        siteStatus: siteAccess.siteStatus,
+        handle,
+        name: user.name,
+      });
       return;
     }
 
@@ -1338,7 +1370,7 @@ router.get("/public/:handle", async (req, res): Promise<void> => {
       payload,
     });
     res.setHeader("X-Cache", "MISS");
-    res.json(payload);
+    res.json({ ...payload, profileId: profile.id });
   } catch (err) {
     logger.error({ err, handle }, "Error fetching public profile");
     res.status(500).json({ error: "Internal server error" });
@@ -1382,11 +1414,18 @@ async function regenerateSystemResume(userId: string): Promise<string | null> {
   });
 
   const filename = `${user.name?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'portfolio'}_resume.pdf`;
-  const generatedResumeUrl = await uploadToR2(resumeBuffer, filename, "application/pdf");
+  // Stable key: regenerating overwrites the same object, so previously shared
+  // preview/download links keep working instead of 404ing after each update.
+  // The ?v= suffix busts caches without changing the underlying object.
+  const baseUrl = await uploadToR2(resumeBuffer, filename, "application/pdf", {
+    key: `generated-resumes/${userId}.pdf`,
+  });
+  const generatedResumeUrl = `${baseUrl}?v=${Date.now()}`;
 
   const oldGenerated = user.generatedResumeUrl;
   await db.update(users).set({ generatedResumeUrl }).where(eq(users.id, userId));
-  if (oldGenerated && oldGenerated !== generatedResumeUrl) {
+  // Clean up only legacy random-key objects; stable-key versions share one object.
+  if (oldGenerated && oldGenerated.split("?")[0] !== baseUrl) {
     await deleteFromR2(oldGenerated);
   }
 
@@ -1456,7 +1495,7 @@ router.post("/resume-file", requireAuth, upload.single("resume"), async (req: Au
         .limit(1);
       reclaimable = Number(oldAsset?.sizeBytes) || 0;
     }
-    if (currentUsed - reclaimable + file.size > subscriptionState.storageQuotaBytes) {
+    if (user.onboardingCompletedAt && currentUsed - reclaimable + file.size > subscriptionState.storageQuotaBytes) {
       res.status(403).json({ error: "Storage limit exceeded. Free up space or upgrade your plan." });
       return;
     }

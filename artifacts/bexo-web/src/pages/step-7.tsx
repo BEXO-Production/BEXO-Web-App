@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { useOnboarding } from '../context/OnboardingContext';
+import { useOnboarding, OnboardingData } from '../context/OnboardingContext';
 import { Button, Card } from '../design-system/primitives';
 import { ArrowRight, CheckCircle2, Eye, X } from 'lucide-react';
 import { cn } from '../design-system/primitives';
 import {
   DEFAULT_TEMPLATE_ID,
   getDemoPreviewUrl,
+  getTemplatePreviewUrl,
   getSelectableTemplates,
   MARKETING_DEMO_HANDLE,
   THEMEABLE_TEMPLATE_IDS,
@@ -31,6 +32,275 @@ const THEME_BGS = [
   { id: 'solid', label: 'Accent Gradient', desc: 'Vibrant color blend' },
 ];
 
+const asString = (val: any, fallback: string = ''): string => {
+  if (typeof val === 'string') return val.trim();
+  if (typeof val === 'number') return String(val);
+  if (Array.isArray(val)) return val.map(v => asString(v)).filter(Boolean).join('\n');
+  return fallback;
+};
+
+/** Convert Onboarding Context state into standard BEXO Profile payload for live template previews */
+function buildProfileFromOnboardingData(
+  data: OnboardingData,
+  themeColor: string = 'blue',
+  themeBg: string = 'grid',
+  templateId: string = 'cura-futuri'
+) {
+  const userName = asString(data.name, 'Your Name');
+  const userPhoto = asString(data.photoUrl);
+  const userEmail = asString(data.contactData?.email || data.email);
+  const userPhone = asString(data.contactData?.phone || data.phone);
+  const userLinkedin = asString(data.contactData?.linkedin);
+  const userGithub = asString(data.contactData?.github);
+  const userPortfolio = asString(data.contactData?.portfolio);
+  const customLinks = data.contactData?.customLinks || [];
+
+  const socials: { label: string; url: string }[] = [];
+  if (userLinkedin) socials.push({ label: 'LinkedIn', url: userLinkedin });
+  if (userGithub) socials.push({ label: 'GitHub', url: userGithub });
+  if (userPortfolio) socials.push({ label: 'Portfolio', url: userPortfolio });
+  customLinks.forEach((link: any) => {
+    const url = asString(link.url);
+    const name = asString(link.name || link.label);
+    if (url && name) {
+      socials.push({ label: name, url });
+    }
+  });
+
+  const aboutEntries = (data.aboutEntries && data.aboutEntries.length > 0)
+    ? data.aboutEntries.map((e: any, idx: number) => {
+        const desc = asString(e.description || e.bio);
+        return {
+          id: asString(e.id, String(idx + 1)),
+          title: asString(e.title, userName),
+          description: desc,
+          bio: desc,
+          currentStatus: asString(e.currentStatus),
+          email: userEmail
+        };
+      })
+    : [{
+        id: '1',
+        title: userName,
+        description: '',
+        bio: '',
+        currentStatus: '',
+        email: userEmail
+      }];
+
+  const headline = aboutEntries[0]?.title || userName;
+  const bio = aboutEntries[0]?.description || '';
+
+  const educationEntries = (data.educationEntries || []).map((e: any, idx: number) => {
+    const startYear = asString(e.startYear || e.startDate);
+    const endYear = asString(e.endYear || e.endDate);
+    const yearStr = asString(e.year || e.duration) || [startYear, endYear].filter(Boolean).join(' - ');
+    return {
+      id: asString(e.id, String(idx + 1)),
+      institution: asString(e.institution || e.school),
+      school: asString(e.institution || e.school),
+      degree: asString(e.degree),
+      startYear,
+      endYear,
+      year: yearStr,
+      duration: yearStr,
+      grade: asString(e.grade)
+    };
+  });
+
+  const experienceEntries = (data.experienceEntries || []).map((e: any, idx: number) => {
+    const descStr = asString(e.description);
+    const responsibilities = Array.isArray(e.responsibilities)
+      ? e.responsibilities.map((r: any) => asString(r)).filter(Boolean)
+      : (descStr ? descStr.split('\n').filter(Boolean) : []);
+
+    return {
+      id: asString(e.id, String(idx + 1)),
+      company: asString(e.company),
+      role: asString(e.role),
+      startYear: asString(e.startYear),
+      endYear: asString(e.endYear),
+      startDate: asString(e.startYear),
+      endDate: asString(e.endYear),
+      duration: asString(e.duration) || [asString(e.startYear), asString(e.endYear)].filter(Boolean).join(' - '),
+      description: descStr,
+      responsibilities
+    };
+  });
+
+  const projectEntries = (data.projectEntries || []).map((e: any, idx: number) => {
+    const images = (e.assets?.images || e.images || []).map((i: any) => (typeof i === 'string' ? i : asString(i?.url))).filter(Boolean);
+    const pdfs = (e.assets?.pdfs || e.pdfs || []).map((p: any) => (typeof p === 'string' ? p : asString(p?.url))).filter(Boolean);
+    return {
+      id: asString(e.id, String(idx + 1)),
+      title: asString(e.title),
+      category: 'Project',
+      description: asString(e.description),
+      techStack: asString(e.tech || e.techStack),
+      tech: asString(e.tech || e.techStack),
+      link: asString(e.link || e.url),
+      images,
+      pdfs,
+      assets: e.assets || { mode: 'images', images, pdfs, links: [] }
+    };
+  });
+
+  const certificateEntries = (data.certificateEntries || []).map((e: any, idx: number) => {
+    const images = (e.assets?.images || e.images || []).map((i: any) => (typeof i === 'string' ? i : asString(i?.url))).filter(Boolean);
+    const pdfs = (e.assets?.pdfs || e.pdfs || []).map((p: any) => (typeof p === 'string' ? p : asString(p?.url))).filter(Boolean);
+    return {
+      id: asString(e.id, String(idx + 1)),
+      title: asString(e.title || e.name),
+      name: asString(e.title || e.name),
+      issuer: asString(e.issuer || e.organization),
+      date: asString(e.date || e.year),
+      credentialLink: asString(e.credentialLink || e.link),
+      images,
+      pdfs,
+      assets: e.assets || { mode: 'images', images, pdfs, links: [] }
+    };
+  });
+
+  const achievementEntries = (data.achievementEntries || []).map((e: any, idx: number) => {
+    const images = (e.assets?.images || e.images || []).map((i: any) => (typeof i === 'string' ? i : asString(i?.url))).filter(Boolean);
+    const pdfs = (e.assets?.pdfs || e.pdfs || []).map((p: any) => (typeof p === 'string' ? p : asString(p?.url))).filter(Boolean);
+    return {
+      id: asString(e.id, String(idx + 1)),
+      title: asString(e.title),
+      awarder: asString(e.organization || e.awarder),
+      organization: asString(e.organization || e.awarder),
+      date: asString(e.date || e.year),
+      year: asString(e.date || e.year),
+      images,
+      pdfs,
+      assets: e.assets || { mode: 'images', images, pdfs, links: [] }
+    };
+  });
+
+  const researchEntries = (data.researchEntries || []).map((e: any, idx: number) => {
+    const images = (e.assets?.images || e.images || []).map((i: any) => (typeof i === 'string' ? i : asString(i?.url))).filter(Boolean);
+    const pdfs = (e.assets?.pdfs || e.pdfs || []).map((p: any) => (typeof p === 'string' ? p : asString(p?.url))).filter(Boolean);
+    return {
+      id: asString(e.id, String(idx + 1)),
+      title: asString(e.title),
+      authors: asString(e.authors, userName),
+      publication: asString(e.organization || e.publication || e.journal),
+      journal: asString(e.organization || e.publication || e.journal),
+      organization: asString(e.organization || e.publication || e.journal),
+      date: asString(e.date || e.year),
+      year: asString(e.date || e.year),
+      images,
+      pdfs,
+      assets: e.assets || { mode: 'images', images, pdfs, links: [] }
+    };
+  });
+
+  const contactDataObj = {
+    email: userEmail,
+    phone: userPhone,
+    linkedin: userLinkedin,
+    github: userGithub,
+    portfolio: userPortfolio,
+    socials,
+    customLinks: socials
+  };
+
+  return {
+    profile: {
+      handle: asString(data.handle, data.name ? data.name.toLowerCase().replace(/[^a-z0-9]/g, '') : 'portfolio'),
+      headline,
+      careerGoal: bio,
+      bio,
+      completionPct: 100
+    },
+    user: {
+      name: userName,
+      email: userEmail,
+      photoUrl: userPhoto,
+      resumeUrl: asString(data.resumeUrl || data.uploadedResumeUrl),
+      openToHire: !!data.openToHire,
+      templateId,
+      themeColor,
+      themeBg
+    },
+    isPremium: true,
+    aboutEntries,
+    educationEntries,
+    experienceEntries,
+    projectEntries,
+    certificateEntries,
+    achievementEntries,
+    researchEntries,
+    contactData: contactDataObj,
+    sections: {
+      about: { reviewed: true, entries: aboutEntries },
+      education: { reviewed: true, entries: educationEntries },
+      experience: { reviewed: true, entries: experienceEntries },
+      projects: { reviewed: true, entries: projectEntries },
+      certificates: { reviewed: true, entries: certificateEntries },
+      achievements: { reviewed: true, entries: achievementEntries },
+      research: { reviewed: true, entries: researchEntries },
+      contact: { reviewed: true, entries: [{ email: userEmail, socials }] }
+    }
+  };
+}
+
+/** Reusable template iframe that syncs user data via postMessage */
+function PreviewIframe({
+  templateId,
+  themeColor,
+  themeBg,
+  data,
+  className = "w-full h-full border-0"
+}: {
+  templateId: string;
+  themeColor: string;
+  themeBg: string;
+  data: OnboardingData;
+  className?: string;
+}) {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  const sendUpdate = useCallback(() => {
+    if (!iframeRef.current || !iframeRef.current.contentWindow) return;
+    const payload = buildProfileFromOnboardingData(data, themeColor, themeBg, templateId);
+    try {
+      iframeRef.current.contentWindow.postMessage({
+        type: "BEXO_PROFILE_UPDATE",
+        profile: payload
+      }, "*");
+    } catch {
+      // ignore cross-origin restrictions
+    }
+  }, [data, themeColor, themeBg, templateId]);
+
+  const handleLoad = () => {
+    sendUpdate();
+    setTimeout(sendUpdate, 150);
+    setTimeout(sendUpdate, 500);
+    setTimeout(sendUpdate, 1200);
+  };
+
+  useEffect(() => {
+    sendUpdate();
+  }, [sendUpdate]);
+
+  const handle = data?.handle || (data?.name ? data.name.toLowerCase().replace(/[^a-z0-9]/g, '') : '');
+  const previewUrl = handle ? getTemplatePreviewUrl(templateId, handle) : getDemoPreviewUrl(templateId);
+
+  return (
+    <iframe
+      ref={iframeRef}
+      src={previewUrl}
+      title={`${templateId} Live Preview`}
+      className={className}
+      onLoad={handleLoad}
+      tabIndex={-1}
+      loading="lazy"
+    />
+  );
+}
+
 export default function Step7Theme() {
   const { data, updateData, nextStep } = useOnboarding();
   const initialTemplate =
@@ -43,7 +313,9 @@ export default function Step7Theme() {
   const [previewTemplate, setPreviewTemplate] = useState<string | null>(null);
   const [isSwooshing, setIsSwooshing] = useState(false);
   const showThemeOptions = THEMEABLE_TEMPLATE_IDS.has(selectedTemplate);
-  const previewLabel = `${MARKETING_DEMO_HANDLE}.atbexo.com`;
+
+  const userHandle = data?.handle || (data?.name ? data.name.toLowerCase().replace(/[^a-z0-9]/g, '') : MARKETING_DEMO_HANDLE);
+  const previewLabel = `${userHandle}.atbexo.com`;
 
   const handleContinue = () => {
     const chosen = TEMPLATES.find(t => t.id === selectedTemplate);
@@ -77,7 +349,7 @@ export default function Step7Theme() {
             Template & Theme
           </h1>
           <p className="text-slate-500 text-sm sm:text-base md:text-lg">
-            Preview every Pro layout with the BEXO demo portfolio, then pick yours.
+            Preview how your portfolio looks across every Pro layout, then pick your favorite.
           </p>
         </div>
         
@@ -158,15 +430,14 @@ export default function Step7Theme() {
                 </span>
               </div>
               
-              {/* Miniature Website Iframe — always demo portfolio */}
+              {/* Miniature Website Iframe rendering actual user data */}
               {tpl.previewable ? (
                 <div className="w-[300%] h-[300%] origin-top-left scale-[0.333] pointer-events-none select-none shrink-0">
-                  <iframe 
-                    src={getDemoPreviewUrl(tpl.id)}
-                    title={`${tpl.id} Thumbnail`}
-                    className="w-full h-full border-0"
-                    tabIndex={-1}
-                    loading="lazy"
+                  <PreviewIframe
+                    templateId={tpl.id}
+                    themeColor={selectedTheme}
+                    themeBg={selectedThemeBg}
+                    data={data}
                   />
                 </div>
               ) : (
@@ -193,7 +464,7 @@ export default function Step7Theme() {
                     className="bg-white/90 backdrop-blur border-white/50 text-slate-900 shadow-sm hover:bg-white"
                     onClick={(e) => { e.stopPropagation(); setPreviewTemplate(tpl.id); }}
                   >
-                    <Eye className="w-4 h-4 mr-2" /> Preview demo
+                    <Eye className="w-4 h-4 mr-2" /> Live Preview
                   </Button>
                 )}
               </div>
@@ -220,8 +491,7 @@ export default function Step7Theme() {
         <div className="mt-6 flex items-start gap-2.5 rounded-xl border border-indigo-100 bg-indigo-50/70 px-4 py-3">
           <CheckCircle2 className="w-4 h-4 text-indigo-500 mt-0.5 shrink-0" />
           <p className="text-xs text-indigo-900 leading-relaxed">
-            <span className="font-bold">Pro template selected.</span> You are previewing the BEXO demo
-            portfolio — your choice activates automatically once you pick a Pro plan.
+            <span className="font-bold">Pro template selected.</span> Previewing your live profile — your selection will activate automatically once you pick a Pro plan.
           </p>
         </div>
       )}
@@ -260,12 +530,12 @@ export default function Step7Theme() {
             </div>
             
             <div className="flex-1 w-full h-full relative bg-slate-50">
-              <iframe 
-                src={getDemoPreviewUrl(previewTemplate)}
-                title={`${previewTemplate} Preview`}
+              <PreviewIframe
+                templateId={previewTemplate}
+                themeColor={selectedTheme}
+                themeBg={selectedThemeBg}
+                data={data}
                 className="w-full h-full rounded-b-xl border-none bg-white"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-                allowFullScreen
               />
             </div>
           </div>
@@ -275,3 +545,4 @@ export default function Step7Theme() {
     </div>
   );
 }
+

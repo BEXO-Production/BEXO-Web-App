@@ -3,15 +3,16 @@ import { createPortal } from 'react-dom';
 import { useLocation } from 'wouter';
 import { useOnboarding } from '../context/OnboardingContext';
 import { Button, Input, Card } from '../design-system/primitives';
-import { Check, ShieldCheck, Loader2, ArrowRight, Tag, ArrowLeft, X, Eye, Globe, Database, Minus, Plus } from 'lucide-react';
+import { Check, ShieldCheck, Loader2, ArrowRight, ArrowLeft, X, Eye, Globe, Database, Minus, Plus } from 'lucide-react';
 import { cn } from '../design-system/primitives';
 import { useToast } from '../hooks/use-toast';
 import { buildMinimalPortfolioHTML } from '../lib/buildMinimalHTML';
 import { PENDING_TEMPLATE_KEY } from './step-7';
 import { JUST_ACTIVATED_KEY } from './welcome';
 import { PORTFOLIO_TEMPLATES, FREE_FALLBACK_TEMPLATE_ID } from '../lib/templates';
-import { BILLING_PERIOD_LABELS, PLAN_LABELS, STORAGE_BLOCK_BYTES, planBaseQuotaBytes } from '../lib/pricing';
-import { usePricing, validateCouponApi, type PublicPricingPlan, type PricingBreakdown } from '../hooks/use-pricing';
+import { BILLING_PERIOD_LABELS, PLAN_LABELS, STORAGE_BLOCK_BYTES, planBaseQuotaBytes, computeStorageBundle, FREE_STORAGE_BYTES, computeCanBuy, normalizeClientPlanId } from '../lib/pricing';
+import { usePricing, type PublicPricingPlan } from '../hooks/use-pricing';
+import { apiUrl } from '../lib/api';
 
 declare global {
   interface Window {
@@ -27,7 +28,6 @@ const THEMES = [
 ];
 
 type PaidPlanId = 'identity' | 'essential' | 'growth' | 'studentplus';
-const SUBSCRIPTION_PLANS: PaidPlanId[] = ['identity', 'essential', 'growth'];
 
 const formatMb = (bytes: number) => `${Math.round((Number(bytes) || 0) / (1024 * 1024))}MB`;
 const fmtINR = (n: number) =>
@@ -39,7 +39,7 @@ export default function Step9Plan() {
   const { data, updateData } = useOnboarding();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { gstRate, paidPlans, planById } = usePricing();
+  const { paidPlans, planById } = usePricing();
 
   const [tab, setTab] = useState<'pay' | 'code'>('pay');
   const [plan, setPlan] = useState<PaidPlanId>('essential');
@@ -48,16 +48,13 @@ export default function Step9Plan() {
   const [codeError, setCodeError] = useState('');
   const [isSwooshing] = useState(false);
 
-  // Checkout specific states
-  const [showCheckout, setShowCheckout] = useState(false);
-  const [couponCode, setCouponCode] = useState('');
-  const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
-  const [couponPricing, setCouponPricing] = useState<PricingBreakdown | null>(null);
-  const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
-
   // Storage add-on states (for premium users on /billing)
   const [addonBlocks, setAddonBlocks] = useState(1);
   const [isAddonProcessing, setIsAddonProcessing] = useState(false);
+  const [cancelStep, setCancelStep] = useState<'closed' | 'reason' | 'confirm'>('closed');
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelConfirmText, setCancelConfirmText] = useState('');
+  const [isCancellingSub, setIsCancellingSub] = useState(false);
 
   // Free flow states
   const [freeFlowStep, setFreeFlowStep] = useState<'none' | 'warning' | 'handle'>('none');
@@ -69,41 +66,106 @@ export default function Step9Plan() {
   const [handleError, setHandleError] = useState('');
   const [showFreePreview, setShowFreePreview] = useState(false);
 
+  // Keep the add-more stepper within remaining capacity.
   useEffect(() => {
-    setAppliedCoupon(null);
-    setCouponPricing(null);
-  }, [plan]);
+    const remaining = Math.max(0, 20 - Number(data.addonBlocks || 0));
+    if (remaining > 0 && addonBlocks > remaining) setAddonBlocks(remaining);
+  }, [data.addonBlocks, addonBlocks]);
+
+  // Always refresh billing entitlements on this page so canBuy / cancel flags stay truthful.
+  useEffect(() => {
+    if (!data.hasCompletedOnboarding) return;
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(apiUrl('/api/payments/status'), {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const result = await res.json().catch(() => ({}));
+        if (cancelled || !res.ok) return;
+        const planId = normalizeClientPlanId(result.plan) || result.plan;
+        updateData({
+          plan: planId,
+          isPremium: !!result.isPremium,
+          storageQuotaBytes: result.storageQuotaBytes,
+          storageBonusBytes: result.storageBonusBytes ?? 0,
+          canBuy: result.canBuy || computeCanBuy(!!result.isPremium, planId),
+          renewalMode: result.renewalMode || 'purchase',
+          expiresAt: result.expiresAt,
+          autopay: result.subscription?.autopay ?? false,
+          billingPeriod: result.billingPeriod,
+          addonBlocks: result.addonBlocks ?? 0,
+          addonHasAutopay: result.addonHasAutopay ?? result.addon?.hasAutopay ?? false,
+          limits: result.limits,
+          cancelAtPeriodEnd: !!result.cancelAtPeriodEnd,
+          siteStatus: result.siteStatus,
+          pauseReason: result.pauseReason,
+          graceUntil: result.graceUntil,
+          paymentFailedAt: result.paymentFailedAt,
+          isInPaymentGrace: !!result.isInPaymentGrace,
+          isPausedForVisitors: !!result.isPausedForVisitors,
+          overStorage: !!result.overStorage,
+        } as any);
+      } catch (err) {
+        console.error('Billing status refresh failed:', err);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.hasCompletedOnboarding]);
 
   const portfolioHTML = useMemo(
     () => buildMinimalPortfolioHTML(data, freeTheme, freeHandle || 'yourhandle', freeThemeBg),
     [data, freeTheme, freeHandle, freeThemeBg]
   );
 
-  const selectedPlan: PublicPricingPlan | undefined = planById(plan);
-  const basePrice = selectedPlan?.priceInrExGst ?? 0;
-  const listPricing = selectedPlan?.pricing || null;
-  const isSubscriptionPlan = SUBSCRIPTION_PLANS.includes(plan);
-  const periodLabel = BILLING_PERIOD_LABELS[selectedPlan?.billingPeriod || 'yearly'] || '';
+  const totalUsedStorageBytes = useMemo(() => {
+    let total = 0;
+    if ((data as any).photoSizeBytes) total += Number((data as any).photoSizeBytes) || 0;
+    if (data.resumeFileSize) total += Number(data.resumeFileSize) || 0;
+    const sectionKeys = ['projectEntries', 'certificateEntries', 'achievementEntries', 'researchEntries'];
+    for (const key of sectionKeys) {
+      const list = (data as any)[key] || [];
+      for (const item of list) {
+        if (item?.assets) {
+          if (Array.isArray(item.assets.images)) {
+            for (const img of item.assets.images) total += Number(img.sizeBytes) || 0;
+          }
+          if (Array.isArray(item.assets.pdfs)) {
+            for (const pdf of item.assets.pdfs) total += Number(pdf.sizeBytes) || 0;
+          }
+        }
+      }
+    }
+    return total;
+  }, [data]);
 
-  const discount = couponPricing?.discount ?? 0;
-  const subtotal = couponPricing?.subtotal ?? listPricing?.subtotal ?? basePrice;
-  const gst = couponPricing?.gst ?? listPricing?.gst ?? Math.round(subtotal * 100 * gstRate) / 100;
-  const total = couponPricing?.total ?? listPricing?.total ?? Math.round((subtotal + gst) * 100) / 100;
+  const usedStorageMbNumber = totalUsedStorageBytes / (1024 * 1024);
+  const usedStorageMb = usedStorageMbNumber > 0 ? usedStorageMbNumber.toFixed(1) : '0';
+  const bundleInfo = useMemo(() => computeStorageBundle(totalUsedStorageBytes, plan), [totalUsedStorageBytes, plan]);
+
+  const selectedPlan: PublicPricingPlan | undefined = planById(plan);
   const isBillingManagement = data.hasCompletedOnboarding;
 
   const handleStr = data.handle || (data.name ? data.name.toLowerCase().replace(/[^a-z0-9]/g, '') : '');
   const portfolioUrl = handleStr ? `${handleStr}.atbexo.com` : null;
 
-  const currentPlanId = data.plan === 'annual' ? 'growth' : data.plan === 'lifetime' ? 'studentplus' : data.plan;
+  const currentPlanId = normalizeClientPlanId(data.plan) || data.plan;
   const currentPlanLabel = PLAN_LABELS[currentPlanId || 'free'] || 'Free';
   const isLifetimePlan = currentPlanId === 'studentplus';
+  const canBuy = computeCanBuy(!!data.isPremium, currentPlanId);
+  const upgradeTargets = (['essential', 'growth'] as PaidPlanId[]).filter(
+    (id) => canBuy[id] && id !== currentPlanId,
+  );
 
   const expiryLabel = data.expiresAt
     ? new Date(data.expiresAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
     : null;
 
   const addonPricePerBlock = planById('storage_addon')?.priceInrExGst ?? 25;
-  const addonTotalInr = Math.round(addonPricePerBlock * addonBlocks * 100 * (1 + gstRate)) / 100;
+  const addonSubtotalInr = Math.round(addonPricePerBlock * addonBlocks * 100) / 100;
 
   const finishPremiumActivation = async (
     activatedPlan: string,
@@ -118,15 +180,17 @@ export default function Step9Plan() {
     localStorage.removeItem(PENDING_TEMPLATE_KEY);
     const token = localStorage.getItem('token');
 
-    const quota = extras?.storageQuotaBytes ?? planBaseQuotaBytes(activatedPlan);
+    const extraBlocks = bundleInfo.extraBlocksNeeded;
+    const baseQuota = extras?.storageQuotaBytes ?? planBaseQuotaBytes(activatedPlan);
+    const quota = baseQuota + (extraBlocks * STORAGE_BLOCK_BYTES);
 
     const patchBody: Record<string, unknown> = {
       plan: activatedPlan,
       isPremium: true,
       hasCompletedOnboarding: true,
       storageQuotaBytes: quota,
-      storageBonusBytes: extras?.storageBonusBytes ?? data.storageBonusBytes ?? 0,
-      canBuy: { identity: false, essential: false, growth: false, studentplus: false, storage: true, annual: false, lifetime: false },
+      storageBonusBytes: (extras?.storageBonusBytes ?? data.storageBonusBytes ?? 0) + (extraBlocks * STORAGE_BLOCK_BYTES),
+      canBuy: computeCanBuy(true, activatedPlan),
       renewalMode: 'renew',
       expiresAt: extras?.expiresAt ?? data.expiresAt,
     };
@@ -153,57 +217,74 @@ export default function Step9Plan() {
     setLocation('/welcome');
   };
 
-  const verifyPayment = async (token: string | null, payload: any) => {
-    const verifyRes = await fetch("/api/payments/verify", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`
-      },
-      body: JSON.stringify({
-        ...payload,
-        plan,
-        couponCode: appliedCoupon,
-      })
-    });
-
-    const verifyData = await verifyRes.json();
-    if (!verifyRes.ok) {
-      throw new Error(verifyData.error || "Payment verification failed");
+  const handleAddonCancel = async () => {
+    setIsAddonProcessing(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch("/api/payments/addon/cancel", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      const result = await res.json();
+      if (!res.ok) {
+        if (res.status === 409 && result.code === 'ADDON_ALREADY_CANCELLED') {
+          toast({ title: 'Auto-renew already off', description: result.error });
+          updateData({
+            addonBlocks: result.addonBlocks ?? data.addonBlocks,
+            addonHasAutopay: false,
+          } as any);
+          return;
+        }
+        throw new Error(result.error || "Failed to cancel the add-on");
+      }
+      toast({ title: 'Storage updated', description: result.message });
+      updateData({
+        storageQuotaBytes: result.storageQuotaBytes,
+        ...(typeof result.addonBlocks === 'number' ? { addonBlocks: result.addonBlocks } : {}),
+        ...(typeof result.addonHasAutopay === 'boolean' ? { addonHasAutopay: result.addonHasAutopay } : { addonHasAutopay: false }),
+      } as any);
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } finally {
+      setIsAddonProcessing(false);
     }
-
-    await finishPremiumActivation(verifyData.plan || plan, {
-      storageQuotaBytes: verifyData.storageQuotaBytes,
-      storageBonusBytes: verifyData.storageBonusBytes,
-      stacked: verifyData.stacked,
-      expiresAt: verifyData.expiresAt,
-    });
   };
 
-  const verifySubscription = async (token: string | null, payload: any) => {
-    const verifyRes = await fetch("/api/payments/verify-subscription", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`
-      },
-      body: JSON.stringify({
-        ...payload,
-        couponCode: appliedCoupon,
-      })
-    });
-
-    const verifyData = await verifyRes.json();
-    if (!verifyRes.ok) {
-      throw new Error(verifyData.error || "Subscription verification failed");
+  const handleSubscriptionCancel = async () => {
+    if (cancelConfirmText.trim().toUpperCase() !== 'CANCEL') {
+      toast({ title: 'Type CANCEL to confirm', variant: 'destructive' });
+      return;
     }
+    setIsCancellingSub(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/payments/subscription/cancel', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ reason: cancelReason }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Failed to cancel subscription');
+      updateData({
+        cancelAtPeriodEnd: true,
+        autopay: false,
+      } as any);
+      toast({ title: 'Auto-renew cancelled', description: result.message });
+      setCancelStep('closed');
+      setCancelConfirmText('');
+      setCancelReason('');
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } finally {
+      setIsCancellingSub(false);
+    }
+  };
 
-    await finishPremiumActivation(verifyData.plan || plan, {
-      storageQuotaBytes: verifyData.storageQuotaBytes,
-      storageBonusBytes: verifyData.storageBonusBytes,
-      stacked: verifyData.stacked,
-      expiresAt: verifyData.expiresAt,
-    });
+  const startUpgradeCheckout = (target: PaidPlanId) => {
+    setLocation(`/checkout?plan=${target}`);
   };
 
   const validateCode = () => {
@@ -214,268 +295,6 @@ export default function Step9Plan() {
     }
     setCodeError('');
     return true;
-  };
-
-  const handleApplyCoupon = async () => {
-    setIsApplyingCoupon(true);
-    try {
-      const result = await validateCouponApi(plan, couponCode);
-      if (!result.valid || !result.pricing) {
-        setAppliedCoupon(null);
-        setCouponPricing(null);
-        toast({
-          title: 'Invalid Coupon',
-          description: result.message || 'The coupon code you entered is invalid.',
-          variant: 'destructive',
-        });
-        return;
-      }
-      setAppliedCoupon(result.coupon || couponCode.toUpperCase());
-      setCouponPricing(result.pricing);
-      toast({ title: 'Coupon Applied', description: 'Discount has been applied to your total.' });
-    } catch {
-      toast({ title: 'Error', description: 'Could not validate coupon. Try again.', variant: 'destructive' });
-    } finally {
-      setIsApplyingCoupon(false);
-    }
-  };
-
-  const openRazorpayModal = (options: any) => {
-    if (window.Razorpay) {
-      const rzp = new window.Razorpay(options);
-      rzp.on('payment.failed', function (response: any) {
-        toast({ title: 'Payment Failed', description: response.error?.description || 'Payment failed', variant: 'destructive' });
-        setIsProcessing(false);
-        setIsAddonProcessing(false);
-      });
-      rzp.open();
-      // Keep processing=true while the checkout modal is open (cleared on dismiss / fail / success)
-    } else {
-      toast({ title: 'Error', description: 'Razorpay SDK failed to load. Refresh and try again.', variant: 'destructive' });
-      setIsProcessing(false);
-      setIsAddonProcessing(false);
-    }
-  };
-
-  const baseRazorpayOptions = (_token: string | null) => ({
-    name: "Bexo",
-    modal: {
-      ondismiss: function () {
-        setIsProcessing(false);
-        setIsAddonProcessing(false);
-      },
-    },
-    prefill: {
-      name: data.name,
-      email: data.contactData?.email || "",
-      contact: data.phone || ""
-    },
-    theme: { color: "#4f46e5" }
-  });
-
-  // Identity / Essential / Growth = auto-renewing Razorpay Subscription (autopay)
-  const startSubscriptionCheckout = async (token: string | null): Promise<void> => {
-    const subRes = await fetch("/api/payments/create-subscription", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`
-      },
-      body: JSON.stringify({ plan, couponCode: appliedCoupon })
-    });
-
-    const subData = await subRes.json();
-
-    if (!subRes.ok) {
-      if (subData.code === 'USE_ORDER' || subRes.status === 503) {
-        // Autopay not configured yet — fall back to a one-time order so
-        // checkout keeps working.
-        await startOrderCheckout(token);
-        return;
-      }
-      throw new Error(subData.error || "Failed to start subscription");
-    }
-
-    if (subData.mock) {
-      await verifySubscription(token, {
-        razorpay_payment_id: `mock_payment_${Date.now()}`,
-        razorpay_subscription_id: subData.subscriptionId,
-        razorpay_signature: 'mock_signature'
-      });
-      return;
-    }
-
-    openRazorpayModal({
-      ...baseRazorpayOptions(token),
-      key: subData.key || 'rzp_test_YourKeyIdHere',
-      subscription_id: subData.subscriptionId,
-      description: `${selectedPlan?.displayName || 'Plan'} — auto-renews via Razorpay Autopay`,
-      handler: async function (response: any) {
-        setIsProcessing(true);
-        try {
-          toast({ title: 'Processing Payment', description: 'Please wait while we activate your subscription...' });
-          await verifySubscription(token, response);
-        } catch (err: any) {
-          console.error("Verification error:", err);
-          toast({ title: 'Verification Failed', description: err.message, variant: 'destructive' });
-          setIsProcessing(false);
-        }
-      },
-    });
-  };
-
-  // Student+ = one-time Razorpay Order
-  const startOrderCheckout = async (token: string | null): Promise<void> => {
-    const orderRes = await fetch("/api/payments/create-order", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`
-      },
-      body: JSON.stringify({ plan, couponCode: appliedCoupon })
-    });
-
-    const orderData = await orderRes.json();
-
-    if (!orderRes.ok) {
-      if (orderData.code === 'USE_SUBSCRIPTION') {
-        await startSubscriptionCheckout(token);
-        return;
-      }
-      throw new Error(orderData.error || "Failed to create order");
-    }
-
-    if (orderData.mock) {
-      await verifyPayment(token, {
-        razorpay_payment_id: `mock_payment_${Date.now()}`,
-        razorpay_order_id: orderData.orderId,
-        razorpay_signature: 'mock_signature'
-      });
-      return;
-    }
-
-    openRazorpayModal({
-      ...baseRazorpayOptions(token),
-      key: orderData.key || 'rzp_test_YourKeyIdHere',
-      amount: orderData.amount,
-      currency: orderData.currency,
-      order_id: orderData.orderId,
-      description: `${selectedPlan?.displayName || 'Plan'} — one-time payment`,
-      handler: async function (response: any) {
-        setIsProcessing(true);
-        try {
-          toast({ title: 'Processing Payment', description: 'Please wait while we verify your payment...' });
-          await verifyPayment(token, response);
-        } catch (err: any) {
-          console.error("Verification error:", err);
-          toast({ title: 'Verification Failed', description: err.message, variant: 'destructive' });
-          setIsProcessing(false);
-        }
-      },
-    });
-  };
-
-  const handleRazorpayCheckout = async () => {
-    setIsProcessing(true);
-    try {
-      const token = localStorage.getItem('token');
-      if (isSubscriptionPlan) {
-        await startSubscriptionCheckout(token);
-      } else {
-        await startOrderCheckout(token);
-      }
-    } catch (err: any) {
-      console.error("Checkout error:", err);
-      toast({ title: 'Checkout Error', description: err.message, variant: 'destructive' });
-      setIsProcessing(false);
-    }
-  };
-
-  // Storage add-on (premium users only) — second concurrent subscription
-  const handleAddonCheckout = async () => {
-    setIsAddonProcessing(true);
-    try {
-      const token = localStorage.getItem('token');
-      const res = await fetch("/api/payments/create-addon-subscription", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify({ blocks: addonBlocks })
-      });
-      const addonData = await res.json();
-      if (!res.ok) throw new Error(addonData.error || "Failed to start the storage add-on");
-
-      const verifyAddon = async (payload: any) => {
-        const verifyRes = await fetch("/api/payments/verify-addon-subscription", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`
-          },
-          body: JSON.stringify(payload)
-        });
-        const verifyData = await verifyRes.json();
-        if (!verifyRes.ok) throw new Error(verifyData.error || "Add-on verification failed");
-        updateData({
-          storageQuotaBytes: verifyData.storageQuotaBytes,
-          addonBlocks: addonBlocks,
-        } as any);
-        toast({
-          title: 'Storage added!',
-          description: `+${formatMb(addonBlocks * STORAGE_BLOCK_BYTES)} is now live on your account.`,
-        });
-        setIsAddonProcessing(false);
-      };
-
-      if (addonData.mock) {
-        await verifyAddon({
-          razorpay_payment_id: `mock_payment_${Date.now()}`,
-          razorpay_subscription_id: addonData.subscriptionId,
-          razorpay_signature: 'mock_signature'
-        });
-        return;
-      }
-
-      openRazorpayModal({
-        ...baseRazorpayOptions(token),
-        key: addonData.key || 'rzp_test_YourKeyIdHere',
-        subscription_id: addonData.subscriptionId,
-        description: `Storage Increase — ${addonBlocks} × 50MB block(s), monthly`,
-        handler: async function (response: any) {
-          setIsAddonProcessing(true);
-          try {
-            await verifyAddon(response);
-          } catch (err: any) {
-            toast({ title: 'Verification Failed', description: err.message, variant: 'destructive' });
-            setIsAddonProcessing(false);
-          }
-        },
-      });
-    } catch (err: any) {
-      toast({ title: 'Add-on Error', description: err.message, variant: 'destructive' });
-      setIsAddonProcessing(false);
-    }
-  };
-
-  const handleAddonCancel = async () => {
-    setIsAddonProcessing(true);
-    try {
-      const token = localStorage.getItem('token');
-      const res = await fetch("/api/payments/addon/cancel", {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${token}` }
-      });
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.error || "Failed to cancel the add-on");
-      toast({ title: 'Add-on cancelled', description: result.message });
-      updateData({ storageQuotaBytes: result.storageQuotaBytes } as any);
-    } catch (err: any) {
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
-    } finally {
-      setIsAddonProcessing(false);
-    }
   };
 
   const handleActivationCode = async () => {
@@ -636,438 +455,13 @@ export default function Step9Plan() {
   // ──────────────────────────────────────────────────────────────────────
   // CHECKOUT VIEW
   // ──────────────────────────────────────────────────────────────────────
-  if (showCheckout) {
-    return (
-      <div className="flex flex-col h-full max-w-md w-full mx-auto justify-center pb-10 animate-in fade-in slide-in-from-right-4">
-        <button 
-          onClick={() => setShowCheckout(false)}
-          className="flex items-center text-slate-500 hover:text-slate-900 mb-6 transition-colors w-fit text-sm font-medium"
-        >
-          <ArrowLeft className="w-4 h-4 mr-1" /> Back to Plans
-        </button>
-
-        <h2 className="font-serif text-2xl font-bold text-slate-900 mb-6">Checkout</h2>
-
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 mb-6">
-          <div className="flex justify-between items-center gap-3 mb-6 pb-6 border-b border-slate-100">
-            <div className="min-w-0">
-              <h3 className="font-bold text-slate-900 text-lg">{selectedPlan?.displayName || 'Plan'}</h3>
-              <p className="text-slate-500 text-sm">
-                {selectedPlan?.billingPeriod === 'monthly'
-                  ? 'Auto-renews monthly via Razorpay Autopay'
-                  : selectedPlan?.billingPeriod === 'yearly'
-                    ? 'Auto-renews yearly via Razorpay Autopay'
-                    : 'One-time payment — yours forever'}
-              </p>
-            </div>
-            <div className="text-xl font-bold text-slate-900 shrink-0">
-              ₹{fmtINR(basePrice)}<span className="text-xs font-medium text-slate-400">{periodLabel}</span>
-            </div>
-          </div>
-
-          <div className="space-y-4 mb-6 pb-6 border-b border-slate-100">
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Tag className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <Input 
-                  placeholder="Coupon Code" 
-                  className="pl-9"
-                  value={couponCode}
-                  onChange={(e) => setCouponCode(e.target.value)}
-                  disabled={!!appliedCoupon}
-                />
-              </div>
-              {!appliedCoupon ? (
-                <Button 
-                  onClick={handleApplyCoupon} 
-                  disabled={!couponCode || isApplyingCoupon}
-                  variant="secondary"
-                >
-                  {isApplyingCoupon ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Apply'}
-                </Button>
-              ) : (
-                <Button 
-                  onClick={() => { setAppliedCoupon(null); setCouponCode(''); setCouponPricing(null); }}
-                  variant="outline"
-                  className="text-red-500 hover:text-red-600 hover:bg-red-50 border-red-200"
-                >
-                  Remove
-                </Button>
-              )}
-            </div>
-            {appliedCoupon && (
-              <p className="text-green-600 text-xs font-medium flex items-center">
-                <Check className="w-3.5 h-3.5 mr-1" /> Coupon {appliedCoupon} applied successfully!
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-3 mb-6">
-            <div className="flex justify-between text-slate-600 text-sm">
-              <span>Subtotal</span>
-              <span>₹{fmtINR(basePrice)}</span>
-            </div>
-            {discount > 0 && (
-              <div className="flex justify-between text-green-600 text-sm font-medium">
-                <span>Discount ({appliedCoupon})</span>
-                <span>-₹{fmtINR(discount)}</span>
-              </div>
-            )}
-            <div className="flex justify-between text-slate-600 text-sm">
-              <span>GST (18%)</span>
-              <span>₹{gst.toFixed(2)}</span>
-            </div>
-          </div>
-
-          <div className="flex justify-between items-center pt-6 border-t border-slate-200">
-            <span className="font-bold text-slate-900 text-lg">Total</span>
-            <span className="font-bold text-indigo-600 text-2xl">₹{fmtINR(total)}</span>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          className="w-full h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-semibold text-base transition-all duration-200 flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 disabled:opacity-70 disabled:cursor-not-allowed"
-          onClick={handleRazorpayCheckout}
-          disabled={isProcessing}
-        >
-          {isProcessing ? (
-            <Loader2 className="w-5 h-5 animate-spin" />
-          ) : (
-            <>
-              {isSubscriptionPlan
-                ? `Subscribe — ₹${fmtINR(total)}${periodLabel}`
-                : `Pay ₹${fmtINR(total)} Securely`}
-            </>
-          )}
-        </button>
-        {isSubscriptionPlan && (
-          <p className="text-center text-xs text-slate-500 mt-3">
-            Renews automatically {selectedPlan?.billingPeriod === 'monthly' ? 'every month' : 'every year'} at the same price. Cancel anytime.
-          </p>
-        )}
-        <p className="text-center text-xs text-slate-400 mt-4 flex items-center justify-center gap-1">
-          <ShieldCheck className="w-3.5 h-3.5" /> Payments are processed securely by Razorpay
-        </p>
-      </div>
-    );
-  }
-
-  // ──────────────────────────────────────────────────────────────────────
-  // FREE PLAN WARNING VIEW
-  // ──────────────────────────────────────────────────────────────────────
-  if (freeFlowStep === 'warning') {
-    return (
-      <div className="flex flex-col h-full max-w-md w-full mx-auto justify-center pb-10 animate-in fade-in slide-in-from-right-4">
-        <button 
-          onClick={() => setFreeFlowStep('none')}
-          className="flex items-center text-slate-500 hover:text-slate-900 mb-6 transition-colors w-fit text-sm font-medium"
-        >
-          <ArrowLeft className="w-4 h-4 mr-1" /> Back to Plans
-        </button>
-
-        <h2 className="font-serif text-2xl font-bold text-slate-900 mb-2">Are you sure?</h2>
-        <p className="text-slate-500 text-sm mb-6">Here is what you will lose by continuing on the Free tier:</p>
-
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 mb-6 space-y-4">
-          {[
-            {
-              pct: '80%',
-              title: 'Less Storage Space',
-              desc: 'Your storage limit drops to 10MB (paid plans offer 50–100MB + add-ons).',
-            },
-            {
-              icon: <X className="w-4 h-4 text-red-600" />,
-              title: 'No AI Resume Parsing',
-              desc: 'Monthly AI resume data extraction is locked (paid plans include 1–3 parses/month).',
-            },
-            {
-              icon: <X className="w-4 h-4 text-red-600" />,
-              title: 'Locked Premium Templates',
-              desc: `Free publishes a basic path URL. Paid plans unlock ${PORTFOLIO_TEMPLATES.map((t) => t.name).join(', ')} on yourname.atbexo.com.`,
-            },
-            {
-              icon: <X className="w-4 h-4 text-red-600" />,
-              title: 'Only 1 Update Per Month',
-              desc: 'Free includes a single profile update each month (paid plans include 3–10).',
-            },
-          ].map((item, idx) => (
-            <div key={idx} className={cn("flex items-start gap-3", idx < 3 && "pb-3 border-b border-slate-100")}>
-              <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center shrink-0">
-                {'pct' in item ? (
-                  <span className="text-red-600 font-bold text-xs">{item.pct}</span>
-                ) : (
-                  item.icon
-                )}
-              </div>
-              <div>
-                <p className="text-xs font-bold text-slate-900">{item.title}</p>
-                <p className="text-[11px] text-slate-500 mt-0.5">{item.desc}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="space-y-4">
-          {/* VISIBLE Upgrade button */}
-          <button
-            type="button"
-            className="w-full h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-bold text-sm transition-all duration-200 shadow-lg shadow-indigo-600/25 flex items-center justify-center gap-2 cursor-pointer border-none"
-            onClick={() => setFreeFlowStep('none')}
-          >
-            🚀 Get a Paid Plan from ₹59/month
-          </button>
-          
-          {/* Plain clickable text — NOT a button */}
-          <p className="text-center text-xs text-slate-400 select-none">
-            or{' '}
-            <span
-              onClick={() => setFreeFlowStep('handle')}
-              className="text-slate-600 hover:text-slate-900 underline cursor-pointer transition-colors"
-            >
-              I still want to continue with free
-            </span>
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // ──────────────────────────────────────────────────────────────────────
-  // FREE PLAN HANDLE + COLOR PICKER VIEW
-  // ──────────────────────────────────────────────────────────────────────
-  if (freeFlowStep === 'handle') {
-    const selectedThemeObj = THEMES.find(t => t.id === freeTheme) || THEMES[0];
-    const previewUrl = `${freeHandle || 'yourhandle'}.atbexo.com`;
-
-    return (
-      <div className="flex flex-col h-full max-w-md w-full mx-auto justify-center pb-10 animate-in fade-in slide-in-from-right-4">
-        <button 
-          onClick={() => setFreeFlowStep('warning')}
-          className="flex items-center text-slate-500 hover:text-slate-900 mb-6 transition-colors w-fit text-sm font-medium"
-        >
-          <ArrowLeft className="w-4 h-4 mr-1" /> Back
-        </button>
-
-        <h2 className="font-serif text-2xl font-bold text-slate-900 mb-2">Claim Your Handle</h2>
-        <p className="text-slate-500 text-sm mb-6">Choose your portfolio URL and accent colour.</p>
-
-        <div className="space-y-6 mb-8">
-          {/* Handle input */}
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Your Portfolio URL</label>
-            <div className="relative flex">
-              <Input 
-                placeholder="yourhandle" 
-                className={cn(
-                  "rounded-r-none rounded-l-2xl h-12 font-semibold text-slate-800 border-r-0",
-                  handleAvailable === true ? "border-green-400 focus-visible:ring-green-400 z-10" : "",
-                  handleAvailable === false ? "border-red-400 focus-visible:ring-red-400 z-10" : ""
-                )}
-                value={freeHandle}
-                onChange={(e) => {
-                  setFreeHandle(e.target.value.toLowerCase().replace(/[^a-z0-9-_]/g, ''));
-                  setHandleAvailable(null);
-                  setHandleError('');
-                }}
-              />
-              <span className="inline-flex items-center px-4 rounded-r-2xl border border-l-0 border-slate-200 bg-slate-50 text-slate-500 text-sm font-semibold select-none">
-                .atbexo.com
-              </span>
-            </div>
-            
-            {isCheckingHandle && (
-              <p className="text-slate-400 text-xs flex items-center gap-1.5 px-1 font-medium">
-                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Verifying availability...
-              </p>
-            )}
-            {handleAvailable === true && (
-              <p className="text-green-600 text-xs flex items-center gap-1 px-1 font-semibold">
-                <Check className="w-4 h-4" /> This handle is available!
-              </p>
-            )}
-            {handleError && (
-              <p className="text-red-500 text-xs px-1 font-semibold">{handleError}</p>
-            )}
-          </div>
-
-          {/* Accent Colour Picker */}
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Accent Colour</label>
-            <div className="flex gap-3">
-              {THEMES.map(theme => (
-                <button
-                  key={theme.id}
-                  type="button"
-                  onClick={() => setFreeTheme(theme.id)}
-                  className={cn(
-                    "w-9 h-9 rounded-full transition-all duration-150 border-2",
-                    theme.bg,
-                    freeTheme === theme.id
-                      ? "ring-2 ring-offset-2 " + theme.ring + " border-white scale-110 shadow-md"
-                      : "border-transparent hover:scale-105"
-                  )}
-                  aria-label={`Select ${theme.label} theme`}
-                  title={theme.label}
-                />
-              ))}
-            </div>
-            <p className="text-[11px] text-slate-400 px-0.5">
-              Selected: <span className="font-semibold text-slate-600">{selectedThemeObj.label}</span> — this colour will be applied to your live portfolio.
-            </p>
-          </div>
-
-          {/* Background Style Picker */}
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Background Style</label>
-            <div className="grid grid-cols-2 gap-2.5">
-              {[
-                { id: 'grid', label: 'Clean Grid', desc: 'Subtle blueprint' },
-                { id: 'dots', label: 'Minimalist Dots', desc: 'Clean dot matrix' },
-                { id: 'waves', label: 'Abstract Waves', desc: 'Soft vector waves' },
-                { id: 'solid', label: 'Accent Gradient', desc: 'Slate-accent blend' },
-              ].map(bg => {
-                const isSelected = freeThemeBg === bg.id;
-                return (
-                  <button
-                    key={bg.id}
-                    type="button"
-                    onClick={() => setFreeThemeBg(bg.id)}
-                    className={cn(
-                      "relative p-3 rounded-xl border text-left transition-all hover:scale-[1.01] flex flex-col justify-center min-h-[58px]",
-                      isSelected 
-                        ? "border-slate-950 bg-slate-950/5 ring-1 ring-slate-950" 
-                        : "border-slate-200 bg-white hover:border-slate-300"
-                    )}
-                  >
-                    <p className="text-xs font-bold text-slate-950">{bg.label}</p>
-                    <p className="text-[9px] text-slate-500 leading-tight mt-0.5">{bg.desc}</p>
-                    {isSelected && (
-                      <span className="absolute top-2 right-2 w-3.5 h-3.5 rounded-full bg-slate-950 text-white flex items-center justify-center">
-                        <Check className="w-2 h-2" />
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* REAL Portfolio Preview — scaled iframe using srcdoc */}
-          <div className="space-y-2.5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Your Portfolio Preview</span>
-              <button
-                type="button"
-                onClick={() => setShowFreePreview(true)}
-                className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
-              >
-                <Eye className="w-3.5 h-3.5" /> See Full Preview
-              </button>
-            </div>
-
-            {/* Mini browser mockup with real user data rendered via srcdoc iframe */}
-            <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-3 shadow-sm">
-              <div className="w-full rounded-xl border border-slate-200 shadow-inner relative flex flex-col overflow-hidden" style={{ height: 220 }}>
-                {/* browser chrome */}
-                <div className="h-6 bg-slate-100 border-b border-slate-200 flex items-center px-2 gap-1 shrink-0">
-                  <span className="w-2 h-2 rounded-full bg-red-400" />
-                  <span className="w-2 h-2 rounded-full bg-yellow-400" />
-                  <span className="w-2 h-2 rounded-full bg-green-400" />
-                  <div className="ml-2 flex-1 bg-white rounded px-2 py-0.5 border border-slate-200 flex items-center gap-1">
-                    <Globe className="w-2.5 h-2.5 text-slate-400" />
-                    <span className="text-[9px] font-mono text-slate-500 truncate">{previewUrl}</span>
-                  </div>
-                </div>
-                {/* Real portfolio HTML rendered inside iframe via srcdoc — scaled down to fit */}
-                <div className="flex-1 relative overflow-hidden bg-white">
-                  <iframe
-                    key={freeTheme + freeThemeBg + freeHandle}
-                    srcDoc={portfolioHTML}
-                    title="Your Portfolio Preview"
-                    sandbox="allow-same-origin"
-                    className="absolute top-0 left-0 border-0"
-                    style={{
-                      width: '200%',
-                      height: '200%',
-                      transformOrigin: 'top left',
-                      transform: 'scale(0.5)',
-                      pointerEvents: 'none',
-                    }}
-                  />
-                </div>
-              </div>
-              <p className="text-[10px] text-slate-400 leading-normal px-1 text-center mt-2">
-                This is <strong>your actual portfolio</strong> with <span style={{ color: selectedThemeObj.hex }} className="font-semibold">{selectedThemeObj.label}</span> accent — exactly how visitors will see it.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          className="w-full h-14 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-semibold text-base transition-all duration-200 flex items-center justify-center gap-2 shadow-lg shadow-slate-900/20 disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
-          onClick={handleFreePlanActivation}
-          disabled={isProcessing || !freeHandle || handleAvailable !== true}
-        >
-          {isProcessing ? (
-            <Loader2 className="w-5 h-5 animate-spin" />
-          ) : (
-            <>
-              Activate Free Portfolio <ArrowRight className="w-4 h-4 ml-1" />
-            </>
-          )}
-        </button>
-
-        {/* Full Preview Portal — opens in the same tab as a centered popup modal dialog */}
-        {showFreePreview && createPortal(
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-200">
-            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]" onClick={() => setShowFreePreview(false)} />
-            <div className="bg-white w-full max-w-2xl h-[70vh] rounded-2xl shadow-2xl relative flex flex-col overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-200">
-              {/* Browser chrome */}
-              <div className="bg-slate-100 border-b border-slate-200 px-4 py-2.5 flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-red-400" />
-                  <div className="w-3 h-3 rounded-full bg-yellow-400" />
-                  <div className="w-3 h-3 rounded-full bg-green-400" />
-                  <div className="ml-3 bg-white border border-slate-200 rounded-lg px-3 py-1 flex items-center gap-1.5">
-                    <Globe className="w-3.5 h-3.5 text-slate-400" />
-                    <span className="text-xs font-mono text-slate-600">{previewUrl}</span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-slate-400 font-bold tracking-wider uppercase bg-slate-200/50 px-2 py-0.5 rounded">Preview Mode</span>
-                  <button
-                    onClick={() => setShowFreePreview(false)}
-                    className="p-1.5 rounded-lg hover:bg-slate-200 transition-colors"
-                  >
-                    <X className="w-4 h-4 text-slate-600" />
-                  </button>
-                </div>
-              </div>
-              {/* Full-size iframe with your actual portfolio data */}
-              <div className="flex-1 relative overflow-hidden bg-white">
-                <iframe
-                  key={'fullpreview-' + freeTheme + freeThemeBg + freeHandle}
-                  srcDoc={portfolioHTML}
-                  title="Your Full Portfolio Preview"
-                  sandbox="allow-same-origin allow-popups"
-                  className="w-full h-full border-0 absolute inset-0"
-                />
-              </div>
-            </div>
-          </div>,
-          document.body
-        )}
-      </div>
-    );
-  }
-
-  // ──────────────────────────────────────────────────────────────────────
   // ACTIVE PLAN VIEW (For Premium Users) — plan status + storage add-on
   // ──────────────────────────────────────────────────────────────────────
   if (data.isPremium && isBillingManagement) {
     const currentAddonBlocks = data.addonBlocks || 0;
+    const addonHasAutopay = data.addonHasAutopay ?? (data as any).addon?.hasAutopay ?? false;
+    const MAX_ADDON_UI = 20;
+    const addonRemainingSlots = Math.max(0, MAX_ADDON_UI - currentAddonBlocks);
     return (
       <div className="flex flex-col h-full max-w-lg w-full mx-auto justify-center pb-10 animate-in fade-in slide-in-from-right-4">
         <button 
@@ -1134,84 +528,234 @@ export default function Step9Plan() {
             </div>
           </Card>
 
-          {!isLifetimePlan && data.autopay && (
-            <Card className="p-6 bg-white border border-slate-200 shadow-sm">
-              <h3 className="font-bold text-slate-900 text-base mb-1.5">Auto-renew is on</h3>
+          {!isLifetimePlan && (data.autopay || data.cancelAtPeriodEnd) && (
+            <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-3">
+              {data.cancelAtPeriodEnd ? (
+                <>
+                  <h3 className="font-bold text-slate-900 text-base mb-1.5">Auto-renew is off</h3>
+                  <p className="text-sm text-slate-500">
+                    {expiryLabel
+                      ? `You'll keep ${currentPlanLabel} access until ${expiryLabel}, then move to Free.`
+                      : 'Auto-renew is cancelled. Access continues until the end of the paid period.'}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h3 className="font-bold text-slate-900 text-base mb-1.5">Auto-renew is on</h3>
+                  <p className="text-sm text-slate-500">
+                    {expiryLabel
+                      ? `Your ${currentPlanLabel} plan renews automatically on ${expiryLabel} via Razorpay Autopay.`
+                      : `Your ${currentPlanLabel} plan renews automatically via Razorpay Autopay.`}
+                  </p>
+                  <div className="pt-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-9 text-xs text-red-600 border-red-200 hover:bg-red-50"
+                      onClick={() => setCancelStep('reason')}
+                    >
+                      Cancel auto-renew
+                    </Button>
+                  </div>
+                </>
+              )}
+
+              {cancelStep !== 'closed' && !data.cancelAtPeriodEnd && (
+                <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                  {cancelStep === 'reason' && (
+                    <>
+                      <p className="text-xs text-slate-500">
+                        Auto-renew stops today. You keep {currentPlanLabel} until {expiryLabel || 'period end'}, then move to Free.
+                      </p>
+                      <p className="text-xs font-semibold text-slate-700">Quick reason (optional)</p>
+                      {['Too expensive', 'Not using enough', 'Switching plans later', 'Other'].map((r) => (
+                        <button
+                          key={r}
+                          type="button"
+                          onClick={() => { setCancelReason(r); setCancelStep('confirm'); }}
+                          className="block w-full text-left text-xs px-3 py-2 rounded-lg bg-white border border-slate-200 hover:border-indigo-300"
+                        >
+                          {r}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        className="text-[11px] text-slate-400 hover:text-slate-600"
+                        onClick={() => { setCancelReason(''); setCancelStep('confirm'); }}
+                      >
+                        Skip →
+                      </button>
+                    </>
+                  )}
+                  {cancelStep === 'confirm' && (
+                    <>
+                      <p className="text-xs text-slate-600">
+                        Type <span className="font-bold">CANCEL</span> to stop auto-renew.
+                        {expiryLabel ? ` Access continues until ${expiryLabel}.` : ''}
+                      </p>
+                      <Input
+                        value={cancelConfirmText}
+                        onChange={(e) => setCancelConfirmText(e.target.value)}
+                        placeholder="CANCEL"
+                        className="h-9 text-sm"
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-9 text-xs flex-1"
+                          onClick={() => setCancelStep('closed')}
+                          disabled={isCancellingSub}
+                        >
+                          Keep plan
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="h-9 text-xs flex-1 bg-red-600 hover:bg-red-700"
+                          onClick={handleSubscriptionCancel}
+                          disabled={isCancellingSub}
+                        >
+                          {isCancellingSub ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Confirm cancel'}
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </Card>
+          )}
+
+          {/* Upgrade path — Identity → Essential / Growth */}
+          {!isLifetimePlan && (
+            <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-3">
+              <h3 className="font-bold text-slate-900 text-base">Upgrade plan</h3>
               <p className="text-sm text-slate-500">
-                {expiryLabel
-                  ? `Your ${currentPlanLabel} plan renews automatically on ${expiryLabel} via Razorpay Autopay. To cancel auto-renew, contact support@mybexo.cyou.`
-                  : `Your ${currentPlanLabel} plan renews automatically via Razorpay Autopay. To cancel auto-renew, contact support@mybexo.cyou.`}
+                You are on <span className="font-semibold text-slate-700">{currentPlanLabel}</span>.
+                Higher tiers unlock more updates, storage, and visitor analytics.
               </p>
+              <div className="grid gap-2">
+                {upgradeTargets.map((id) => {
+                    const meta = planById(id);
+                    const price = meta?.priceInrExGst ?? (id === 'growth' ? 999 : 199);
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => startUpgradeCheckout(id)}
+                        className="flex items-center justify-between gap-3 rounded-xl border border-indigo-100 bg-indigo-50/50 px-4 py-3 text-left hover:border-indigo-300 transition-colors"
+                      >
+                        <div>
+                          <p className="text-sm font-bold text-slate-900">Upgrade to {PLAN_LABELS[id] || id}</p>
+                          <p className="text-[11px] text-slate-500">
+                            {id === 'growth' ? 'Yearly · analytics + leads inbox' : 'Monthly · analytics + leads inbox'}
+                          </p>
+                        </div>
+                        <span className="text-xs font-bold text-indigo-700">
+                          ₹{fmtINR(price)}{id === 'growth' ? '/yr' : '/mo'} →
+                        </span>
+                      </button>
+                    );
+                  })}
+                {upgradeTargets.length === 0 && (
+                  <p className="text-xs text-slate-400">You're on the highest available upgrade path.</p>
+                )}
+              </div>
             </Card>
           )}
 
           {/* Storage add-on */}
-          <Card className="p-6 bg-white border border-slate-200 shadow-sm">
-            <div className="flex items-start gap-3 mb-4">
+          <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-4">
+            <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
                 <Database className="w-5 h-5" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <h3 className="font-bold text-slate-900 text-base">Storage Increase</h3>
                 <p className="text-sm text-slate-500 mt-0.5">
-                  ₹{addonPricePerBlock}/month per 50MB block, on top of your plan. Cancel anytime.
+                  ₹{addonPricePerBlock}/month per 50MB block, on top of your plan.
                 </p>
               </div>
             </div>
 
-            {currentAddonBlocks > 0 ? (
+            {currentAddonBlocks > 0 && (
               <div className="flex items-center justify-between gap-3 bg-indigo-50/50 border border-indigo-100 rounded-xl p-4">
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm font-bold text-slate-900">
                     {currentAddonBlocks} block{currentAddonBlocks > 1 ? 's' : ''} active (+{formatMb(currentAddonBlocks * STORAGE_BLOCK_BYTES)})
                   </p>
-                  <p className="text-xs text-slate-500 mt-0.5">Billed monthly via Razorpay Autopay.</p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {addonHasAutopay
+                      ? 'Billed monthly via Razorpay Autopay. Cancel removes the latest block at cycle end.'
+                      : 'Auto-renew is off — extra space stays until the end of your paid period.'}
+                  </p>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="text-red-500 hover:text-red-600 hover:bg-red-50 border-red-200 shrink-0"
-                  disabled={isAddonProcessing}
-                  onClick={handleAddonCancel}
-                >
-                  {isAddonProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Cancel add-on'}
-                </Button>
+                {addonHasAutopay ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-red-500 hover:text-red-600 hover:bg-red-50 border-red-200 shrink-0"
+                    disabled={isAddonProcessing}
+                    onClick={handleAddonCancel}
+                  >
+                    {isAddonProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Cancel latest'}
+                  </Button>
+                ) : null}
+              </div>
+            )}
+
+            {addonRemainingSlots > 0 ? (
+              <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-slate-900">
+                    {currentAddonBlocks > 0 ? 'Add more storage' : 'Add storage'}
+                  </p>
+                  <span className="text-[11px] font-medium text-slate-400">
+                    {addonRemainingSlots} block{addonRemainingSlots === 1 ? '' : 's'} left
+                  </span>
+                </div>
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                  <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-2 py-1.5">
+                    <button
+                      type="button"
+                      className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-100 disabled:opacity-40"
+                      onClick={() => setAddonBlocks((b) => Math.max(1, b - 1))}
+                      disabled={addonBlocks <= 1}
+                    >
+                      <Minus className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="text-sm font-bold text-slate-900 w-24 text-center">
+                      {addonBlocks} × 50MB
+                    </span>
+                    <button
+                      type="button"
+                      className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-100 disabled:opacity-40"
+                      onClick={() => setAddonBlocks((b) => Math.min(addonRemainingSlots, b + 1))}
+                      disabled={addonBlocks >= addonRemainingSlots}
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <Button
+                    className="flex-1 h-11"
+                    disabled={isAddonProcessing}
+                    onClick={() => setLocation(`/checkout?kind=storage&blocks=${addonBlocks}`)}
+                  >
+                    <>
+                      {currentAddonBlocks > 0 ? 'Add' : 'Get'} +{formatMb(addonBlocks * STORAGE_BLOCK_BYTES)} — ₹{fmtINR(addonSubtotalInr)}/mo
+                    </>
+                  </Button>
+                </div>
+                {currentAddonBlocks > 0 && (
+                  <p className="text-[11px] text-slate-400">
+                    After this, you’ll have {currentAddonBlocks + addonBlocks} blocks (+{formatMb((currentAddonBlocks + addonBlocks) * STORAGE_BLOCK_BYTES)} total add-on).
+                  </p>
+                )}
               </div>
             ) : (
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5">
-                  <button
-                    type="button"
-                    className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-100 disabled:opacity-40"
-                    onClick={() => setAddonBlocks(b => Math.max(1, b - 1))}
-                    disabled={addonBlocks <= 1}
-                  >
-                    <Minus className="w-3.5 h-3.5" />
-                  </button>
-                  <span className="text-sm font-bold text-slate-900 w-24 text-center">
-                    {addonBlocks} × 50MB
-                  </span>
-                  <button
-                    type="button"
-                    className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-100 disabled:opacity-40"
-                    onClick={() => setAddonBlocks(b => Math.min(20, b + 1))}
-                    disabled={addonBlocks >= 20}
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-                <Button
-                  className="flex-1 h-11"
-                  disabled={isAddonProcessing}
-                  onClick={handleAddonCheckout}
-                >
-                  {isAddonProcessing ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <>Add +{formatMb(addonBlocks * STORAGE_BLOCK_BYTES)} — ₹{fmtINR(addonTotalInr)}/mo</>
-                  )}
-                </Button>
-              </div>
+              <p className="text-xs text-slate-400">
+                You’ve reached the {MAX_ADDON_UI} block cap ({formatMb(MAX_ADDON_UI * STORAGE_BLOCK_BYTES)}). Cancel a block to free a slot.
+              </p>
             )}
           </Card>
         </div>
@@ -1262,11 +806,31 @@ export default function Step9Plan() {
         </button>
       </div>
 
+      {totalUsedStorageBytes > FREE_STORAGE_BYTES && (
+        <div className="mb-6 p-4 bg-amber-50 border border-amber-200/90 rounded-2xl flex items-start gap-3.5 shadow-sm">
+          <div className="p-2 bg-amber-100/80 text-amber-800 rounded-xl font-bold shrink-0">
+            <Database className="w-5 h-5 text-amber-700" />
+          </div>
+          <div className="flex-1">
+            <h4 className="text-sm font-bold text-amber-950 flex items-center gap-2">
+              Portfolio Assets Uploaded: <span className="px-2 py-0.5 bg-amber-200/60 rounded-full text-amber-900 font-mono text-xs">{usedStorageMb} MB</span>
+            </h4>
+            <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+              The free plan includes 10 MB. Choose your plan below so all your uploaded project images, certificates, and PDFs publish instantly without deletion.
+            </p>
+          </div>
+        </div>
+      )}
+
       {tab === 'pay' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 animate-in fade-in slide-in-from-bottom-2">
           {paidPlans.map((p) => {
             const isSelected = plan === p.id;
             const period = BILLING_PERIOD_LABELS[p.billingPeriod] || '';
+            const pBundle = computeStorageBundle(totalUsedStorageBytes, p.id);
+            const pHasAddon = pBundle.extraBlocksNeeded > 0;
+            const pTotalExGst = p.priceInrExGst + pBundle.extraStorageCostInr;
+
             return (
               <Card
                 key={p.id}
@@ -1291,13 +855,29 @@ export default function Step9Plan() {
                   {p.subtitle && <p className="text-[11px] text-slate-500 mt-0.5 font-medium">{p.subtitle}</p>}
                 </div>
                 <div className="mb-3">
-                  <span className="text-2xl font-bold text-slate-900">₹{fmtINR(p.priceInrExGst)}</span>
+                  <span className="text-2xl font-bold text-slate-900">₹{fmtINR(pTotalExGst)}</span>
                   <span className="text-xs text-slate-500">{period}</span>
-                  <span className="text-[10px] text-slate-400 block">
-                    ₹{fmtINR(p.pricing?.total ?? Math.round(p.priceInrExGst * 1.18 * 100) / 100)} incl. GST
-                    {p.billingPeriod === 'monthly' ? ' / month' : p.billingPeriod === 'yearly' ? ' / year' : ' one-time'}
-                  </span>
+                  {pHasAddon && (
+                    <span className="block text-[11px] font-semibold text-indigo-600 mt-0.5">
+                      (₹{fmtINR(p.priceInrExGst)} plan + ₹{fmtINR(pBundle.extraStorageCostInr)} storage add-on)
+                    </span>
+                  )}
                 </div>
+
+                {/* Storage Bundle Indicator */}
+                {pHasAddon ? (
+                  <div className="mb-3 p-2 bg-indigo-50 border border-indigo-100 rounded-lg text-[11px] font-semibold text-indigo-900 flex items-center gap-1.5">
+                    <Database className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                    <span>+{pBundle.extraBlocksNeeded} × 50MB Storage Block (+₹{pBundle.extraStorageCostInr}/mo)</span>
+                  </div>
+                ) : (
+                  totalUsedStorageBytes > FREE_STORAGE_BYTES && (
+                    <div className="mb-3 p-2 bg-emerald-50 border border-emerald-100 rounded-lg text-[11px] font-semibold text-emerald-800 flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span>Covers your {usedStorageMb} MB assets seamlessly</span>
+                    </div>
+                  )
+                )}
                 <ul className="space-y-1.5 mt-auto">
                   {p.features.slice(0, 6).map((feat, i) => (
                     <li key={i} className="flex items-start text-[11px] text-slate-600 leading-snug">
@@ -1337,7 +917,7 @@ export default function Step9Plan() {
           className={`w-full h-14 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-semibold text-base transition-all duration-200 flex items-center justify-center gap-3 group disabled:opacity-50 disabled:pointer-events-none cursor-pointer shadow-lg shadow-slate-900/20 btn-continue-wrap px-6${isSwooshing ? ' is-swooshing' : ''}`}
           onClick={() => {
             if (tab === 'pay') {
-              setShowCheckout(true);
+              setLocation(`/checkout?plan=${plan}`);
             } else {
               handleActivationCode();
             }

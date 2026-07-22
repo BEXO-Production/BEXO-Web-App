@@ -1,5 +1,5 @@
 import { and, eq, lte, or, sql } from "drizzle-orm";
-import { db, emailDeliveries } from "@workspace/db";
+import { db, emailDeliveries, leadReplies } from "@workspace/db";
 import { logger } from "./logger";
 import { sendEmail } from "./mailer";
 import {
@@ -7,10 +7,12 @@ import {
   getBillingReceiptEmail,
   getCartRecoveryEmail,
   getContactNotificationEmail,
+  getLeadReplyEmail,
   getSiteLiveEmail,
   getWelcomeEmail,
   getRecoveryEmail,
   getRenewalReminderEmail,
+  getPaymentFailedEmail,
 } from "./templates";
 import { generateInvoicePDF } from "./invoice";
 import { uploadToR2 } from "./r2";
@@ -92,6 +94,17 @@ async function renderEmail(row: typeof emailDeliveries.$inferSelect) {
         attachments: undefined,
         replyTo: undefined,
       };
+    case "payment_failed":
+      return {
+        html: getPaymentFailedEmail(
+          name,
+          payload.billingUrl || "https://mybexo.cyou/billing",
+          payload.pauseDate || "",
+          Number(payload.dayBucket) || 0,
+        ),
+        attachments: undefined,
+        replyTo: undefined,
+      };
     case "activation":
       return {
         html: getActivationEmail(name, payload.code || payload.transactionId || ""),
@@ -148,6 +161,19 @@ async function renderEmail(row: typeof emailDeliveries.$inferSelect) {
         attachments: undefined,
         replyTo: payload.senderEmail || undefined,
       };
+    case "lead_reply":
+      return {
+        html: getLeadReplyEmail(
+          payload.recipientName || "there",
+          payload.ownerName || name || "A BEXO member",
+          payload.handle || "",
+          payload.body || "",
+          payload.originalSnippet || "",
+        ),
+        attachments: undefined,
+        // When the lead hits Reply, their mail goes to the portfolio owner's contact email.
+        replyTo: payload.replyTo || undefined,
+      };
     default:
       return {
         html: `<p>${row.subject}</p><pre>${JSON.stringify(payload, null, 2)}</pre>`,
@@ -196,6 +222,19 @@ export async function processEmailOutbox(limit = 20) {
             payload: row.payload,
           })
           .where(eq(emailDeliveries.id, row.id));
+
+        if (row.eventType === "lead_reply" && row.relatedId) {
+          await db
+            .update(leadReplies)
+            .set({
+              status: "sent",
+              emailDeliveryId: row.id,
+              providerMessageId: result.messageId || null,
+              sentAt: new Date(),
+              lastError: null,
+            })
+            .where(eq(leadReplies.id, row.relatedId));
+        }
       } else if (result.skipped) {
         await db
           .update(emailDeliveries)
@@ -205,6 +244,17 @@ export async function processEmailOutbox(limit = 20) {
             updatedAt: new Date(),
           })
           .where(eq(emailDeliveries.id, row.id));
+
+        if (row.eventType === "lead_reply" && row.relatedId) {
+          await db
+            .update(leadReplies)
+            .set({
+              status: "skipped",
+              emailDeliveryId: row.id,
+              lastError: result.error || "SMTP not configured",
+            })
+            .where(eq(leadReplies.id, row.relatedId));
+        }
       } else {
         const delayMinutes = Math.min(60, 2 ** Math.min(row.attempts, 5));
         await db
@@ -216,6 +266,17 @@ export async function processEmailOutbox(limit = 20) {
             updatedAt: new Date(),
           })
           .where(eq(emailDeliveries.id, row.id));
+
+        if (row.eventType === "lead_reply" && row.relatedId) {
+          await db
+            .update(leadReplies)
+            .set({
+              status: "failed",
+              emailDeliveryId: row.id,
+              lastError: result.error || "Send failed",
+            })
+            .where(eq(leadReplies.id, row.relatedId));
+        }
       }
     } catch (error: any) {
       const delayMinutes = Math.min(60, 2 ** Math.min(row.attempts, 5));

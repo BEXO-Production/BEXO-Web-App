@@ -417,6 +417,39 @@ export const getRenewalReminderEmail = (
   });
 };
 
+export const getPaymentFailedEmail = (
+  userName: string,
+  billingUrl: string,
+  pauseDate: string,
+  dayBucket = 0,
+) => {
+  const urgency =
+    dayBucket >= 14
+      ? "Final notice: your public portfolio will pause soon if billing is not updated."
+      : dayBucket >= 7
+        ? "Reminder: update your payment method to keep your portfolio online."
+        : "Your BEXO auto-renew payment failed. You have a 15-day grace period before the public site pauses.";
+  return wrapHtml({
+    title: "Update billing to keep your portfolio live",
+    preheader: urgency,
+    eyebrow: "Billing alert",
+    headline: "Auto-renew payment failed.",
+    accent: "amber",
+    ctaLabel: "Fix billing",
+    ctaUrl: billingUrl,
+    bodyHtml: `
+      ${greeting(userName)}
+      ${bodyParagraph(urgency)}
+      ${bodyParagraph(
+        pauseDate
+          ? `Your portfolio stays live until <strong style="color:${INK};">${escapeHtml(pauseDate)}</strong>. After that it will show a paused page to visitors until payment succeeds.`
+          : "Your portfolio stays live during the grace window. After that visitors will see a paused page until payment succeeds.",
+      )}
+      ${featurePills(["15-day grace", "Dashboard still works", "One click to fix"])}
+    `,
+  });
+};
+
 export const getContactNotificationEmail = (
   ownerName: string,
   senderName: string,
@@ -450,5 +483,38 @@ export const getContactNotificationEmail = (
       ${highlightCard("Message", safeMessage, "#ECFDF5")}
       ${bodyParagraph(`Reply directly to this email to continue the conversation with ${escapeHtml(senderName)}.`)}
     `,
+  });
+};
+
+export const getLeadReplyEmail = (
+  recipientName: string,
+  ownerName: string,
+  handle: string,
+  body: string,
+  originalSnippet?: string,
+) => {
+  const safeBody = escapeHtml(body).replace(/\n/g, "<br/>");
+  const portfolio = handle ? `${escapeHtml(handle)}.atbexo.com` : "their BEXO portfolio";
+  const quote = originalSnippet
+    ? highlightCard(
+        "Original enquiry",
+        escapeHtml(originalSnippet.slice(0, 600)).replace(/\n/g, "<br/>"),
+        "#F8FAFC",
+      )
+    : "";
+  return wrapHtml({
+    title: `Reply from ${ownerName}`,
+    preheader: `${ownerName} replied to your message on BEXO.`,
+    eyebrow: "Portfolio reply",
+    headline: `${ownerName} sent you a reply.`,
+    accent: "violet",
+    bodyHtml: `
+      ${greeting(recipientName)}
+      ${bodyParagraph(`You received a reply from <strong style="color:${INK};">${escapeHtml(ownerName)}</strong> via ${portfolio}.`)}
+      ${highlightCard("Their message", safeBody, "#F5F3FF")}
+      ${quote}
+      ${bodyParagraph("You can reply to this email to continue the conversation.")}
+    `,
+    footnote: "Sent securely through BEXO. Replies go directly to the portfolio owner.",
   });
 };

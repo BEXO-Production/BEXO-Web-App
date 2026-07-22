@@ -148,7 +148,7 @@ function buildPlans(prices: {
       price: "₹0",
       period: "forever",
       blurb: "Publish a path-based portfolio and prove the flow.",
-      features: ["Basic template, path URL", "10MB storage", "1 update / month", "Upgrade anytime"],
+      features: ["Basic template, path URL", "10MB storage", "3 updates / month", "Upgrade anytime"],
       cta: "Start free",
       promoted: false,
     },

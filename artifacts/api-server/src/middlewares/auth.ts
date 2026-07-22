@@ -29,3 +29,23 @@ export function requireAuth(req: AuthenticatedRequest, res: Response, next: Next
     return;
   }
 }
+
+export function optionalAuth(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    next();
+    return;
+  }
+
+  const token = authHeader.split(" ")[1];
+  try {
+    const secret = process.env.JWT_SECRET;
+    if (secret) {
+      const decoded = jwt.verify(token, secret) as { id: string };
+      req.user = { id: decoded.id };
+    }
+  } catch (err) {
+    // Ignore invalid token for optional auth
+  }
+  next();
+}

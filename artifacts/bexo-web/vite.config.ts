@@ -8,7 +8,16 @@ const basePath = process.env.BASE_PATH || '/';
 
 export default defineConfig(({ mode }) => {
   const envDir = path.resolve(import.meta.dirname);
+  const rootDir = path.resolve(import.meta.dirname, '../..');
+  const rootEnv = loadEnv(mode, rootDir, '');
   const fileEnv = loadEnv(mode, envDir, '');
+  const combinedEnv = { ...rootEnv, ...fileEnv };
+
+  for (const [key, val] of Object.entries(combinedEnv)) {
+    if (key.startsWith('VITE_') && (!process.env[key] || mode === 'production')) {
+      process.env[key] = val;
+    }
+  }
 
   // Shell/direnv often exports VITE_API_URL=http://localhost:5001 for local
   // development. That value must NOT win over .env.production — otherwise the

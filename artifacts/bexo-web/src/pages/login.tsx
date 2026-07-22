@@ -7,6 +7,7 @@ import { FaWhatsapp } from 'react-icons/fa';
 import logo from '../assets/bexo-logo.png';
 import { usePageSeo } from '../hooks/use-page-seo';
 import { apiUrl } from '../lib/api';
+import { track } from '../lib/track';
 
 export default function Login() {
   const { updateData, setToken } = useOnboarding();
@@ -48,9 +49,17 @@ export default function Login() {
     }
   }, []);
 
+  const getFormattedPhone = (raw: string) => {
+    const digits = raw.replace(/\D/g, '');
+    if (digits.length === 10) return `91${digits}`;
+    if (digits.length === 12 && digits.startsWith('91')) return digits;
+    return digits;
+  };
+
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (phone.length < 10) {
+    const cleanPhone = phone.replace(/\D/g, '');
+    if (cleanPhone.length < 10) {
       setPhoneError('Please enter a valid 10-digit mobile number.');
       return;
     }
@@ -58,7 +67,7 @@ export default function Login() {
     setIsSwooshingSend(true);
     
     try {
-      const formattedPhone = phone.startsWith('91') && phone.length > 10 ? phone : `91${phone}`;
+      const formattedPhone = getFormattedPhone(phone);
       
       const res = await fetch(apiUrl('/api/auth/phone/otp'), {
         method: 'POST',
@@ -93,7 +102,7 @@ export default function Login() {
     setIsSwooshingVerify(true);
     
     try {
-      const formattedPhone = phone.startsWith('91') && phone.length > 10 ? phone : `91${phone}`;
+      const formattedPhone = getFormattedPhone(phone);
       
       const res = await fetch(apiUrl('/api/auth/phone/otp/verify'), {
         method: 'POST',
@@ -109,6 +118,7 @@ export default function Login() {
       const responseData = await res.json();
       localStorage.setItem('token', responseData.accessToken);
       setToken(responseData.accessToken);
+      track('login_success', { hasCompletedOnboarding: !!responseData.hasCompletedOnboarding });
       
       setIsSwooshingVerify(false);
       
@@ -138,6 +148,7 @@ export default function Login() {
 
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmittingOtp.current) return;
     const otpCode = otp.join('');
     if (otpCode.length < 6) {
       setOtpError('Please enter the complete 6-digit verification code.');
@@ -147,9 +158,9 @@ export default function Login() {
   };
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+    const val = e.target.value.replace(/\D/g, '').slice(0, 12);
     setPhone(val);
-    if (val.length === 10) setPhoneError('');
+    if (val.length >= 10) setPhoneError('');
   };
 
   const handleOtpChange = (index: number, value: string) => {
@@ -168,7 +179,7 @@ export default function Login() {
 
     // Auto-submit OTP when fully entered (6 digits)
     const otpCode = newOtp.join('');
-    if (otpCode.length === 6) {
+    if (otpCode.length === 6 && !isSubmittingOtp.current) {
       verifyOtpCode(otpCode);
     }
   };

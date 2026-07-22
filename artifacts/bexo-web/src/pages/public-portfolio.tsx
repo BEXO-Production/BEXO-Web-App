@@ -45,6 +45,7 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
   const [profileData, setProfileData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pausedInfo, setPausedInfo] = useState<{ reason?: string | null; name?: string } | null>(null);
 
 
   const currentSubdomain = getSubdomain();
@@ -59,6 +60,13 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
           if (res.status === 404) {
             throw new Error('Portfolio not found');
           }
+          if (res.status === 503) {
+            const body = await res.json().catch(() => ({}));
+            if (body.paused) {
+              setPausedInfo({ reason: body.pauseReason, name: body.name });
+              return;
+            }
+          }
           throw new Error('Failed to load portfolio');
         }
         const result = await res.json();
@@ -71,6 +79,32 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
     };
     fetchPublicProfile();
   }, [handle]);
+
+  useEffect(() => {
+    if (!profileData || !handle) return;
+    // Fire-and-forget visitor hit for first-party analytics.
+    const body = JSON.stringify({
+      handle,
+      profileId: profileData.profileId || profileData.profile?.id,
+      path: window.location.pathname || '/',
+      referrer: document.referrer || '',
+      preview: false,
+    });
+    try {
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(apiUrl('/api/analytics/portfolio-hit'), new Blob([body], { type: 'application/json' }));
+      } else {
+        fetch(apiUrl('/api/analytics/portfolio-hit'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body,
+          keepalive: true,
+        }).catch(() => undefined);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [profileData, handle]);
 
   useEffect(() => {
     if (!profileData || !handle) return;
@@ -152,6 +186,43 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
     );
   }
 
+  if (pausedInfo) {
+    const reasonLabel =
+      pausedInfo.reason === 'payment_failed'
+        ? 'Billing / autopay issue'
+        : pausedInfo.reason === 'storage_exceeded'
+          ? 'Storage limit exceeded'
+          : pausedInfo.reason === 'subscription_ended'
+            ? 'Subscription ended'
+            : 'Temporarily paused';
+    return (
+      <div className="flex min-h-screen w-full items-center justify-center bg-slate-50 p-6 font-sans">
+        <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-lg space-y-4 text-left">
+          <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-700">
+            {reasonLabel}
+          </span>
+          <h1 className="text-2xl font-bold text-slate-900">This portfolio is paused</h1>
+          <p className="text-sm text-slate-500 leading-relaxed">
+            {pausedInfo.reason === 'storage_exceeded'
+              ? 'This workspace has exceeded its storage limit. The owner needs to free space or add storage to remount the site.'
+              : pausedInfo.reason === 'payment_failed'
+                ? 'Auto-renew payment failed and the grace period has ended. The owner needs to update billing to bring this site back online.'
+                : 'This portfolio is temporarily unavailable. The owner can restore it from the BEXO dashboard.'}
+          </p>
+          <p className="text-xs text-slate-400">
+            Handle: {handle}{pausedInfo.name ? ` · ${pausedInfo.name}` : ''}
+          </p>
+          <a
+            href="/billing"
+            className="inline-flex h-10 items-center justify-center rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700"
+          >
+            Owner: fix in Dashboard → Billing
+          </a>
+        </div>
+      </div>
+    );
+  }
+
   if (error || !profileData) {
     return <UnclaimedHandleBanner handle={handle || handleOverride || 'yourname'} />;
   }
@@ -171,12 +242,12 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
               Custom subdomains (<strong>{portfolioHostname(handle || '')}</strong>) are a premium feature of Bexo.
             </p>
           </div>
-          <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-xs text-slate-650 text-left space-y-1">
+          <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-xs text-slate-600 text-left space-y-1">
             <span className="font-bold text-slate-700 block">Where is this portfolio?</span>
             You can view this portfolio at Bexo's free directory path:
             <a 
               href={`${window.location.protocol}//${window.location.host.replace(new RegExp(`^${handle}\\.`), '')}/${handle}`}
-              className="text-indigo-650 hover:underline block font-mono mt-1 text-[11px] truncate"
+              className="text-indigo-600 hover:underline block font-mono mt-1 text-[11px] truncate"
             >
               {window.location.host.replace(new RegExp(`^${handle}\\.`), '')}/{handle}
             </a>
@@ -237,7 +308,7 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
       case 'rose': return 'bg-rose-500 text-rose-500 border-rose-250';
       case 'emerald': return 'bg-emerald-500 text-emerald-500 border-emerald-250';
       case 'violet': return 'bg-violet-600 text-violet-600 border-violet-250';
-      case 'indigo': return 'bg-indigo-600 text-indigo-650 border-indigo-250';
+      case 'indigo': return 'bg-indigo-600 text-indigo-600 border-indigo-250';
       default: return 'bg-blue-500 text-blue-500 border-blue-250';
     }
   };
@@ -247,7 +318,7 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
       case 'rose': return 'text-rose-650';
       case 'emerald': return 'text-emerald-650';
       case 'amber': return 'text-amber-650';
-      case 'indigo': return 'text-indigo-650';
+      case 'indigo': return 'text-indigo-600';
       default: return 'text-blue-650';
     }
   };
@@ -302,7 +373,7 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
                   href={url} 
                   target="_blank" 
                   rel="noreferrer"
-                  className="group relative aspect-video rounded-lg overflow-hidden border border-slate-200 bg-slate-50 block transition-all duration-300 hover:border-slate-350 hover:shadow-sm"
+                  className="group relative aspect-video rounded-lg overflow-hidden border border-slate-200 bg-slate-50 block transition-all duration-300 hover:border-slate-300 hover:shadow-sm"
                 >
                   <img 
                     src={url} 
@@ -370,7 +441,7 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
               <h4 className="text-sm font-bold text-white tracking-tight leading-tight mt-1">{title}</h4>
               {sub && <p className="text-[11px] font-semibold text-slate-200">{sub}</p>}
             </div>
-            {description && <p className="text-xs text-slate-350 line-clamp-2 leading-relaxed">{description}</p>}
+            {description && <p className="text-xs text-slate-300 line-clamp-2 leading-relaxed">{description}</p>}
             
             {/* Buttons (PDFs and links) */}
             <div className="flex flex-wrap gap-2 pt-1">
@@ -500,7 +571,7 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
                     </span>
                   )}
                 </div>
-                {profile.headline && <p className="text-base font-semibold text-slate-650 mt-1">{profile.headline}</p>}
+                {profile.headline && <p className="text-base font-semibold text-slate-600 mt-1">{profile.headline}</p>}
               </div>
 
               {profile.bio && <p className="text-sm text-slate-500 leading-relaxed">{profile.bio}</p>}
@@ -776,7 +847,7 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
               
               <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 pt-2">
                 {user.resumeUrl && (
-                  <a href={user.resumeUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-650 hover:text-indigo-800 transition-colors">
+                  <a href={user.resumeUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors">
                     View CV / Resume <ExternalLink className="w-3.5 h-3.5" />
                   </a>
                 )}
@@ -1037,12 +1108,12 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
             {experienceEntries.length > 0 && (
               <Card className="p-6 border border-slate-200 shadow-sm space-y-4 bg-white rounded-2xl">
                 <h3 className="text-xs font-black uppercase tracking-wider text-slate-450 flex items-center gap-1.5">
-                  <Briefcase className="w-4 h-4 text-indigo-650" /> Professional Journeys
+                  <Briefcase className="w-4 h-4 text-indigo-600" /> Professional Journeys
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {experienceEntries.map((exp: any) => (
                     <div key={exp.id} className="border border-slate-100 p-4 rounded-xl space-y-1 bg-slate-50/50 hover:border-slate-250 transition-colors">
-                      <span className="text-[10px] font-bold text-indigo-650">{exp.duration}</span>
+                      <span className="text-[10px] font-bold text-indigo-600">{exp.duration}</span>
                       <h4 className="text-sm font-bold text-slate-900">{exp.role}</h4>
                       <p className="text-xs font-semibold text-slate-500">{exp.company}</p>
                       {exp.description && <p className="text-xs text-slate-505 leading-relaxed pt-1.5">{exp.description}</p>}
@@ -1056,7 +1127,7 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
             {projectEntries.length > 0 && (
               <Card className="p-6 border border-slate-200 shadow-sm space-y-4 bg-white rounded-2xl">
                 <h3 className="text-xs font-black uppercase tracking-wider text-slate-450 flex items-center gap-1.5">
-                  <BookOpen className="w-4.5 h-4.5 text-indigo-650" /> Showcase Projects
+                  <BookOpen className="w-4.5 h-4.5 text-indigo-600" /> Showcase Projects
                 </h3>
                 <div className="grid grid-cols-1 gap-4">
                   {projectEntries.map((proj: any) => (
@@ -1064,7 +1135,7 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
                       <div className="flex justify-between items-start gap-4">
                         <h4 className="text-sm font-bold text-slate-900">{proj.title}</h4>
                         {proj.link && (
-                          <a href={proj.link} target="_blank" rel="noreferrer" className="text-indigo-650 hover:text-indigo-850 shrink-0">
+                          <a href={proj.link} target="_blank" rel="noreferrer" className="text-indigo-600 hover:text-indigo-800 shrink-0">
                             <ExternalLink className="w-3.5 h-3.5" />
                           </a>
                         )}
@@ -1120,7 +1191,7 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
             {educationEntries.length > 0 && (
               <Card className="p-6 border border-slate-200 shadow-sm space-y-4 bg-white rounded-2xl">
                 <h3 className="text-xs font-black uppercase tracking-wider text-slate-450 flex items-center gap-1.5">
-                  <GraduationCap className="w-4.5 h-4.5 text-indigo-650" /> Education
+                  <GraduationCap className="w-4.5 h-4.5 text-indigo-600" /> Education
                 </h3>
                 <div className="space-y-4">
                   {educationEntries.map((edu: any) => (

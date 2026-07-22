@@ -92,9 +92,13 @@ export function usePricing() {
 }
 
 export async function validateCouponApi(plan: string, couponCode: string) {
-  const res = await fetch("/api/pricing/validate-coupon", {
+  const token = typeof localStorage !== "undefined" ? localStorage.getItem("token") : null;
+  const res = await fetch(token ? "/api/pricing/validate-coupon-auth" : "/api/pricing/validate-coupon", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify({ plan, couponCode }),
   });
   return res.json() as Promise<{
@@ -102,5 +106,36 @@ export async function validateCouponApi(plan: string, couponCode: string) {
     message?: string;
     coupon?: string;
     pricing?: PricingBreakdown;
+    quote?: CheckoutQuote;
+  }>;
+}
+
+export type CheckoutQuote = {
+  plan: string;
+  quantity: number;
+  list: PricingBreakdown;
+  first: PricingBreakdown;
+  discountApplies: "first_invoice" | "none";
+  isSubscription: boolean;
+  renewalLabel: string | null;
+  message: string | null;
+};
+
+export async function fetchCheckoutQuote(plan: string, coupon?: string | null, quantity = 1) {
+  const params = new URLSearchParams({ plan, quantity: String(quantity) });
+  if (coupon) params.set("coupon", coupon);
+  const res = await fetch(`/api/pricing/quote?${params.toString()}`);
+  if (!res.ok) throw new Error("Unable to load quote");
+  return res.json() as Promise<{
+    plan: string;
+    quantity: number;
+    pricing: PricingBreakdown;
+    list: PricingBreakdown;
+    first: PricingBreakdown;
+    discountApplies: "first_invoice" | "none";
+    isSubscription: boolean;
+    renewalLabel: string | null;
+    message: string | null;
+    quote: CheckoutQuote;
   }>;
 }

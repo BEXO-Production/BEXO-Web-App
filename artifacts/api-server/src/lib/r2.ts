@@ -38,17 +38,22 @@ export function getR2Client() {
 export async function uploadToR2(
   fileBuffer: Buffer,
   fileName: string,
-  contentType: string
+  contentType: string,
+  options: { key?: string } = {}
 ): Promise<string> {
   const client = getR2Client();
-  
+
+  // Stable keys (e.g. generated resumes) are overwritten in place so shared
+  // links never go stale; everything else gets a unique collision-safe key.
+  const objectKey =
+    options.key ||
+    `${Date.now()}-${Math.random().toString(36).substring(2, 8)}-${fileName.replace(/\s+/g, "_")}`;
+
   // If R2 is not fully configured, fallback to generating a dummy local/mock URL
   // so the app still functions normally for testing before credentials are added!
   if (!client) {
     logger.warn("Cloudflare R2 not configured. Simulating successful upload.");
-    // Simulate public dev URL
-    const uniqueName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}-${fileName.replace(/\s+/g, "_")}`;
-    return `https://simulation.r2.dev/${uniqueName}`;
+    return `https://simulation.r2.dev/${objectKey}`;
   }
 
   const bucketName = process.env.R2_BUCKET_NAME;
@@ -58,18 +63,16 @@ export async function uploadToR2(
     throw new Error("R2 BUCKET_NAME or PUBLIC_URL is missing in environment variables");
   }
 
-  const uniqueName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}-${fileName.replace(/\s+/g, "_")}`;
-
   await client.send(
     new PutObjectCommand({
       Bucket: bucketName,
-      Key: uniqueName,
+      Key: objectKey,
       Body: fileBuffer,
       ContentType: contentType,
     })
   );
 
-  return `${publicUrl.replace(/\/$/, "")}/${uniqueName}`;
+  return `${publicUrl.replace(/\/$/, "")}/${objectKey}`;
 }
 
 /**

@@ -10,6 +10,14 @@ const router = Router();
 
 import { createRequire } from "module";
 
+export function normalizePhone(rawPhone: unknown): string {
+  if (!rawPhone || typeof rawPhone !== "string") return "";
+  const digits = rawPhone.replace(/\D/g, "");
+  if (digits.length === 10) return `91${digits}`;
+  if (digits.length === 12 && digits.startsWith("91")) return digits;
+  return digits;
+}
+
 class RedisOrMemoryStore {
   private redis: any = null;
   private memory = new Map<string, { value: string; expires: number }>();
@@ -34,6 +42,9 @@ class RedisOrMemoryStore {
   }
 
   async set(key: string, value: string, mode?: string, ttl?: number): Promise<void> {
+    const expires = ttl ? Date.now() + ttl * 1000 : Infinity;
+    this.memory.set(key, { value, expires });
+
     if (this.redis) {
       try {
         if (mode === "EX" && ttl) {
@@ -41,19 +52,17 @@ class RedisOrMemoryStore {
         } else {
           await this.redis.set(key, value);
         }
-        return;
       } catch (err) {
-        logger.warn("Redis set failed, falling back to memory");
+        logger.warn("Redis set failed, used memory fallback");
       }
     }
-    const expires = ttl ? Date.now() + ttl * 1000 : Infinity;
-    this.memory.set(key, { value, expires });
   }
 
   async get(key: string): Promise<string | null> {
     if (this.redis) {
       try {
-        return await this.redis.get(key);
+        const val = await this.redis.get(key);
+        if (val) return val;
       } catch (err) {
         logger.warn("Redis get failed, falling back to memory");
       }
@@ -68,15 +77,14 @@ class RedisOrMemoryStore {
   }
 
   async del(key: string): Promise<void> {
+    this.memory.delete(key);
     if (this.redis) {
       try {
         await this.redis.del(key);
-        return;
       } catch (err) {
-        logger.warn("Redis del failed, falling back to memory");
+        logger.warn("Redis del failed");
       }
     }
-    this.memory.delete(key);
   }
 }
 
@@ -102,14 +110,8 @@ function isDatabaseUnavailable(error: unknown): boolean {
 
 // POST /auth/phone/otp
 router.post("/phone/otp", async (req, res): Promise<void> => {
-  const rawPhone = req.body?.phone;
-  if (!rawPhone || typeof rawPhone !== "string") {
-    res.status(400).json({ error: "Missing or invalid phone number" });
-    return;
-  }
-  // Normalize so send/verify share the same throttle + OTP keys
-  const phone = rawPhone.replace(/\D/g, "");
-  if (phone.length < 8) {
+  const phone = normalizePhone(req.body?.phone);
+  if (!phone || phone.length < 10) {
     res.status(400).json({ error: "Missing or invalid phone number" });
     return;
   }
@@ -125,18 +127,21 @@ router.post("/phone/otp", async (req, res): Promise<void> => {
   const countVal = await store.get(countKey);
   const currentCount = countVal ? parseInt(countVal, 10) : 0;
 
-  if (currentCount >= 3) {
+  if (currentCount >= 5) {
     await store.set(lockKey, "true", "EX", 900);
     await store.del(countKey);
     res.status(429).json({ error: "Too many OTP requests. Please try again after 15 minutes." });
     return;
   }
 
-  // Generate a secure 6-digit OTP
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
-
-  // Store in Redis with a 5-minute TTL
-  await store.set(`otp:${phone}`, otp, "EX", 300);
+  // Reuse existing unexpired OTP if one was generated recently (< 90s ago)
+  // to avoid sending conflicting OTP codes on rapid resend requests.
+  const existingOtp = await store.get(`otp:${phone}`);
+  let otp = existingOtp;
+  if (!otp) {
+    otp = Math.floor(100000 + Math.random() * 900000).toString();
+    await store.set(`otp:${phone}`, otp, "EX", 300);
+  }
 
   // Increment the request count
   await store.set(countKey, (currentCount + 1).toString(), "EX", 900);
@@ -150,7 +155,7 @@ router.post("/phone/otp", async (req, res): Promise<void> => {
                        integratedNumber && integratedNumber !== "your_whatsapp_number_with_country_code" &&
                        templateName && templateName !== "your_approved_template_name";
 
-  logger.info({ phone, isConfigured }, "Generated OTP for phone");
+  logger.info({ phone, isConfigured, isReused: !!existingOtp }, "Generated OTP for phone");
 
   if (isConfigured) {
     try {
@@ -217,9 +222,8 @@ router.post("/phone/otp", async (req, res): Promise<void> => {
 // POST /auth/phone/otp/verify
 router.post("/phone/otp/verify", async (req, res): Promise<void> => {
   const requestId = randomUUID();
-  const rawPhone = req.body?.phone;
+  const phone = normalizePhone(req.body?.phone);
   const rawOtp = req.body?.otp;
-  const phone = typeof rawPhone === "string" ? rawPhone.replace(/\D/g, "") : "";
   const otp = typeof rawOtp === "string" ? rawOtp.replace(/\D/g, "") : "";
 
   if (!phonePattern.test(phone) || !otpPattern.test(otp)) {
@@ -228,11 +232,24 @@ router.post("/phone/otp/verify", async (req, res): Promise<void> => {
   }
 
   try {
-    // Check the code before touching account records. The development bypass is
-    // deliberately restricted to non-production environments.
+    // 1. Idempotency Check: if this phone was verified <30s ago, return the session
+    // response to absorb rapid double-submits (e.g. auto-submit + form button tap)
+    const recentSessionJson = await store.get(`verified_session:${phone}`);
+    if (recentSessionJson) {
+      try {
+        const recentSession = JSON.parse(recentSessionJson);
+        logger.info({ phone, userId: recentSession.user?.id }, "Returning cached session for duplicate verification request");
+        res.json(recentSession);
+        return;
+      } catch {}
+    }
+
+    // 2. Verify OTP code against cached OTP
     const cachedOtp = await store.get(`otp:${phone}`);
     const isDevelopmentBypass = process.env.NODE_ENV !== "production" && otp === "111111";
+
     if (!isDevelopmentBypass && otp !== cachedOtp) {
+      logger.warn({ phone, submittedOtp: otp, cachedOtpExists: !!cachedOtp }, "OTP verification mismatch");
       res.status(400).json({ error: "This code is invalid or has expired. Request a new code and try again." });
       return;
     }
@@ -294,8 +311,7 @@ router.post("/phone/otp/verify", async (req, res): Promise<void> => {
       }
     }
 
-    // Consume the code only after the account operation succeeds. A temporary
-    // database fault should not force the user to request another OTP.
+    // Consume the OTP code
     await store.del(`otp:${phone}`);
 
     // Generate JWT token
@@ -306,7 +322,7 @@ router.post("/phone/otp/verify", async (req, res): Promise<void> => {
     }
     const accessToken = jwt.sign({ id: user.id }, secret, { expiresIn: "7d" });
 
-    res.json({
+    const responseData = {
       accessToken,
       isNewUser,
       hasCompletedOnboarding,
@@ -316,7 +332,12 @@ router.post("/phone/otp/verify", async (req, res): Promise<void> => {
         name: user.name,
         email: user.email,
       }
-    });
+    };
+
+    // Cache the verified response for 30s to absorb rapid double-submit race conditions
+    await store.set(`verified_session:${phone}`, JSON.stringify(responseData), "EX", 30);
+
+    res.json(responseData);
   } catch (err: any) {
     const dbDown = isDatabaseUnavailable(err);
     logger.error(

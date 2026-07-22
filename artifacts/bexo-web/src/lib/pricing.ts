@@ -50,6 +50,62 @@ export function formatMb(bytes: number): string {
   return Number.isInteger(mb) ? `${mb}MB` : `${mb.toFixed(1)}MB`;
 }
 
+/** Normalize legacy plan ids to the current catalog. */
+export function normalizeClientPlanId(plan: string | null | undefined): string | null {
+  if (!plan) return null;
+  if (plan === "annual") return "growth";
+  if (plan === "lifetime") return "studentplus";
+  return plan;
+}
+
+/**
+ * What the user can purchase right now.
+ * Keep in sync with api-server `getCanBuy` — Identity can always upgrade to Essential/Growth.
+ */
+export function computeCanBuy(
+  isPremium: boolean,
+  currentPlanRaw: string | null | undefined,
+): {
+  identity: boolean;
+  essential: boolean;
+  growth: boolean;
+  studentplus: boolean;
+  storage: boolean;
+  annual: boolean;
+  lifetime: boolean;
+} {
+  const currentPlan = normalizeClientPlanId(currentPlanRaw);
+  if (!isPremium || !currentPlan || currentPlan === "free") {
+    return {
+      identity: true,
+      essential: true,
+      growth: true,
+      studentplus: true,
+      storage: false,
+      annual: true,
+      lifetime: true,
+    };
+  }
+
+  const rank: Record<string, number> = {
+    identity: 1,
+    essential: 2,
+    growth: 3,
+    studentplus: 2,
+  };
+  const current = rank[currentPlan] || 0;
+
+  return {
+    identity: false,
+    essential: current < rank.essential,
+    growth: current < rank.growth,
+    studentplus: currentPlan !== "studentplus" && currentPlan !== "growth",
+    storage: true,
+    annual: current < rank.growth,
+    lifetime: currentPlan !== "studentplus" && currentPlan !== "growth",
+  };
+}
+
 export function planBaseQuotaBytes(plan: string | null | undefined): number {
   if (plan === "essential" || plan === "growth" || plan === "annual") return ESSENTIAL_STORAGE_BYTES;
   if (plan === "identity" || plan === "studentplus" || plan === "lifetime") return IDENTITY_STORAGE_BYTES;
@@ -66,10 +122,10 @@ export const FALLBACK_PLAN_CATALOG = [
     storageBytes: FREE_STORAGE_BYTES,
     isPurchasable: true,
     isHighlighted: false,
-    features: ["Basic template", "10MB storage", "1 update per month", "Path-based link (no subdomain)"],
+    features: ["Basic template", "10MB storage", "3 updates per month", "Path-based link (no subdomain)"],
     billingPeriod: "free" as const,
     parsesPerMonth: 0,
-    updatesPerMonth: 1,
+    updatesPerMonth: 3,
     sortOrder: 0,
     pricing: null,
   },
@@ -163,7 +219,7 @@ export const FALLBACK_PLAN_CATALOG = [
     id: "storage_addon" as const,
     displayName: "Storage Increase",
     subtitle: "+50MB per block, billed monthly",
-    priceInrExGst: 25,
+    priceInrExGst: 59,
     storageBytes: STORAGE_BLOCK_BYTES,
     isPurchasable: true,
     isHighlighted: false,
@@ -175,3 +231,46 @@ export const FALLBACK_PLAN_CATALOG = [
     pricing: null,
   },
 ];
+
+export const STORAGE_ADDON_BLOCK_INR = 59; // ₹59 per +50MB block
+
+export interface StorageBundleCalculation {
+  usedBytes: number;
+  usedMb: number;
+  baseQuotaBytes: number;
+  excessBytes: number;
+  excessMb: number;
+  extraBlocksNeeded: number;
+  extraStorageCostInr: number;
+  recommendedPlanId: string;
+}
+
+export function computeStorageBundle(usedBytes: number, planId: string): StorageBundleCalculation {
+  const usedMb = Math.ceil(usedBytes / (1024 * 1024));
+  const baseQuotaBytes = planBaseQuotaBytes(planId);
+  const excessBytes = Math.max(0, usedBytes - baseQuotaBytes);
+  const excessMb = Math.ceil(excessBytes / (1024 * 1024));
+  
+  const extraBlocksNeeded = excessMb > 0 ? Math.ceil(excessMb / 50) : 0;
+  const extraStorageCostInr = extraBlocksNeeded * STORAGE_ADDON_BLOCK_INR;
+
+  let recommendedPlanId = 'essential';
+  if (usedMb > 100) {
+    recommendedPlanId = 'growth';
+  } else if (usedMb > 50) {
+    recommendedPlanId = 'essential';
+  } else if (usedMb > 10) {
+    recommendedPlanId = 'identity';
+  }
+
+  return {
+    usedBytes,
+    usedMb,
+    baseQuotaBytes,
+    excessBytes,
+    excessMb,
+    extraBlocksNeeded,
+    extraStorageCostInr,
+    recommendedPlanId,
+  };
+}

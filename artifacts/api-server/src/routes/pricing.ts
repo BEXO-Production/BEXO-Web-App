@@ -1,12 +1,13 @@
 import { Router } from "express";
 import {
-  calculatePlanAmount,
+  buildCheckoutQuote,
   loadPricingCatalog,
   toPublicPricingPayload,
   validateCouponForPlan,
   type PurchasableId,
 } from "../lib/pricingCatalog";
 import { normalizePlanId, isPaidPlan } from "../lib/subscriptions";
+import { requireAuth } from "../middlewares/auth";
 
 const router = Router();
 
@@ -25,15 +26,17 @@ router.get("/", async (_req, res) => {
   }
 });
 
-router.post("/validate-coupon", async (req, res) => {
+router.post("/validate-coupon", async (req: any, res) => {
   const plan = parsePurchasable(req.body?.plan);
   const couponCode = String(req.body?.couponCode || "");
+  // Optional auth — when present, block already-redeemed codes per user.
+  const userId = req.user?.id || null;
 
   if (!plan) {
     return res.status(400).json({ valid: false, message: "Choose a valid plan." });
   }
 
-  const result = await validateCouponForPlan(couponCode, plan);
+  const result = await validateCouponForPlan(couponCode, plan, userId);
   if (!result.valid) {
     return res.json({ valid: false, message: result.message || "Invalid coupon." });
   }
@@ -42,6 +45,30 @@ router.post("/validate-coupon", async (req, res) => {
     valid: true,
     coupon: result.pricing?.coupon,
     pricing: result.pricing,
+    quote: result.quote,
+  });
+});
+
+// Prefer authenticated validate so per-user redemption works from checkout.
+router.post("/validate-coupon-auth", requireAuth, async (req: any, res) => {
+  const plan = parsePurchasable(req.body?.plan);
+  const couponCode = String(req.body?.couponCode || "");
+  const userId = req.user?.id;
+
+  if (!plan) {
+    return res.status(400).json({ valid: false, message: "Choose a valid plan." });
+  }
+
+  const result = await validateCouponForPlan(couponCode, plan, userId);
+  if (!result.valid) {
+    return res.json({ valid: false, message: result.message || "Invalid coupon." });
+  }
+
+  return res.json({
+    valid: true,
+    coupon: result.pricing?.coupon,
+    pricing: result.pricing,
+    quote: result.quote,
   });
 });
 
@@ -55,8 +82,19 @@ router.get("/quote", async (req, res): Promise<void> => {
     return;
   }
 
-  const pricing = await calculatePlanAmount(plan, couponCode, plan === "storage_addon" ? quantity : 1);
-  res.json({ plan, pricing });
+  const quote = await buildCheckoutQuote(plan, couponCode, quantity);
+  res.json({
+    plan: quote.plan,
+    quantity: quote.quantity,
+    pricing: quote.first, // backward compatible
+    list: quote.list,
+    first: quote.first,
+    discountApplies: quote.discountApplies,
+    isSubscription: quote.isSubscription,
+    renewalLabel: quote.renewalLabel,
+    message: quote.message,
+    quote,
+  });
 });
 
 export default router;

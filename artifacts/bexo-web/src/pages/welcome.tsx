@@ -320,7 +320,7 @@ export default function WelcomeSuccess() {
 
   if (!ready) {
     return (
-      <div className="flex min-h-[100dvh] items-center justify-center bg-slate-50">
+      <div className="flex min-h-[100dvh] items-center justify-center bg-slate-950">
         <div className="h-10 w-10 animate-spin rounded-full border-4 border-indigo-500 border-t-transparent" />
       </div>
     );
@@ -409,18 +409,28 @@ export default function WelcomeSuccess() {
   const spring = { type: "spring" as const, stiffness: 90, damping: 16 };
 
   return (
-    <div className="relative min-h-[100dvh] overflow-x-hidden bg-slate-50 text-slate-900">
-      {/* Soft celebration backdrop */}
+    <div className="relative min-h-[100dvh] overflow-x-hidden bg-slate-950 text-white">
+      {/* Same aurora backdrop as the unboxing stage */}
       <div
-        className="pointer-events-none absolute inset-0 opacity-90"
+        className="pointer-events-none fixed inset-0"
         aria-hidden
         style={{
           background:
-            "radial-gradient(ellipse 80% 50% at 50% -10%, rgba(99,102,241,0.18), transparent 55%), radial-gradient(ellipse 60% 40% at 100% 0%, rgba(16,185,129,0.12), transparent 50%), radial-gradient(ellipse 50% 30% at 0% 100%, rgba(244,63,94,0.08), transparent 45%)",
+            "radial-gradient(ellipse 70% 45% at 50% 115%, rgba(99,102,241,0.35), transparent 60%), radial-gradient(ellipse 45% 30% at 15% 0%, rgba(56,189,248,0.14), transparent 55%), radial-gradient(ellipse 45% 30% at 90% 10%, rgba(244,63,94,0.10), transparent 55%)",
+        }}
+      />
+      <div
+        className="pointer-events-none fixed inset-0 opacity-30"
+        aria-hidden
+        style={{
+          backgroundImage:
+            "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.35) 1px, transparent 0)",
+          backgroundSize: "34px 34px",
+          maskImage: "radial-gradient(ellipse 70% 60% at 50% 40%, black, transparent)",
         }}
       />
 
-      <div className="relative mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-6 sm:px-6 sm:pb-10 sm:pt-10 md:gap-8">
+      <div className="relative mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-6 sm:px-6 sm:pb-10 sm:pt-8 md:gap-8">
         <motion.header
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -431,18 +441,18 @@ export default function WelcomeSuccess() {
             <img src={logo} alt="BEXO" className="h-8 w-8 object-contain" />
             <span className="font-serif text-lg font-bold tracking-tight">BEXO</span>
           </div>
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-emerald-700">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-emerald-300">
             <CheckCircle2 className="h-3.5 w-3.5" />
             {data.isPremium ? "Pro active" : "Live"}
           </span>
         </motion.header>
 
-        <section className="text-center sm:text-left">
+        <section className="text-center">
           <motion.div
             initial={{ opacity: 0, scale: 0.7 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ ...spring, delay: 0.05 }}
-            className="mb-4 inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-indigo-700"
+            className="mb-4 inline-flex items-center gap-2 rounded-full border border-indigo-400/25 bg-indigo-400/10 px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.25em] text-indigo-300"
           >
             <PartyPopper className="h-3.5 w-3.5" />
             Congratulations
@@ -451,7 +461,7 @@ export default function WelcomeSuccess() {
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ ...spring, delay: 0.12 }}
-            className="font-serif text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl md:text-5xl"
+            className="font-serif text-3xl font-bold leading-tight tracking-tight text-white sm:text-4xl md:text-5xl"
           >
             {firstName ? `${firstName}, you're live!` : "You're live!"}
           </motion.h1>
@@ -459,7 +469,7 @@ export default function WelcomeSuccess() {
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ ...spring, delay: 0.2 }}
-            className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-slate-500 sm:mx-0 sm:text-base"
+            className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-white/60 sm:text-base"
           >
             {data.isPremium
               ? "Payment confirmed. Your Pro portfolio is published with your chosen template — share the link and start applying."
@@ -468,28 +478,28 @@ export default function WelcomeSuccess() {
         </section>
 
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] lg:gap-6">
-          {/* URL + meta card */}
+          {/* URL + meta card — dark glass */}
           <motion.div
             initial={{ opacity: 0, y: 32 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ ...spring, delay: 0.28 }}
-            className="flex flex-col gap-4 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm sm:p-6"
+            className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4 shadow-2xl shadow-indigo-950/40 backdrop-blur-md sm:p-6"
           >
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Your live website</p>
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/40">Your live website</p>
               {live ? (
-                <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-stretch">
-                  <div className="relative flex min-w-0 flex-1 items-center gap-2 overflow-hidden rounded-xl border border-indigo-200 bg-indigo-50/60 px-3 py-3">
+                <div className="mt-2.5 flex flex-col gap-2 sm:flex-row sm:items-stretch">
+                  <div className="relative flex min-w-0 flex-1 items-center gap-2 overflow-hidden rounded-xl border border-indigo-400/30 bg-indigo-500/15 px-3 py-3">
                     {/* shine sweep */}
                     <motion.div
                       aria-hidden
-                      className="pointer-events-none absolute inset-y-0 w-16 bg-gradient-to-r from-transparent via-white/70 to-transparent"
+                      className="pointer-events-none absolute inset-y-0 w-16 bg-gradient-to-r from-transparent via-white/25 to-transparent"
                       initial={{ x: "-120%" }}
                       animate={{ x: "480%" }}
                       transition={{ duration: 1.6, delay: 0.9, repeat: Infinity, repeatDelay: 3.4 }}
                     />
-                    <Globe className="h-4 w-4 shrink-0 text-indigo-500" />
-                    <span className="truncate font-mono text-xs font-semibold text-slate-800 sm:text-sm">
+                    <Globe className="h-4 w-4 shrink-0 text-indigo-300" />
+                    <span className="truncate font-mono text-xs font-semibold text-indigo-100 sm:text-sm">
                       {live.display}
                     </span>
                   </div>
@@ -497,15 +507,15 @@ export default function WelcomeSuccess() {
                     <button
                       type="button"
                       onClick={copyUrl}
-                      className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:bg-slate-50 sm:flex-none"
+                      className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/5 px-3 text-xs font-bold text-white/80 transition hover:bg-white/10 hover:text-white sm:flex-none"
                     >
-                      {copied ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
+                      {copied ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
                       {copied ? "Copied" : "Copy"}
                     </button>
                     <button
                       type="button"
                       onClick={shareUrl}
-                      className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:bg-slate-50 sm:flex-none"
+                      className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/5 px-3 text-xs font-bold text-white/80 transition hover:bg-white/10 hover:text-white sm:flex-none"
                     >
                       <Share2 className="h-4 w-4" />
                       Share
@@ -513,20 +523,23 @@ export default function WelcomeSuccess() {
                   </div>
                 </div>
               ) : (
-                <p className="mt-2 text-sm text-slate-500">Handle not set yet — finish setup from the dashboard.</p>
+                <p className="mt-2 text-sm text-white/50">Handle not set yet — finish setup from the dashboard.</p>
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3">
+            <div className="grid grid-cols-2 gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-3.5">
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Template</p>
-                <p className="mt-0.5 text-sm font-semibold text-slate-900">
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">Template</p>
+                <p className="mt-1 text-sm font-semibold text-white">
                   {templateMeta?.name || templateId}
                 </p>
               </div>
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Plan</p>
-                <p className="mt-0.5 text-sm font-semibold text-slate-900">{planLabel}</p>
+              <div className="border-l border-white/10 pl-3.5">
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">Plan</p>
+                <p className="mt-1 inline-flex items-center gap-1.5 text-sm font-semibold text-amber-300">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  {planLabel}
+                </p>
               </div>
             </div>
 
@@ -538,7 +551,7 @@ export default function WelcomeSuccess() {
                 whileHover={{ scale: 1.015 }}
                 whileTap={{ scale: 0.98 }}
                 className={cn(
-                  "inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-indigo-600 text-sm font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700",
+                  "inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-indigo-500 to-indigo-600 text-sm font-bold text-white shadow-lg shadow-indigo-900/50 ring-1 ring-inset ring-white/20 transition hover:from-indigo-400 hover:to-indigo-600",
                   !live && "pointer-events-none opacity-40",
                 )}
               >
@@ -549,14 +562,14 @@ export default function WelcomeSuccess() {
                 onClick={goDashboard}
                 whileHover={{ scale: 1.015 }}
                 whileTap={{ scale: 0.98 }}
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-slate-900 text-sm font-bold text-white shadow-lg shadow-slate-900/15 transition hover:bg-slate-800"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/10 text-sm font-bold text-white shadow-lg shadow-slate-950/40 backdrop-blur-sm transition hover:bg-white/15"
               >
                 <LayoutDashboard className="h-4 w-4" />
                 Go to Dashboard
               </motion.button>
             </div>
 
-            <ul className="space-y-2 text-left text-xs text-slate-500">
+            <ul className="mt-auto space-y-2.5 border-t border-white/10 pt-4 text-left text-xs text-white/55">
               {[
                 "Add this link to your resume and LinkedIn",
                 isPremiumTemplate(templateId)
@@ -571,33 +584,35 @@ export default function WelcomeSuccess() {
                   transition={{ ...spring, delay: 0.5 + i * 0.12 }}
                   className="flex items-start gap-2"
                 >
-                  <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-indigo-400" />
+                  <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-300/80" />
                   <span>{line}</span>
                 </motion.li>
               ))}
             </ul>
           </motion.div>
 
-          {/* Live preview — rises out of the box */}
+          {/* Live preview — rises out of the box, dark browser chrome */}
           <motion.div
             initial={{ opacity: 0, y: 90, scale: 0.9, rotateX: 8 }}
             animate={{ opacity: 1, y: 0, scale: 1, rotateX: 0 }}
             transition={{ ...spring, delay: 0.36 }}
             style={{ transformPerspective: 1000 }}
-            className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-xl shadow-indigo-950/10"
+            className="relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] shadow-2xl shadow-indigo-950/50 backdrop-blur-md"
           >
-            <div className="flex items-center gap-2 border-b border-slate-200 bg-slate-100 px-3 py-2.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
-              <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
-              <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
-              <div className="ml-2 flex min-w-0 flex-1 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1">
-                <Globe className="h-3 w-3 shrink-0 text-slate-400" />
-                <span className="truncate font-mono text-[10px] text-slate-500 sm:text-[11px]">
+            {/* Glow under the preview, like the box pedestal */}
+            <div className="pointer-events-none absolute -bottom-10 left-1/2 h-16 w-3/4 -translate-x-1/2 rounded-[100%] bg-indigo-500/25 blur-3xl" aria-hidden />
+            <div className="flex items-center gap-2 border-b border-white/10 bg-white/[0.04] px-3 py-2.5">
+              <span className="h-2.5 w-2.5 rounded-full bg-red-400/90" />
+              <span className="h-2.5 w-2.5 rounded-full bg-amber-400/90" />
+              <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/90" />
+              <div className="ml-2 flex min-w-0 flex-1 items-center gap-1.5 rounded-lg border border-white/10 bg-slate-950/60 px-2.5 py-1">
+                <Globe className="h-3 w-3 shrink-0 text-indigo-300/70" />
+                <span className="truncate font-mono text-[10px] text-white/60 sm:text-[11px]">
                   {live?.display || "preview"}
                 </span>
               </div>
             </div>
-            <div className="relative h-[min(52vh,420px)] bg-slate-900/5 sm:h-[480px]">
+            <div className="relative h-[min(52vh,420px)] bg-slate-900 sm:h-[480px]">
               {previewSrc ? (
                 <iframe
                   title="Portfolio preview"
@@ -606,7 +621,7 @@ export default function WelcomeSuccess() {
                   sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
                 />
               ) : (
-                <div className="flex h-full items-center justify-center text-sm text-slate-400">
+                <div className="flex h-full items-center justify-center text-sm text-white/40">
                   Preview unavailable
                 </div>
               )}
@@ -620,13 +635,13 @@ export default function WelcomeSuccess() {
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ ...spring, delay: 0.55 }}
-        className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200/80 bg-white/95 px-4 py-3 backdrop-blur-md sm:static sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:backdrop-blur-none"
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-slate-950/85 px-4 py-3 backdrop-blur-md sm:static sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:backdrop-blur-none"
       >
         <div className="mx-auto flex w-full max-w-5xl flex-col gap-2 sm:flex-row sm:justify-end sm:px-6 sm:pb-8">
           <button
             type="button"
             onClick={goDashboard}
-            className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-slate-900 text-sm font-bold text-white shadow-lg shadow-slate-900/15 transition hover:bg-slate-800 sm:w-auto sm:min-w-[220px] sm:px-6"
+            className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-indigo-500 to-indigo-600 text-sm font-bold text-white shadow-lg shadow-indigo-900/50 ring-1 ring-inset ring-white/20 transition hover:from-indigo-400 hover:to-indigo-600 sm:w-auto sm:min-w-[220px] sm:px-6"
           >
             <LayoutDashboard className="h-4 w-4" />
             Go to Dashboard

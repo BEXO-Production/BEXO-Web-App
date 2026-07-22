@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
 import { useLocation } from 'wouter';
+import { computeCanBuy } from '../lib/pricing';
 
 export type AssetMode = 'images' | 'pdfs' | 'links';
 
@@ -100,7 +101,16 @@ export type OnboardingData = {
   autopay?: boolean;
   billingPeriod?: 'free' | 'monthly' | 'yearly' | 'lifetime';
   addonBlocks?: number;
+  addonHasAutopay?: boolean;
   limits?: PlanLimitsData;
+  siteStatus?: 'live' | 'paused' | 'grace';
+  pauseReason?: string | null;
+  graceUntil?: string | Date | null;
+  cancelAtPeriodEnd?: boolean;
+  paymentFailedAt?: string | Date | null;
+  isInPaymentGrace?: boolean;
+  isPausedForVisitors?: boolean;
+  overStorage?: boolean;
 };
 
 interface OnboardingContextType {
@@ -265,6 +275,7 @@ interface OnboardingContextType {
   nextStep: (currentStep: number) => void;
   prevStep: (currentStep: number) => void;
   setToken: (token: string | null) => void;
+  refreshProfile: (silent?: boolean) => Promise<void>;
 }
 
 export function OnboardingProvider({ children }: { children: ReactNode }) {
@@ -273,82 +284,136 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
   const [, setLocation] = useLocation();
 
+  const refreshProfile = useCallback(async (silent: boolean = true) => {
+    const activeToken = token || localStorage.getItem('token');
+    if (!activeToken) return;
+
+    if (!silent) setIsLoading(true);
+
+    try {
+      const res = await fetch('/api/profile', {
+        headers: {
+          'Authorization': `Bearer ${activeToken}`
+        }
+      });
+
+      if (res.status === 401) {
+        localStorage.removeItem('token');
+        setToken(null);
+        return;
+      }
+
+      const result = await res.json().catch(() => ({}));
+      if (res.ok && result.profile && result.user) {
+        setData(prev => ({
+          ...prev,
+          handle: result.profile.handle || prev.handle,
+          email: result.user.email || prev.email,
+          firstName: result.user.name?.split(' ')[0] || prev.firstName,
+          lastName: result.user.name?.split(' ').slice(1).join(' ') || prev.lastName,
+          name: result.user.name || prev.name,
+          dob: result.user.dob || prev.dob,
+          phone: result.user.phone || prev.phone,
+          photoUrl: result.user.photoUrl || prev.photoUrl,
+          resumeUrl: result.user.resumeUrl || prev.resumeUrl,
+          uploadedResumeUrl: result.user.uploadedResumeUrl !== undefined ? result.user.uploadedResumeUrl : prev.uploadedResumeUrl,
+          generatedResumeUrl: result.user.generatedResumeUrl !== undefined ? result.user.generatedResumeUrl : prev.generatedResumeUrl,
+          defaultResume: result.user.defaultResume || prev.defaultResume,
+          aboutEntries: result.aboutEntries !== undefined ? ensureIdsAndDefaults(result.aboutEntries, 'about') : prev.aboutEntries,
+          educationEntries: result.educationEntries !== undefined ? ensureIdsAndDefaults(result.educationEntries, 'education') : prev.educationEntries,
+          experienceEntries: result.experienceEntries !== undefined ? ensureIdsAndDefaults(result.experienceEntries, 'experience') : prev.experienceEntries,
+          projectEntries: result.projectEntries !== undefined ? ensureIdsAndDefaults(result.projectEntries, 'projects') : prev.projectEntries,
+          certificateEntries: result.certificateEntries !== undefined ? ensureIdsAndDefaults(result.certificateEntries, 'certificates') : prev.certificateEntries,
+          achievementEntries: result.achievementEntries !== undefined ? ensureIdsAndDefaults(result.achievementEntries, 'achievements') : prev.achievementEntries,
+          researchEntries: result.researchEntries !== undefined ? ensureIdsAndDefaults(result.researchEntries, 'research') : prev.researchEntries,
+          contactData: result.contactData || prev.contactData,
+          plan: result.plan !== undefined ? result.plan : prev.plan,
+          openToHire: result.user?.openToHire !== undefined ? result.user.openToHire : prev.openToHire,
+          storageQuotaBytes: result.user?.storageQuotaBytes !== undefined ? result.user.storageQuotaBytes : prev.storageQuotaBytes,
+          storageBonusBytes: result.user?.storageBonusBytes !== undefined ? result.user.storageBonusBytes : prev.storageBonusBytes,
+          isPremium: result.isPremium !== undefined ? result.isPremium : prev.isPremium,
+          templateId: result.user?.templateId || prev.templateId,
+          themeColor: result.user?.themeColor || prev.themeColor,
+          themeBg: result.user?.themeBg || prev.themeBg,
+          hasCompletedOnboarding: !!(result.user?.onboardingCompletedAt || (result.profile?.handle && result.plan)),
+          payments: result.payments || prev.payments,
+          resumeParsesThisMonth: result.user?.resumeParsesThisMonth !== undefined ? result.user.resumeParsesThisMonth : prev.resumeParsesThisMonth,
+          lastResumeParseReset: result.user?.lastResumeParseReset || prev.lastResumeParseReset,
+          canBuy: (() => {
+            const plan = result.plan !== undefined ? result.plan : prev.plan;
+            const isPremium = result.isPremium !== undefined ? result.isPremium : prev.isPremium;
+            const fromApi = result.canBuy;
+            if (fromApi && (fromApi.essential !== undefined || fromApi.growth !== undefined)) {
+              return fromApi;
+            }
+            return computeCanBuy(!!isPremium, plan);
+          })(),
+          renewalMode: result.renewalMode || prev.renewalMode,
+          expiresAt: result.expiresAt !== undefined ? result.expiresAt : prev.expiresAt,
+          autopay: result.autopay !== undefined ? !!result.autopay : prev.autopay,
+          billingPeriod: result.billingPeriod || prev.billingPeriod,
+          addonBlocks: result.addonBlocks !== undefined ? result.addonBlocks : prev.addonBlocks,
+          addonHasAutopay:
+            result.addonHasAutopay !== undefined
+              ? !!result.addonHasAutopay
+              : result.addon?.hasAutopay !== undefined
+                ? !!result.addon.hasAutopay
+                : prev.addonHasAutopay,
+          limits: result.limits || prev.limits,
+          siteStatus: result.siteStatus || prev.siteStatus,
+          pauseReason: result.pauseReason !== undefined ? result.pauseReason : prev.pauseReason,
+          graceUntil: result.graceUntil !== undefined ? result.graceUntil : prev.graceUntil,
+          cancelAtPeriodEnd: result.cancelAtPeriodEnd !== undefined ? !!result.cancelAtPeriodEnd : prev.cancelAtPeriodEnd,
+          paymentFailedAt: result.paymentFailedAt !== undefined ? result.paymentFailedAt : prev.paymentFailedAt,
+          isInPaymentGrace: result.isInPaymentGrace !== undefined ? !!result.isInPaymentGrace : prev.isInPaymentGrace,
+          isPausedForVisitors: result.isPausedForVisitors !== undefined ? !!result.isPausedForVisitors : prev.isPausedForVisitors,
+          overStorage: result.overStorage !== undefined ? !!result.overStorage : prev.overStorage,
+        }));
+      }
+    } catch (err) {
+      console.error('Profile refresh error:', err);
+    } finally {
+      if (!silent) setIsLoading(false);
+    }
+  }, [token]);
+
   useEffect(() => {
     if (!token) {
       setIsLoading(false);
       return;
     }
 
-    setIsLoading(true);
-    fetch('/api/profile', {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    })
-      .then(res => {
-        if (res.status === 401) {
-          localStorage.removeItem('token');
-          setToken(null);
-          throw new Error("Session expired");
-        }
-        return res.json();
-      })
-      .then(result => {
-        if (result.profile && result.user) {
-          setData(prev => ({
-            ...prev,
-            handle: result.profile.handle || prev.handle,
-            email: result.user.email || prev.email,
-            firstName: result.user.name?.split(' ')[0] || prev.firstName,
-            lastName: result.user.name?.split(' ').slice(1).join(' ') || prev.lastName,
-            name: result.user.name || prev.name,
-            dob: result.user.dob || prev.dob,
-            phone: result.user.phone || prev.phone,
-            photoUrl: result.user.photoUrl || prev.photoUrl,
-            resumeUrl: result.user.resumeUrl || prev.resumeUrl,
-            uploadedResumeUrl: result.user.uploadedResumeUrl !== undefined ? result.user.uploadedResumeUrl : prev.uploadedResumeUrl,
-            generatedResumeUrl: result.user.generatedResumeUrl !== undefined ? result.user.generatedResumeUrl : prev.generatedResumeUrl,
-            defaultResume: result.user.defaultResume || prev.defaultResume,
-            aboutEntries: result.aboutEntries !== undefined ? ensureIdsAndDefaults(result.aboutEntries, 'about') : prev.aboutEntries,
-            educationEntries: result.educationEntries !== undefined ? ensureIdsAndDefaults(result.educationEntries, 'education') : prev.educationEntries,
-            experienceEntries: result.experienceEntries !== undefined ? ensureIdsAndDefaults(result.experienceEntries, 'experience') : prev.experienceEntries,
-            projectEntries: result.projectEntries !== undefined ? ensureIdsAndDefaults(result.projectEntries, 'projects') : prev.projectEntries,
-            certificateEntries: result.certificateEntries !== undefined ? ensureIdsAndDefaults(result.certificateEntries, 'certificates') : prev.certificateEntries,
-            achievementEntries: result.achievementEntries !== undefined ? ensureIdsAndDefaults(result.achievementEntries, 'achievements') : prev.achievementEntries,
-            researchEntries: result.researchEntries !== undefined ? ensureIdsAndDefaults(result.researchEntries, 'research') : prev.researchEntries,
-            contactData: result.contactData || prev.contactData,
-            plan: result.plan !== undefined ? result.plan : prev.plan,
-            openToHire: result.user?.openToHire !== undefined ? result.user.openToHire : prev.openToHire,
-            storageQuotaBytes: result.user?.storageQuotaBytes !== undefined ? result.user.storageQuotaBytes : prev.storageQuotaBytes,
-            storageBonusBytes: result.user?.storageBonusBytes !== undefined ? result.user.storageBonusBytes : prev.storageBonusBytes,
-            isPremium: result.isPremium !== undefined ? result.isPremium : prev.isPremium,
-            templateId: result.user?.templateId || prev.templateId,
-            themeColor: result.user?.themeColor || prev.themeColor,
-            themeBg: result.user?.themeBg || prev.themeBg,
-            hasCompletedOnboarding: !!(result.user?.onboardingCompletedAt || (result.profile?.handle && result.plan)),
-            payments: result.payments || prev.payments,
-            resumeParsesThisMonth: result.user?.resumeParsesThisMonth !== undefined ? result.user.resumeParsesThisMonth : prev.resumeParsesThisMonth,
-            lastResumeParseReset: result.user?.lastResumeParseReset || prev.lastResumeParseReset,
-            canBuy: result.canBuy || prev.canBuy,
-            renewalMode: result.renewalMode || prev.renewalMode,
-            expiresAt: result.expiresAt !== undefined ? result.expiresAt : prev.expiresAt,
-            autopay: result.autopay !== undefined ? !!result.autopay : prev.autopay,
-            billingPeriod: result.billingPeriod || prev.billingPeriod,
-            addonBlocks: result.addonBlocks !== undefined ? result.addonBlocks : prev.addonBlocks,
-            limits: result.limits || prev.limits,
-          }));
-        }
-      })
-      .catch(console.error)
-      .finally(() => {
-        setIsLoading(false);
-      });
-  }, [token]);
+    refreshProfile(false);
+  }, [token, refreshProfile]);
 
   const updateData = (updates: Partial<OnboardingData>) => {
     setData((prev) => ({ ...prev, ...updates }));
     const activeToken = token || localStorage.getItem('token');
     if (!activeToken) return;
+
+    // Entitlement / site-access fields are server-derived — never PATCH them as profile content.
+    const {
+      canBuy: _canBuy,
+      renewalMode: _renewalMode,
+      limits: _limits,
+      siteStatus: _siteStatus,
+      pauseReason: _pauseReason,
+      graceUntil: _graceUntil,
+      cancelAtPeriodEnd: _cancelAtPeriodEnd,
+      paymentFailedAt: _paymentFailedAt,
+      isInPaymentGrace: _isInPaymentGrace,
+      isPausedForVisitors: _isPausedForVisitors,
+      overStorage: _overStorage,
+      autopay: _autopay,
+      billingPeriod: _billingPeriod,
+      addonBlocks: _addonBlocks,
+      addonHasAutopay: _addonHasAutopay,
+      isPremium: _isPremium,
+      payments: _payments,
+      ...persistable
+    } = updates as any;
+
+    if (Object.keys(persistable).length === 0) return;
 
     fetch('/api/profile', {
       method: 'PATCH',
@@ -356,7 +421,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${activeToken}`
       },
-      body: JSON.stringify(updates),
+      body: JSON.stringify(persistable),
     }).catch(console.error);
   };
 
@@ -373,7 +438,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <OnboardingContext.Provider value={{ data, isLoading, updateData, nextStep, prevStep, setToken }}>
+    <OnboardingContext.Provider value={{ data, isLoading, updateData, nextStep, prevStep, setToken, refreshProfile }}>
       {children}
     </OnboardingContext.Provider>
   );

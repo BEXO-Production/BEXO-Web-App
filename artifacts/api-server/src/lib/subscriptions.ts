@@ -113,18 +113,38 @@ export function effectiveQuota(plan: PlanId | null | undefined, bonusBytes: numb
   return planBaseQuota(plan) + Math.max(0, Number(bonusBytes) || 0) + Math.max(0, Number(addonBytes) || 0);
 }
 
-export function getCanBuy(isPremium: boolean): CanBuy {
-  // Base plans are purchasable while not on an active paid plan; autopay plans
-  // renew automatically so there is no manual "renew" purchase to expose.
-  // The storage add-on requires an active paid base plan.
+export function getCanBuy(isPremium: boolean, currentPlan: PlanId | null = null): CanBuy {
+  // Free / expired: can buy any paid plan.
+  // Active paid: allow upgrades to higher tiers only (not lateral/downgrade).
+  // Storage add-on requires an active paid base plan.
+  if (!isPremium) {
+    return {
+      identity: true,
+      essential: true,
+      growth: true,
+      studentplus: true,
+      storage: false,
+      annual: true,
+      lifetime: true,
+    };
+  }
+
+  const rank: Record<string, number> = {
+    identity: 1,
+    essential: 2,
+    growth: 3,
+    studentplus: 2,
+  };
+  const current = currentPlan ? rank[currentPlan] || 0 : 0;
+
   return {
-    identity: !isPremium,
-    essential: !isPremium,
-    growth: !isPremium,
-    studentplus: !isPremium,
-    storage: isPremium,
-    annual: !isPremium,
-    lifetime: !isPremium,
+    identity: false,
+    essential: current < rank.essential,
+    growth: current < rank.growth,
+    studentplus: currentPlan !== "studentplus" && currentPlan !== "growth",
+    storage: true,
+    annual: current < rank.growth,
+    lifetime: currentPlan !== "studentplus" && currentPlan !== "growth",
   };
 }
 
@@ -137,24 +157,53 @@ async function readBonusBytes(userId: string): Promise<number> {
   return Math.max(0, Number(user?.storageBonusBytes) || 0);
 }
 
-/** Latest storage add-on row that still grants blocks (active, or cancelled but inside its paid period). */
-export async function getActiveAddon(userId: string): Promise<AddonRecord | null> {
+/** Addon rows that currently grant storage (active, or cancelled but still inside paid period). */
+export async function getGrantingAddons(userId: string): Promise<{ rows: AddonRecord[]; totalBlocks: number }> {
   const rows = await db
     .select()
     .from(addonSubscriptions)
     .where(and(eq(addonSubscriptions.userId, userId), eq(addonSubscriptions.addon, "storage")));
 
   const now = Date.now();
-  let best: AddonRecord | null = null;
+  const granting: AddonRecord[] = [];
+  let totalBlocks = 0;
   for (const row of rows) {
     const withinPeriod = !row.currentEnd || row.currentEnd.getTime() + AUTOPAY_GRACE_MS > now;
     const grants =
       (row.status === "active" && withinPeriod) ||
       (row.status === "cancelled" && row.currentEnd !== null && row.currentEnd.getTime() > now);
     if (!grants) continue;
+    granting.push(row);
+    totalBlocks += Math.max(0, Number(row.blocks) || 0);
+  }
+  return { rows: granting, totalBlocks };
+}
+
+/** Latest storage add-on row that still grants blocks (for cancel / display of primary link). */
+export async function getActiveAddon(userId: string): Promise<AddonRecord | null> {
+  const { rows } = await getGrantingAddons(userId);
+  let best: AddonRecord | null = null;
+  for (const row of rows) {
     if (!best || (row.updatedAt?.getTime() || 0) > (best.updatedAt?.getTime() || 0)) best = row;
   }
   return best;
+}
+
+/** Billing control plane for storage add-ons (grant vs autopay can differ). */
+export async function getStorageAddonControl(userId: string): Promise<{
+  grantingBlocks: number;
+  hasAutopay: boolean;
+  primaryAutopay: AddonRecord | null;
+}> {
+  const { rows, totalBlocks } = await getGrantingAddons(userId);
+  const activeRows = rows.filter((r) => r.status === "active");
+  const primaryAutopay =
+    activeRows.sort((a, b) => (b.updatedAt?.getTime() || 0) - (a.updatedAt?.getTime() || 0))[0] ?? null;
+  return {
+    grantingBlocks: totalBlocks,
+    hasAutopay: activeRows.length > 0,
+    primaryAutopay,
+  };
 }
 
 export async function resolveSubscriptionState(userId: string): Promise<SubscriptionState> {
@@ -165,8 +214,12 @@ export async function resolveSubscriptionState(userId: string): Promise<Subscrip
     .limit(1);
 
   const bonusBytes = await readBonusBytes(userId);
-  const addon = await getActiveAddon(userId);
-  const addonBlocks = addon ? Math.max(0, Number(addon.blocks) || 0) : 0;
+  const { totalBlocks: addonBlocks, rows: grantingAddons } = await getGrantingAddons(userId);
+  const addon = grantingAddons.length
+    ? grantingAddons.reduce((best, row) =>
+        !best || (row.updatedAt?.getTime() || 0) > (best.updatedAt?.getTime() || 0) ? row : best,
+      )
+    : null;
   const addonBytes = addonBlocks * STORAGE_BLOCK_BYTES;
 
   const now = new Date();
@@ -183,7 +236,13 @@ export async function resolveSubscriptionState(userId: string): Promise<Subscrip
       .update(subscriptions)
       .set({ status: "expired" })
       .where(and(eq(subscriptions.userId, userId), eq(subscriptions.status, "active")));
-    await db.update(users).set({ storageQuotaBytes: quota }).where(eq(users.id, userId));
+    await db
+      .update(users)
+      .set({
+        storageQuotaBytes: quota,
+        cancelAtPeriodEnd: false,
+      })
+      .where(eq(users.id, userId));
 
     return {
       subscription: { ...subscription, status: "expired" },
@@ -197,7 +256,7 @@ export async function resolveSubscriptionState(userId: string): Promise<Subscrip
       addonBlocks,
       addonBytes,
       addon,
-      canBuy: getCanBuy(false),
+      canBuy: getCanBuy(false, null),
       renewalMode: "purchase",
     };
   }
@@ -227,7 +286,7 @@ export async function resolveSubscriptionState(userId: string): Promise<Subscrip
     addonBlocks,
     addonBytes,
     addon,
-    canBuy: getCanBuy(!!isPremium),
+    canBuy: getCanBuy(!!isPremium, plan),
     renewalMode: isPremium && plan && normalizedPlan === plan ? "renew" : "purchase",
   };
 }
@@ -241,6 +300,13 @@ export async function syncStorageQuota(userId: string, quotaBytes: number, curre
 export async function recomputeUserQuota(userId: string): Promise<number> {
   const state = await resolveSubscriptionState(userId);
   await db.update(users).set({ storageQuotaBytes: state.storageQuotaBytes }).where(eq(users.id, userId));
+  // Storage pause / remount is reconciled inside resolveSiteAccess.
+  try {
+    const { resolveSiteAccess } = await import("./siteAccess");
+    await resolveSiteAccess(userId);
+  } catch {
+    // Avoid circular import failures blocking quota updates.
+  }
   return state.storageQuotaBytes;
 }
 
@@ -291,7 +357,14 @@ export async function activatePaidPlan(
 
   await db
     .update(users)
-    .set({ storageQuotaBytes: quotaBytes })
+    .set({
+      storageQuotaBytes: quotaBytes,
+      cancelAtPeriodEnd: false,
+      paymentFailedAt: null,
+      graceUntil: null,
+      siteStatus: "live",
+      pauseReason: null,
+    })
     .where(eq(users.id, userId));
 
   return {

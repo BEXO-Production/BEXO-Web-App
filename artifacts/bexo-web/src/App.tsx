@@ -17,9 +17,12 @@ import Step6Review from './pages/step-6';
 import Step7Theme from './pages/step-7';
 import Step8Publish from './pages/step-8';
 import Step9Plan from './pages/step-9';
+import CheckoutPage from './pages/checkout';
 
 import Login from './pages/login';
 import Dashboard from './pages/dashboard';
+import DashboardInbox from './pages/dashboard-inbox';
+import DashboardAnalytics from './pages/dashboard-analytics';
 import PublicPortfolio from './pages/public-portfolio';
 import HireMePage from './pages/hire-me';
 import WelcomeSuccess from './pages/welcome';
@@ -139,23 +142,37 @@ function Router() {
       return 3;
     }
 
-    // Step 4: Photo / Layout Selection (Optional, defaults to minimal)
-    // Step 5: Resume Upload
-    if (!data.resumeFileName) {
+    const savedHighest = parseInt(localStorage.getItem('bexo_highest_step') || '1', 10);
+
+    // Step 5: Resume Upload or Manual Profile Data
+    const hasResumeOrData =
+      !!data.resumeFileName ||
+      !!data.resumeUrl ||
+      !!data.uploadedResumeUrl ||
+      !!data.generatedResumeUrl ||
+      (data.aboutEntries && data.aboutEntries.length > 0) ||
+      (data.experienceEntries && data.experienceEntries.length > 0) ||
+      (data.educationEntries && data.educationEntries.length > 0) ||
+      (data.projectEntries && data.projectEntries.length > 0) ||
+      savedHighest >= 6;
+
+    if (!hasResumeOrData) {
       return 5;
     }
 
-    // Step 6: Review & Verify (must visit all tabs to continue)
-    const requiredTabs = ['about', 'education', 'experience', 'projects', 'certificates', 'achievements', 'research', 'contact'];
-    const hasVisitedAllTabs = requiredTabs.every(t => data.visitedTabs?.includes(t));
-    if (!hasVisitedAllTabs) {
-      return 6;
+    // If user has reached step 7 or higher, allow 7/8/9
+    if (savedHighest >= 7) {
+      return Math.min(9, savedHighest);
     }
 
-    // Step 7: Theme
-    // Step 8: Publish
-    // Step 9: Plan
-    return 9;
+    // Step 6: Review & Verify
+    const requiredTabs = ['about', 'education', 'experience', 'projects', 'certificates', 'achievements', 'research', 'contact'];
+    const hasVisitedAllTabs = requiredTabs.every(t => data.visitedTabs?.includes(t));
+    if (hasVisitedAllTabs || savedHighest >= 6) {
+      return Math.max(6, Math.min(9, savedHighest));
+    }
+
+    return 6;
   };
 
   const maxAllowedStep = getMaxAllowedStep();
@@ -186,6 +203,20 @@ function Router() {
       <Route path="/privacy" component={PrivacyPage} />
       <Route path="/refund" component={RefundPage} />
       <Route path="/cookies" component={CookiesPage} />
+      <Route path="/dashboard/inbox">
+        {hasToken ? (
+          data.hasCompletedOnboarding ? <DashboardInbox /> : <Redirect to={`/step/${maxAllowedStep}`} />
+        ) : (
+          <Redirect to="/login" />
+        )}
+      </Route>
+      <Route path="/dashboard/analytics">
+        {hasToken ? (
+          data.hasCompletedOnboarding ? <DashboardAnalytics /> : <Redirect to={`/step/${maxAllowedStep}`} />
+        ) : (
+          <Redirect to="/login" />
+        )}
+      </Route>
       <Route path="/dashboard">
         {hasToken ? (
           data.hasCompletedOnboarding ? <Dashboard /> : <Redirect to={`/step/${maxAllowedStep}`} />
@@ -221,6 +252,9 @@ function Router() {
           </div>
         ) : <Redirect to="/login" />}
       </Route>
+      <Route path="/checkout">
+        {hasToken ? <CheckoutPage /> : <Redirect to="/login" />}
+      </Route>
       <Route path="/step/:id">
         {params => {
           const stepId = parseInt(params.id, 10);
@@ -242,6 +276,14 @@ function Router() {
           // incomplete users back to the verification screen.
           if (hasToken && stepId === 1) {
             return <Redirect to={`/step/${maxAllowedStep}`} />;
+          }
+
+          // Store highest step reached by user
+          if (stepId >= 1 && stepId <= 9) {
+            const prevHighest = parseInt(localStorage.getItem('bexo_highest_step') || '1', 10);
+            if (stepId > prevHighest) {
+              localStorage.setItem('bexo_highest_step', String(stepId));
+            }
           }
 
           // If trying to access a step beyond what is allowed, redirect to maxAllowedStep

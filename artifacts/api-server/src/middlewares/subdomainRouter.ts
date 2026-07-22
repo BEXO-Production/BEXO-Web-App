@@ -3,6 +3,7 @@ import { db, profiles, users, profileSections } from "@workspace/db";
 import { eq, or } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { resolveSubscriptionState } from "../lib/subscriptions";
+import { buildPausedPortfolioHtml, resolveSiteAccess } from "../lib/siteAccess";
 import { buildPublicProfile } from "../lib/publicProfile";
 import { Readable } from "stream";
 import { readFile } from "node:fs/promises";
@@ -205,6 +206,30 @@ export async function renderPortfolioForHandle(
     const user = userMatch[0];
     
     const subscriptionState = await resolveSubscriptionState(user.id);
+    const siteAccess = await resolveSiteAccess(user.id);
+
+    // Paused portfolios: never serve the live template to visitors.
+    // Owners still manage content from the dashboard / billing.
+    const isAssetPath =
+      requestPath.startsWith("/assets/") ||
+      requestPath.startsWith("/css/") ||
+      requestPath.startsWith("/js/") ||
+      requestPath.startsWith("/Fonts/") ||
+      requestPath.startsWith("/fonts/");
+    if (siteAccess.isPausedForVisitors && !isAssetPath) {
+      res
+        .status(503)
+        .set("Cache-Control", "private, no-cache, no-store, must-revalidate")
+        .type("html")
+        .send(
+          buildPausedPortfolioHtml({
+            handle: subdomain,
+            reason: siteAccess.pauseReason,
+            ownerName: user.name,
+          }),
+        );
+      return;
+    }
 
     // 3. Fetch profile sections
     const sections = await db.select().from(profileSections).where(eq(profileSections.profileId, profile.id));

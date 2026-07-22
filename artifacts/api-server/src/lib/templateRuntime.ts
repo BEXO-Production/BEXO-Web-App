@@ -58,7 +58,31 @@ window.__BEXO_FOOTER_COPYRIGHT__ = ${serializeForInlineScript(BEXO_FOOTER_COPYRI
   const injection = `${baseTag}<script>
 window.__BEXO_PROFILE__ = ${serializeForInlineScript(profile)};
 window.__BEXO_BASE_PATH__ = ${serializeForInlineScript(normalizedBase)};
-</script>${footerSync}`;
+</script>${footerSync}<script>
+(function(){
+  try {
+    if (window.__BEXO_HIT_SENT__) return;
+    window.__BEXO_HIT_SENT__ = true;
+    var p = window.__BEXO_PROFILE__ || {};
+    var handle = (p.profile && p.profile.handle) || (p.handle) || "";
+    var profileId = (p.profile && p.profile.id) || p.profileId || "";
+    var preview = /(?:\\?|&)preview=1(?:&|$)/.test(location.search) || /preview_template=/.test(location.search);
+    var body = JSON.stringify({
+      handle: handle,
+      profileId: profileId || undefined,
+      path: location.pathname || "/",
+      referrer: document.referrer || "",
+      preview: preview
+    });
+    var url = "/api/analytics/portfolio-hit";
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon(url, new Blob([body], { type: "application/json" }));
+    } else {
+      fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: body, keepalive: true }).catch(function(){});
+    }
+  } catch (e) {}
+})();
+</script>`;
 
   prepared = prepared.includes("</head>")
     ? prepared.replace("</head>", `${injection}</head>`)

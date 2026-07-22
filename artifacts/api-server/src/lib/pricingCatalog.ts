@@ -1,5 +1,5 @@
 import { and, asc, eq, sql } from "drizzle-orm";
-import { billingSettings, db, pricingCoupons, pricingPlans } from "@workspace/db";
+import { billingSettings, couponRedemptions, db, pricingCoupons, pricingPlans } from "@workspace/db";
 import { normalizePlanId, type PaidPlan } from "./subscriptions";
 import { logger } from "./logger";
 
@@ -32,6 +32,17 @@ export type PricingBreakdown = {
   gstRate: number;
 };
 
+export type CheckoutQuote = {
+  plan: PurchasableId;
+  quantity: number;
+  list: PricingBreakdown;
+  first: PricingBreakdown;
+  discountApplies: "first_invoice" | "none";
+  isSubscription: boolean;
+  renewalLabel: string | null;
+  message: string | null;
+};
+
 const MB = 1024 * 1024;
 
 const FALLBACK_PLANS: PricingPlanRow[] = [
@@ -44,11 +55,11 @@ const FALLBACK_PLANS: PricingPlanRow[] = [
     isPurchasable: true,
     sortOrder: 0,
     isHighlighted: false,
-    features: ["Basic template", "10MB storage", "1 update per month", "Path-based link (no subdomain)"],
+    features: ["Basic template", "10MB storage", "3 updates per month", "Path-based link (no subdomain)"],
     billingPeriod: "free",
     razorpayPlanId: null,
     parsesPerMonth: 0,
-    updatesPerMonth: 1,
+    updatesPerMonth: 3,
   },
   {
     id: "identity",
@@ -203,17 +214,11 @@ export async function loadPricingCatalog(force = false): Promise<{
       .where(eq(pricingPlans.isActive, true))
       .orderBy(asc(pricingPlans.sortOrder));
 
-    const plans =
-      planRows.length > 0 ? planRows.map(normalizePlan) : FALLBACK_PLANS;
+    const plans = planRows.length > 0 ? planRows.map(normalizePlan) : FALLBACK_PLANS;
     const gstRate = Number(settings?.gstRate) > 0 ? Number(settings?.gstRate) : 0.18;
     const currency = settings?.currency || "INR";
 
-    cache = {
-      expiresAt: Date.now() + CACHE_TTL_MS,
-      plans,
-      gstRate,
-      currency,
-    };
+    cache = { expiresAt: Date.now() + CACHE_TTL_MS, plans, gstRate, currency };
     return { plans, gstRate, currency };
   } catch (error) {
     logger.warn({ error }, "Failed to load pricing catalog — using fallbacks");
@@ -231,7 +236,6 @@ export async function getPlanById(planId: string): Promise<PricingPlanRow | unde
   const { plans } = await loadPricingCatalog();
   const direct = plans.find((p) => p.id === planId);
   if (direct) return direct;
-  // Legacy ids map onto the new catalog
   const normalized = normalizePlanId(planId);
   if (normalized) return plans.find((p) => p.id === normalized);
   return undefined;
@@ -250,7 +254,7 @@ export async function getPlanStorageBytes(plan: string): Promise<number> {
   return 10 * MB;
 }
 
-type CouponRow = typeof pricingCoupons.$inferSelect;
+export type CouponRow = typeof pricingCoupons.$inferSelect;
 
 function couponIsValid(row: CouponRow, now = new Date()): boolean {
   if (!row.isActive) return false;
@@ -285,12 +289,7 @@ export async function findActiveCoupon(code?: string | null): Promise<CouponRow 
     const [row] = await db
       .select()
       .from(pricingCoupons)
-      .where(
-        and(
-          sql`upper(${pricingCoupons.code}) = ${normalized}`,
-          eq(pricingCoupons.isActive, true),
-        ),
-      )
+      .where(and(sql`upper(${pricingCoupons.code}) = ${normalized}`, eq(pricingCoupons.isActive, true)))
       .limit(1);
     if (!row || !couponIsValid(row)) return null;
     return row;
@@ -300,10 +299,20 @@ export async function findActiveCoupon(code?: string | null): Promise<CouponRow 
   }
 }
 
-/**
- * Paise-exact checkout math: GST is computed on paise so the charged amount
- * matches the Razorpay plan/order amount exactly (₹59 → ₹69.62 → 6962 paise).
- */
+export async function hasUserRedeemedCoupon(userId: string, couponId: string): Promise<boolean> {
+  try {
+    const [row] = await db
+      .select({ id: couponRedemptions.id })
+      .from(couponRedemptions)
+      .where(and(eq(couponRedemptions.userId, userId), eq(couponRedemptions.couponId, couponId)))
+      .limit(1);
+    return !!row;
+  } catch (error) {
+    logger.warn({ error, userId, couponId }, "Coupon redemption lookup failed");
+    return false;
+  }
+}
+
 export async function calculatePlanAmount(
   plan: PurchasableId,
   couponCode?: string,
@@ -330,13 +339,63 @@ export async function calculatePlanAmount(
   };
 }
 
+export async function buildCheckoutQuote(
+  plan: PurchasableId,
+  couponCode?: string,
+  quantity = 1,
+): Promise<CheckoutQuote> {
+  const qty = plan === "storage_addon" ? Math.max(1, quantity) : 1;
+  const list = await calculatePlanAmount(plan, undefined, qty);
+  const first = couponCode ? await calculatePlanAmount(plan, couponCode, qty) : list;
+  const planRow = await getPlanById(plan);
+  const isSubscription =
+    plan === "storage_addon" ||
+    planRow?.billingPeriod === "monthly" ||
+    planRow?.billingPeriod === "yearly";
+  const hasDiscount = first.totalPaise < list.totalPaise;
+  const discountApplies: CheckoutQuote["discountApplies"] =
+    hasDiscount && isSubscription && plan !== "storage_addon" ? "first_invoice" : "none";
+
+  let renewalLabel: string | null = null;
+  if (isSubscription && plan !== "storage_addon") {
+    renewalLabel =
+      planRow?.billingPeriod === "yearly"
+        ? `₹${list.total.toFixed(2)}/yr from the next billing date`
+        : `₹${list.total.toFixed(2)}/mo from the next billing date`;
+  } else if (plan === "storage_addon") {
+    renewalLabel = `₹${list.total.toFixed(2)}/mo while the add-on stays active`;
+  }
+
+  let message: string | null = null;
+  if (discountApplies === "first_invoice") {
+    message =
+      "Coupon applies to your first charge only. From the next billing date we collect the full plan price.";
+  }
+
+  return {
+    plan,
+    quantity: qty,
+    list,
+    first,
+    discountApplies,
+    isSubscription,
+    renewalLabel,
+    message,
+  };
+}
+
 export async function validateCouponForPlan(
   couponCode: string,
   plan: PurchasableId,
-): Promise<{ valid: boolean; message?: string; pricing?: PricingBreakdown }> {
+  userId?: string | null,
+): Promise<{ valid: boolean; message?: string; pricing?: PricingBreakdown; quote?: CheckoutQuote }> {
   const normalized = couponCode.trim().toUpperCase();
   if (!normalized) {
     return { valid: false, message: "Enter a coupon code." };
+  }
+
+  if (plan === "storage_addon") {
+    return { valid: false, message: "Coupons do not apply to storage add-ons." };
   }
 
   const couponRow = await findActiveCoupon(normalized);
@@ -344,10 +403,13 @@ export async function validateCouponForPlan(
     return { valid: false, message: "This coupon is invalid or expired." };
   }
 
-  const pricing = await calculatePlanAmount(plan, normalized);
+  if (userId && (await hasUserRedeemedCoupon(userId, couponRow.id))) {
+    return { valid: false, message: "You have already used this coupon on this account." };
+  }
 
-  // plan_prices coupons lock an explicit price; they stay valid even when the
-  // list price already matches (discount 0).
+  const quote = await buildCheckoutQuote(plan, normalized);
+  const pricing = quote.first;
+
   const locksPlanPrice =
     couponRow.discountType === "plan_prices" &&
     couponRow.planPrices &&
@@ -358,13 +420,17 @@ export async function validateCouponForPlan(
     return { valid: false, message: "This coupon does not apply to the selected plan." };
   }
 
-  return { valid: true, pricing };
+  return { valid: true, pricing, quote };
 }
 
-export async function recordCouponRedemption(code: string | null | undefined) {
+export async function recordCouponRedemption(
+  code: string | null | undefined,
+  opts?: { userId?: string | null; paymentId?: string | null },
+) {
   const normalized = code?.trim().toUpperCase();
   if (!normalized) return;
   try {
+    const couponRow = await findActiveCoupon(normalized);
     await db
       .update(pricingCoupons)
       .set({
@@ -372,10 +438,32 @@ export async function recordCouponRedemption(code: string | null | undefined) {
         updatedAt: new Date(),
       })
       .where(sql`upper(${pricingCoupons.code}) = ${normalized}`);
+
+    if (opts?.userId && couponRow) {
+      try {
+        await db
+          .insert(couponRedemptions)
+          .values({
+            userId: opts.userId,
+            couponId: couponRow.id,
+            paymentId: opts.paymentId || null,
+          })
+          .onConflictDoNothing();
+      } catch (redemptionErr) {
+        logger.warn({ error: redemptionErr, code: normalized }, "Per-user coupon redemption insert failed");
+      }
+    }
     invalidatePricingCache();
   } catch (error) {
     logger.warn({ error, code: normalized }, "Failed to record coupon redemption");
   }
+}
+
+export async function setCouponRazorpayOfferId(couponId: string, offerId: string) {
+  await db
+    .update(pricingCoupons)
+    .set({ razorpayOfferId: offerId, updatedAt: new Date() })
+    .where(eq(pricingCoupons.id, couponId));
 }
 
 export async function toPublicPricingPayload(catalog: Awaited<ReturnType<typeof loadPricingCatalog>>) {
