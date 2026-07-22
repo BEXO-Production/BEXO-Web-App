@@ -1,0 +1,16 @@
+name = "bexo-mybexo-cyou-router"
+main = "mybexo-cyou-router.js"
+compatibility_date = "2026-07-01"
+workers_dev = false
+
+# Set secrets/vars in dashboard or:
+#   npx wrangler secret put ORIGIN_URL
+# Routes must be attached in Cloudflare dashboard (zone mybexo.cyou):
+#   *mybexo.cyou/*
+
+[vars]
+PLATFORM_DOMAIN = "mybexo.cyou"
+# Override these in Cloudflare dashboard for the live Cloud Run / Firebase URLs:
+# ORIGIN_URL = "https://bexo-api-5oddipcbcq-el.a.run.app"
+# DASH_URL = "https://bexo-development.web.app"
+# MARKETING_URL = "https://mybexo.web.app"

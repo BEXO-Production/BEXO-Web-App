@@ -21,6 +21,7 @@ import express from "express";
 import {
   getRequestHost,
   isPlatformApexHost,
+  isReservedSubdomain,
   PLATFORM_DOMAIN,
   portfolioHostname,
 } from "../lib/platform";
@@ -130,7 +131,7 @@ export async function subdomainRouter(req: Request, res: Response, next: NextFun
   }
 
   const subdomain = host.split(".")[0];
-  if (!subdomain) {
+  if (!subdomain || isReservedSubdomain(subdomain)) {
     return next();
   }
 

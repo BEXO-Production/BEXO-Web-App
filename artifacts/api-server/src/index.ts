@@ -67,7 +67,14 @@ if (!process.env.JWT_SECRET || process.env.JWT_SECRET === "super_secret_jwt_key"
 }
 
 if (!process.env.REDIS_URL) {
-  if (process.env.NODE_ENV === "production") {
+  // Multi-instance OTP limits need Redis in true production. Development Cloud Run
+  // (mybexo.cyou) may run without it; set REDIS_URL when you scale beyond one instance.
+  const requireRedis =
+    process.env.REQUIRE_REDIS === "1" ||
+    process.env.REQUIRE_REDIS === "true" ||
+    (process.env.NODE_ENV === "production" &&
+      (process.env.PLATFORM_DOMAIN || "").includes("atbexo.com"));
+  if (requireRedis) {
     logger.fatal("REDIS_URL is required in production for OTP rate limits across Cloud Run instances");
     process.exit(1);
   }

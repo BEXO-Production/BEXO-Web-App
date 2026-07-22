@@ -1,10 +1,13 @@
 /**
- * Host map (production):
- *   mybexo.com           — marketing site (static)
- *   dash.mybexo.com      — login / onboarding / dashboard (this SPA)
- *   {handle}.atbexo.com  — live portfolios
+ * Host map (development):
+ *   mybexo.cyou              — marketing site (static)
+ *   dash.mybexo.cyou         — login / onboarding / dashboard (this SPA)
+ *   {handle}.mybexo.cyou     — live portfolios
  *
- * Development: mybexo.cyou may still serve app + portfolios combined.
+ * Host map (production):
+ *   mybexo.com               — marketing site (static)
+ *   dash.mybexo.com          — login / onboarding / dashboard (this SPA)
+ *   {handle}.atbexo.com      — live portfolios
  */
 
 const ENV_PLATFORM =
@@ -44,10 +47,12 @@ export function isDashHost(hostname?: string): boolean {
   return host.startsWith("dash.");
 }
 
-/** Combined marketing+app host (dev) — still serves React LandingPage on `/`. */
-export function isCombinedMarketingHost(hostname?: string): boolean {
-  const host = currentHost(hostname);
-  return host === "mybexo.cyou" || host === "www.mybexo.cyou";
+/**
+ * Legacy combined marketing+app host.
+ * After the Cloudflare split, apex is marketing-only.
+ */
+export function isCombinedMarketingHost(_hostname?: string): boolean {
+  return false;
 }
 
 /** Resolve portfolio host domain for the current browser (or build) environment. */
@@ -62,7 +67,6 @@ export function resolvePlatformDomain(hostname?: string): string {
   if (host === "atbexo.com" || host.endsWith(".atbexo.com")) {
     return "atbexo.com";
   }
-  // Production marketing + dash — user portfolios live on atbexo.com
   if (
     host === "mybexo.com" ||
     host === "www.mybexo.com" ||
@@ -85,12 +89,12 @@ export function resolvePlatformDomain(hostname?: string): string {
   return ENV_PLATFORM || "atbexo.com";
 }
 
-/** Public marketing site origin (mybexo.com in production). */
+/** Public marketing site origin. */
 export function resolveMarketingOrigin(hostname?: string): string {
   if (ENV_MARKETING) return ENV_MARKETING.replace(/\/$/, "");
 
   const host = currentHost(hostname);
-  if (host === "mybexo.cyou" || host.endsWith(".mybexo.cyou")) {
+  if (host === "mybexo.cyou" || host.endsWith(".mybexo.cyou") || host === "dash.mybexo.cyou") {
     return "https://mybexo.cyou";
   }
   if (
@@ -112,7 +116,7 @@ export function resolveMarketingOrigin(hostname?: string): string {
   return "https://mybexo.com";
 }
 
-/** Dashboard / app origin (dash.mybexo.com in production). */
+/** Dashboard / app origin. */
 export function resolveDashOrigin(hostname?: string): string {
   if (ENV_DASH) return ENV_DASH.replace(/\/$/, "");
 
@@ -120,8 +124,8 @@ export function resolveDashOrigin(hostname?: string): string {
   if (typeof window !== "undefined" && isDashHost(host) && !hostname) {
     return window.location.origin.replace(/\/$/, "");
   }
-  if (host === "mybexo.cyou" || host.endsWith(".mybexo.cyou")) {
-    return "https://mybexo.cyou";
+  if (host === "mybexo.cyou" || host.endsWith(".mybexo.cyou") || host === "dash.mybexo.cyou") {
+    return "https://dash.mybexo.cyou";
   }
   if (
     host === "dash.mybexo.com" ||
@@ -146,7 +150,7 @@ export function resolveDashOrigin(hostname?: string): string {
 }
 
 /**
- * Origin of the running SPA (dash on production). Prefer this for in-app absolute URLs.
+ * Origin of the running SPA. Prefer this for in-app absolute URLs.
  * For “Powered by BEXO” / public marketing links, use resolveMarketingOrigin().
  */
 export function resolveAppOrigin(hostname?: string): string {
