@@ -27,11 +27,13 @@ import {
 import { PLAN_LABELS } from "../lib/pricing";
 import logo from "../assets/bexo-logo.png";
 
+import { portfolioHostname, portfolioPublicUrl } from "../lib/platform";
+
 /** Session flag set right after payment / activation / free signup. */
 export const JUST_ACTIVATED_KEY = "bexo_just_activated";
 
 function resolveLiveSiteUrl(handle: string): { display: string; href: string } {
-  const host = typeof window !== "undefined" ? window.location.hostname : "atbexo.com";
+  const host = typeof window !== "undefined" ? window.location.hostname : "mybexo.cyou";
   const isLocal =
     host === "localhost" ||
     host === "127.0.0.1" ||
@@ -44,8 +46,8 @@ function resolveLiveSiteUrl(handle: string): { display: string; href: string } {
   }
 
   return {
-    display: `${handle}.atbexo.com`,
-    href: `https://${handle}.atbexo.com`,
+    display: portfolioHostname(handle),
+    href: portfolioPublicUrl(handle),
   };
 }
 

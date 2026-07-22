@@ -1,6 +1,7 @@
 import React from "react";
 import { Link } from "wouter";
 import { BEXO_FOOTER_COPYRIGHT, BEXO_OAUTH_APP_NAME } from "@/lib/brand";
+import { resolveAppOrigin } from "@/lib/platform";
 import logo from "@/assets/bexo-logo.png";
 import type { LegalDoc } from "@/content/legal/types";
 import { usePageSeo } from "@/hooks/use-page-seo";
@@ -208,7 +209,7 @@ export function MarketingFooter({ light = false }: { light?: boolean }) {
 
 export function LegalDocument({ doc, slug }: { doc: LegalDoc; slug: string }) {
   const origin =
-    typeof window !== "undefined" ? window.location.origin.replace(/\/$/, "") : "https://atbexo.com";
+    typeof window !== "undefined" ? window.location.origin.replace(/\/$/, "") : resolveAppOrigin();
   usePageSeo({
     title: `${doc.title} — BEXO`,
     description: doc.lead || `${doc.title} for BEXO (Ace Digital).`,

@@ -13,6 +13,7 @@ import { PORTFOLIO_TEMPLATES, FREE_FALLBACK_TEMPLATE_ID } from '../lib/templates
 import { BILLING_PERIOD_LABELS, PLAN_LABELS, STORAGE_BLOCK_BYTES, planBaseQuotaBytes, computeStorageBundle, FREE_STORAGE_BYTES, computeCanBuy, normalizeClientPlanId } from '../lib/pricing';
 import { usePricing, type PublicPricingPlan } from '../hooks/use-pricing';
 import { apiUrl } from '../lib/api';
+import { portfolioHostname } from '../lib/platform';
 
 declare global {
   interface Window {
@@ -150,7 +151,7 @@ export default function Step9Plan() {
   const isBillingManagement = data.hasCompletedOnboarding;
 
   const handleStr = data.handle || (data.name ? data.name.toLowerCase().replace(/[^a-z0-9]/g, '') : '');
-  const portfolioUrl = handleStr ? `${handleStr}.atbexo.com` : null;
+  const portfolioUrl = handleStr ? portfolioHostname(handleStr) : null;
 
   const currentPlanId = normalizeClientPlanId(data.plan) || data.plan;
   const currentPlanLabel = PLAN_LABELS[currentPlanId || 'free'] || 'Free';
@@ -477,7 +478,7 @@ export default function Step9Plan() {
         {portfolioUrl && (
           <div className="inline-flex items-center gap-2 mb-6 px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-full w-fit">
             <Globe className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-            <span className="text-sm font-semibold text-indigo-700"><span className="text-indigo-500">{data.handle || ''}</span>.atbexo.com</span>
+            <span className="text-sm font-semibold text-indigo-700">{portfolioUrl || portfolioHostname(data.handle || '')}</span>
           </div>
         )}
 
@@ -780,7 +781,7 @@ export default function Step9Plan() {
         {portfolioUrl && (
           <div className="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-full">
             <Globe className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-            <span className="text-sm font-semibold text-indigo-700"><span className="text-indigo-500">{data.handle || ''}</span>.atbexo.com</span>
+            <span className="text-sm font-semibold text-indigo-700">{portfolioUrl || portfolioHostname(data.handle || '')}</span>
           </div>
         )}
       </div>

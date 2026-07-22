@@ -14,18 +14,20 @@ export default defineConfig(({ mode }) => {
   const combinedEnv = { ...rootEnv, ...fileEnv };
 
   for (const [key, val] of Object.entries(combinedEnv)) {
-    if (key.startsWith('VITE_') && (!process.env[key] || mode === 'production')) {
+    if (key.startsWith('VITE_') && (!process.env[key] || mode === 'production' || mode === 'development-host')) {
       process.env[key] = val;
     }
   }
 
   // Shell/direnv often exports VITE_API_URL=http://localhost:5001 for local
-  // development. That value must NOT win over .env.production — otherwise the
-  // production bundle calls localhost and mobile OTP fails with "Load failed".
-  if (mode === 'production') {
-    const productionApi = fileEnv.VITE_API_URL || 'https://atbexo.com';
+  // development. That value must NOT win over deploy env files — otherwise the
+  // hosted bundle calls localhost and mobile OTP fails with "Load failed".
+  if (mode === 'production' || mode === 'development-host') {
+    const deployApi =
+      fileEnv.VITE_API_URL ||
+      (mode === 'development-host' ? 'https://mybexo.cyou' : 'https://atbexo.com');
     if (!process.env.VITE_API_URL || /localhost|127\.0\.0\.1/i.test(process.env.VITE_API_URL)) {
-      process.env.VITE_API_URL = productionApi;
+      process.env.VITE_API_URL = deployApi;
     }
   }
 

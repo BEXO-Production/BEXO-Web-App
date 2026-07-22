@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Check, Globe, Sparkles, Upload } from "lucide-react";
+import { PLATFORM_DOMAIN } from "@/lib/platform";
 
 /** Soft magnetic cursor for the marketing landing (desktop only). */
 export function LandingCursor() {
@@ -137,7 +138,7 @@ export function HeroPublishStage() {
               <p className="truncate font-mono text-[12px] text-white/80 sm:text-[13px]">
                 <span className="text-[#9BB6FF]">{typed}</span>
                 <span className="landing-caret inline-block w-[1px] bg-[#2F6BFF] align-middle" />
-                <span className="text-white/45">.atbexo.com</span>
+                <span className="text-white/45">.{PLATFORM_DOMAIN}</span>
               </p>
             </div>
             <span className="hidden shrink-0 items-center gap-1.5 rounded-full bg-emerald-500/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-300 sm:inline-flex">

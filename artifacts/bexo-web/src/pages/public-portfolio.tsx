@@ -1323,7 +1323,7 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
 
       {/* Floating Watermark */}
       <a 
-        href="https://atbexo.com" 
+        href="/" 
         target="_blank" 
         rel="noreferrer"
         className="fixed bottom-6 right-6 z-50 flex items-center gap-2 text-white px-3.5 py-2 rounded-full shadow-lg backdrop-blur-sm transition-all duration-300 hover:scale-105 active:scale-95 group font-sans bg-slate-900/90 border border-slate-800 hover:bg-slate-900"

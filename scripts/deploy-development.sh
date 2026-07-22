@@ -29,8 +29,8 @@ gcloud run deploy "$SERVICE" \
 SERVICE_URL="$(gcloud run services describe "$SERVICE" --project="$PROJECT" --region="$REGION" --format='value(status.url)')"
 echo "Cloud Run URL: $SERVICE_URL"
 
-echo "==> Build web"
-pnpm --filter @workspace/bexo-web run build
+echo "==> Build web (mybexo.cyou + BEXO-DB supabase)"
+pnpm --filter @workspace/bexo-web run build:development
 
 echo "==> Deploy Firebase Hosting (bexo-development)"
 # firebase.json uses hosting target "production"; map it to this project's site.

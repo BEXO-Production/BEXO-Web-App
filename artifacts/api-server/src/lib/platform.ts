@@ -1,11 +1,12 @@
 /**
  * Platform hostname for portfolios and marketing links.
- * Development default: atbexo.com (production may override via env).
+ * Development: mybexo.cyou (site + {handle}.mybexo.cyou)
+ * Production portfolios: atbexo.com (main app may be mybexo.com via FRONTEND_URL)
  */
 export const PLATFORM_DOMAIN =
   process.env.PLATFORM_DOMAIN?.toLowerCase().trim() ||
   process.env.BEXO_PLATFORM_DOMAIN?.toLowerCase().trim() ||
-  "atbexo.com";
+  "mybexo.cyou";
 
 export const PLATFORM_APEX_HOSTS = new Set([
   PLATFORM_DOMAIN,

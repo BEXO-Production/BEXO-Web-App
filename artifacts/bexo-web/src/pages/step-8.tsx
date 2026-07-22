@@ -4,6 +4,7 @@ import { Button, Card } from '../design-system/primitives';
 import { CheckCircle2, Copy, ExternalLink, Sparkles, ArrowRight, Share2 } from 'lucide-react';
 import logo from '../assets/bexo-logo.png';
 import { useToast } from '../hooks/use-toast';
+import { portfolioHostname, portfolioPublicUrl } from '../lib/platform';
 
 export default function Step8Publish() {
   const { data, nextStep } = useOnboarding();
@@ -12,10 +13,10 @@ export default function Step8Publish() {
   const { toast } = useToast();
   
   const handleString = data.handle || (data.name ? data.name.toLowerCase().replace(/[^a-z0-9]/g, '') : 'portfolio');
-  const url = `${handleString}.atbexo.com`;
+  const url = portfolioHostname(handleString);
 
   const copyToClipboard = () => {
-    navigator.clipboard.writeText(`https://${url}`);
+    navigator.clipboard.writeText(portfolioPublicUrl(handleString));
     setCopied(true);
     toast({
       title: 'Copied!',
@@ -25,7 +26,7 @@ export default function Step8Publish() {
   };
 
   const handleShareUrl = async () => {
-    const shareUrl = `https://${url}`;
+    const shareUrl = portfolioPublicUrl(handleString);
     const shareTitle = `${data.name || 'My'} Professional Portfolio`;
     const shareText = `Hi! Check out my newly published professional portfolio on BEXO: ${shareUrl}`;
 

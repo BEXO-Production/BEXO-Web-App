@@ -12,6 +12,7 @@ import {
 import { resolveSiteAccess, planHasAnalytics } from "../lib/siteAccess";
 import { enqueueEmail, processEmailOutbox } from "../lib/emailOutbox";
 import { logger } from "../lib/logger";
+import { portfolioHostname } from "../lib/platform";
 
 const router = Router();
 
@@ -362,7 +363,7 @@ router.post("/leads/:id/reply", requireAuth, async (req: AuthenticatedRequest, r
 
     const ownerName = String(owner?.name || profile?.handle || "BEXO member").trim();
     const subject =
-      (subjectRaw || `Re: Your message on ${lead.handle ? `${lead.handle}.atbexo.com` : "BEXO"}`).slice(
+      (subjectRaw || `Re: Your message on ${lead.handle ? portfolioHostname(lead.handle) : "BEXO"}`).slice(
         0,
         REPLY_MAX_SUBJECT,
       );

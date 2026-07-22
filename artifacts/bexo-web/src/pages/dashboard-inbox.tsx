@@ -17,6 +17,7 @@ import {
 import { Button } from '../design-system/primitives';
 import { useToast } from '../hooks/use-toast';
 import { apiUrl } from '../lib/api';
+import { portfolioHostname } from '../lib/platform';
 import { usePageSeo } from '../hooks/use-page-seo';
 
 type Lead = {
@@ -226,7 +227,7 @@ export default function DashboardInbox() {
   const openCompose = () => {
     if (!selected) return;
     setReplySubject(
-      `Re: Your message on ${selected.handle ? `${selected.handle}.atbexo.com` : 'BEXO'}`,
+      `Re: Your message on ${selected.handle ? portfolioHostname(selected.handle) : 'BEXO'}`,
     );
     setReplyBody('');
     setComposeOpen(true);
@@ -466,7 +467,7 @@ export default function DashboardInbox() {
                       </div>
                     )}
                     {selected.handle && (
-                      <p className="text-xs text-slate-400">Via portfolio · {selected.handle}.atbexo.com</p>
+                      <p className="text-xs text-slate-400">Via portfolio · {portfolioHostname(selected.handle)}</p>
                     )}
                   </div>
 

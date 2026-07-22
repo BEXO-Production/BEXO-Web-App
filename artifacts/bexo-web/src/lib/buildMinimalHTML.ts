@@ -1,4 +1,5 @@
 import type { OnboardingData } from '../context/OnboardingContext';
+import { portfolioPublicUrl, resolveAppOrigin } from './platform';
 
 /** Map theme ID → CSS hex color */
 const THEME_HEX: Record<string, string> = {
@@ -314,8 +315,8 @@ export function buildMinimalPortfolioHTML(data: OnboardingData, themeColor: stri
   const shareDesc = esc(headline || bio || aboutBlurb || `${name}'s professional portfolio on BEXO`);
   const shareImage = photoUrl?.startsWith('http')
     ? esc(photoUrl)
-    : 'https://atbexo.com/og-portfolio.jpg';
-  const shareUrl = `https://${handleStr}.atbexo.com`;
+    : `${resolveAppOrigin()}/og-portfolio.jpg`;
+  const shareUrl = portfolioPublicUrl(handleStr);
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -608,7 +609,7 @@ export function buildMinimalPortfolioHTML(data: OnboardingData, themeColor: stri
     ${achieveHTML}
 
     <div class="watermark">
-      Powered by <a href="https://atbexo.com" target="_blank">BEXO</a>
+      Powered by <a href="${resolveAppOrigin()}" target="_blank">BEXO</a>
       <br />
       <span style="font-size:11px;opacity:0.85">© 2026 BEXO From Ace Digital. All rights reserved.</span>
     </div>

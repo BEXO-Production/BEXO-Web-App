@@ -29,7 +29,7 @@ import WelcomeSuccess from './pages/welcome';
 import LandingPage from './pages/landing/LandingPage';
 import { TermsPage, PrivacyPage, RefundPage, CookiesPage } from './pages/legal';
 import { useToast } from './hooks/use-toast';
-import { PLATFORM_DOMAIN } from './lib/platform';
+import { resolvePlatformDomain } from './lib/platform';
 
 const queryClient = new QueryClient();
 
@@ -43,14 +43,18 @@ const getSubdomain = () => {
     }
     return null;
   }
+
+  const platform = resolvePlatformDomain(hostname);
   
   if (
-    hostname === PLATFORM_DOMAIN ||
-    hostname.endsWith(`.${PLATFORM_DOMAIN}`)
+    hostname === platform ||
+    hostname.endsWith(`.${platform}`)
   ) {
     if (parts.length > 2 && parts[0] !== 'www') {
       return parts[0];
     }
+    // mybexo.cyou / atbexo.com are two labels — subdomain is first of three+
+    // already handled; two-label apex has no portfolio subdomain
     return null;
   }
   

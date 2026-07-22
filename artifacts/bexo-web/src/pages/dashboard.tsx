@@ -555,7 +555,7 @@ export default function Dashboard() {
     }
   }, [data.storageQuotaBytes]);
 
-  // URL management — local subdomains use *.localhost:5001; production uses atbexo.com
+  // URL management — local: *.localhost:5001; development: *.mybexo.cyou; production portfolios: *.atbexo.com
   const handleString = data.handle || (data.name ? data.name.toLowerCase().replace(/[^a-z0-9]/g, '') : 'portfolio');
   const TEMPLATES = getSelectableTemplates(!!data.isPremium);
   const activeTemplateId = isPremiumTemplate(data.templateId)

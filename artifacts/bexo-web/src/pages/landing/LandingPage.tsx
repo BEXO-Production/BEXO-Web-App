@@ -27,6 +27,7 @@ import {
 } from "@/lib/brand";
 import { buildMarketingJsonLd } from "@/lib/seo";
 import { usePageSeo } from "@/hooks/use-page-seo";
+import { PLATFORM_DOMAIN } from "@/lib/platform";
 import logo from "@/assets/bexo-logo.png";
 
 const fadeUp: Variants = {
@@ -114,7 +115,7 @@ const FEATURES = [
   },
   {
     icon: Globe,
-    title: "you.atbexo.com",
+    title: `you.${PLATFORM_DOMAIN}`,
     body: "A personal subdomain that looks like you — not a generic link-in-bio page.",
   },
   {
@@ -160,7 +161,7 @@ function buildPlans(prices: {
       note: "+ 18% GST",
       blurb: "Your professional identity, live on your own subdomain.",
       features: [
-        "yourname.atbexo.com",
+        `yourname.${PLATFORM_DOMAIN}`,
         "Premium templates",
         "50MB cloud storage",
         "1 AI resume parse / month",
@@ -238,10 +239,15 @@ export default function LandingPage({
 
   usePageSeo({
     title: `${BEXO_OAUTH_APP_NAME} — Professional portfolios for students`,
-    description:
-      "BEXO From Ace Digital helps students and professionals publish placement-ready portfolios on atbexo.com. This home page is public — sign-in is only required to edit your portfolio.",
-    canonical: "https://atbexo.com/",
-    ogImage: "https://atbexo.com/og-default.jpg",
+    description: `BEXO From Ace Digital helps students and professionals publish placement-ready portfolios on ${PLATFORM_DOMAIN}. This home page is public — sign-in is only required to edit your portfolio.`,
+    canonical:
+      typeof window !== "undefined"
+        ? `${window.location.origin.replace(/\/$/, "")}/`
+        : `https://${PLATFORM_DOMAIN}/`,
+    ogImage:
+      typeof window !== "undefined"
+        ? `${window.location.origin.replace(/\/$/, "")}/og-default.jpg`
+        : `https://${PLATFORM_DOMAIN}/og-default.jpg`,
     jsonLd: buildMarketingJsonLd(),
   });
 
@@ -373,19 +379,19 @@ export default function LandingPage({
           </p>
           <p className="landing-muted mx-auto mt-4 text-[15px] leading-relaxed sm:text-base">
             {BEXO_APP_PURPOSE} Public pages:{" "}
-            <a href="https://atbexo.com/" className="text-[#7BA0FF] hover:underline">
+            <a href="/" className="text-[#7BA0FF] hover:underline">
               home
             </a>
             ,{" "}
-            <a href="https://atbexo.com/#pricing" className="text-[#7BA0FF] hover:underline">
+            <a href="/#pricing" className="text-[#7BA0FF] hover:underline">
               pricing
             </a>
             ,{" "}
-            <a href="https://atbexo.com/privacy" className="text-[#7BA0FF] hover:underline">
+            <a href="/privacy" className="text-[#7BA0FF] hover:underline">
               privacy
             </a>
             , and{" "}
-            <a href="https://atbexo.com/terms" className="text-[#7BA0FF] hover:underline">
+            <a href="/terms" className="text-[#7BA0FF] hover:underline">
               terms
             </a>
             .

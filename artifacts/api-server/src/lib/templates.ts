@@ -1,5 +1,5 @@
 import { BEXO_FOOTER_COPYRIGHT } from "./brand";
-import { appOrigin } from "./platform";
+import { appOrigin, portfolioHostname, PLATFORM_DOMAIN } from "./platform";
 
 const BRAND_BLUE = "#2F6BFF";
 const BRAND_BLUE_DARK = "#1E4FD4";
@@ -378,7 +378,7 @@ export const getCartRecoveryEmail = (userName: string, checkoutUrl: string) => {
     bodyHtml: `
       ${greeting(userName)}
       ${bodyParagraph("You started upgrading to BEXO Pro but left before payment. Your portfolio draft is safe — complete checkout to publish with premium templates and extra storage.")}
-      ${featurePills(["Premium templates", "you.atbexo.com", "More storage"])}
+      ${featurePills(["Premium templates", `you.${PLATFORM_DOMAIN}`, "More storage"])}
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:8px 0 4px;">
         <tr>
           <td style="background:linear-gradient(135deg, #FFF7ED 0%, #FFFBEB 100%);border:1px dashed #FCD34D;border-radius:16px;padding:18px 20px;">
@@ -460,7 +460,7 @@ export const getContactNotificationEmail = (
 ) => {
   const safeMessage = escapeHtml(message).replace(/\n/g, "<br/>");
   const portfolioNote = handle
-    ? ` through <strong style="color:${INK};">${escapeHtml(handle)}.atbexo.com</strong>`
+    ? ` through <strong style="color:${INK};">${escapeHtml(portfolioHostname(handle))}</strong>`
     : "";
   return wrapHtml({
     title: "New portfolio enquiry",
@@ -494,7 +494,7 @@ export const getLeadReplyEmail = (
   originalSnippet?: string,
 ) => {
   const safeBody = escapeHtml(body).replace(/\n/g, "<br/>");
-  const portfolio = handle ? `${escapeHtml(handle)}.atbexo.com` : "their BEXO portfolio";
+  const portfolio = handle ? escapeHtml(portfolioHostname(handle)) : "their BEXO portfolio";
   const quote = originalSnippet
     ? highlightCard(
         "Original enquiry",

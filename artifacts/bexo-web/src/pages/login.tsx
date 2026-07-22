@@ -7,6 +7,7 @@ import { FaWhatsapp } from 'react-icons/fa';
 import logo from '../assets/bexo-logo.png';
 import { usePageSeo } from '../hooks/use-page-seo';
 import { apiUrl } from '../lib/api';
+import { PLATFORM_DOMAIN } from '../lib/platform';
 import { track } from '../lib/track';
 
 export default function Login() {
@@ -27,7 +28,7 @@ export default function Login() {
 
   usePageSeo({
     title: "Sign in to BEXO",
-    description: "Sign in to BEXO to edit your portfolio, templates, and subdomain on atbexo.com.",
+    description: `Sign in to BEXO to edit your portfolio, templates, and subdomain on ${PLATFORM_DOMAIN}.`,
     noindex: true,
   });
 

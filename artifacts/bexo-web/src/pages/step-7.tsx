@@ -4,6 +4,7 @@ import { useOnboarding, OnboardingData } from '../context/OnboardingContext';
 import { Button, Card } from '../design-system/primitives';
 import { ArrowRight, CheckCircle2, Eye, X } from 'lucide-react';
 import { cn } from '../design-system/primitives';
+import { portfolioHostname } from '../lib/platform';
 import {
   DEFAULT_TEMPLATE_ID,
   getDemoPreviewUrl,
@@ -315,7 +316,7 @@ export default function Step7Theme() {
   const showThemeOptions = THEMEABLE_TEMPLATE_IDS.has(selectedTemplate);
 
   const userHandle = data?.handle || (data?.name ? data.name.toLowerCase().replace(/[^a-z0-9]/g, '') : MARKETING_DEMO_HANDLE);
-  const previewLabel = `${userHandle}.atbexo.com`;
+  const previewLabel = portfolioHostname(userHandle);
 
   const handleContinue = () => {
     const chosen = TEMPLATES.find(t => t.id === selectedTemplate);

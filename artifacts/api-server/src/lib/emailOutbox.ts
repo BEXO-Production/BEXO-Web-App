@@ -16,6 +16,7 @@ import {
 } from "./templates";
 import { generateInvoicePDF } from "./invoice";
 import { uploadToR2 } from "./r2";
+import { appOrigin } from "./platform";
 
 type EnqueueInput = {
   eventType: string;
@@ -62,25 +63,26 @@ export async function enqueueEmail(input: EnqueueInput) {
 async function renderEmail(row: typeof emailDeliveries.$inferSelect) {
   const payload = (row.payload || {}) as Record<string, any>;
   const name = payload.userName || "there";
+  const origin = appOrigin();
 
   switch (row.eventType) {
     case "welcome":
       return { html: getWelcomeEmail(name), attachments: undefined as any, replyTo: undefined as string | undefined };
     case "site_live":
       return {
-        html: getSiteLiveEmail(name, payload.siteUrl || "https://atbexo.com"),
+        html: getSiteLiveEmail(name, payload.siteUrl || origin),
         attachments: undefined,
         replyTo: undefined,
       };
     case "recovery":
       return {
-        html: getRecoveryEmail(name, payload.resumeUrl || "https://atbexo.com"),
+        html: getRecoveryEmail(name, payload.resumeUrl || origin),
         attachments: undefined,
         replyTo: undefined,
       };
     case "cart_recovery":
       return {
-        html: getCartRecoveryEmail(name, payload.checkoutUrl || "https://atbexo.com/step/9"),
+        html: getCartRecoveryEmail(name, payload.checkoutUrl || `${origin}/step/9`),
         attachments: undefined,
         replyTo: undefined,
       };
@@ -88,7 +90,7 @@ async function renderEmail(row: typeof emailDeliveries.$inferSelect) {
       return {
         html: getRenewalReminderEmail(
           name,
-          payload.renewUrl || "https://atbexo.com/billing",
+          payload.renewUrl || `${origin}/billing`,
           payload.expiresLabel || "",
         ),
         attachments: undefined,
@@ -98,7 +100,7 @@ async function renderEmail(row: typeof emailDeliveries.$inferSelect) {
       return {
         html: getPaymentFailedEmail(
           name,
-          payload.billingUrl || "https://mybexo.cyou/billing",
+          payload.billingUrl || `${origin}/billing`,
           payload.pauseDate || "",
           Number(payload.dayBucket) || 0,
         ),
