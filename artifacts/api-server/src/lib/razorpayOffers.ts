@@ -6,11 +6,7 @@ import {
   type PricingBreakdown,
 } from "./pricingCatalog";
 
-type RazorpayLike = {
-  offers?: {
-    create: (payload: Record<string, unknown>) => Promise<{ id: string }>;
-  };
-};
+type RazorpayLike = any;
 
 async function createOfferViaRest(payload: Record<string, unknown>): Promise<{ id: string } | null> {
   const keyId = process.env.RAZORPAY_KEY_ID;
