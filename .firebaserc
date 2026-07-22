@@ -11,6 +11,13 @@
           "bexo-from-ace-digital"
         ]
       }
+    },
+    "bexo-development": {
+      "hosting": {
+        "production": [
+          "bexo-development"
+        ]
+      }
     }
   },
   "etags": {}

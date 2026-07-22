@@ -33,7 +33,9 @@ echo "==> Build web"
 pnpm --filter @workspace/bexo-web run build
 
 echo "==> Deploy Firebase Hosting (bexo-development)"
-firebase deploy --only hosting --project "$PROJECT"
+# firebase.json uses hosting target "production"; map it to this project's site.
+firebase target:apply hosting production bexo-development --project "$PROJECT" >/dev/null
+firebase deploy --only hosting:production --project "$PROJECT"
 
 echo ""
 echo "Done (development)."
