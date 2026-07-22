@@ -49,10 +49,8 @@ body {
   inset: 0;
   z-index: 9999;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 1.5rem;
   background: var(--bg);
   transition: opacity 0.5s ease, visibility 0.5s ease;
 }
@@ -63,30 +61,65 @@ body {
   pointer-events: none;
 }
 
+.boot-loader-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  text-align: center;
+}
+
 .boot-loader-brand {
+  display: block;
   width: 44px;
   height: 44px;
+  margin: 0;
   object-fit: contain;
   opacity: 0;
   animation: boot-brand-in 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-/* Old spinner kept hidden for backward compatibility with existing markup */
+/* Legacy spinner slot — kept for old markup, never shown */
 .boot-loader-mark {
-  display: none;
+  display: none !important;
 }
 
 .boot-loader-text {
+  display: block;
+  margin: 0;
   font-family: "Acid Grotesk", sans-serif;
   font-size: 0.7rem;
   letter-spacing: 0.4em;
+  /* Match trailing letter-spacing so glyphs sit on the stack’s center axis */
+  padding-left: 0.4em;
   text-transform: uppercase;
   opacity: 0;
   animation: boot-text-in 0.7s ease 0.15s forwards;
 }
 
-/* Progress track that fills once, then loops subtly until dismissed */
-.boot-loader-text::after {
+/* Dedicated progress bar — independent of letter-spacing side effects */
+.boot-loader-bar {
+  display: block;
+  width: 140px;
+  height: 1.5px;
+  margin: 0;
+  flex-shrink: 0;
+  background:
+    linear-gradient(90deg, var(--accent), var(--accent)) no-repeat,
+    rgba(10, 10, 10, 0.12);
+  background-size: 40% 100%, 100% 100%;
+  animation: boot-progress 1.4s ease-in-out infinite;
+}
+
+/* Hide legacy ::after progress when the dedicated bar is present */
+.boot-loader-stack .boot-loader-text::after {
+  content: none;
+  display: none;
+}
+
+/* Fallback if markup still uses text-only loader without .boot-loader-bar */
+.boot-loader > .boot-loader-text::after {
   content: "";
   display: block;
   width: 140px;
@@ -117,6 +150,7 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .boot-loader-brand,
   .boot-loader-text { animation-duration: 0.01ms; opacity: 1; }
+  .boot-loader-bar,
   .boot-loader-text::after { animation: none; }
 }
 

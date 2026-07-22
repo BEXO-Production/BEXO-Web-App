@@ -476,7 +476,7 @@
     document.querySelectorAll(".project-footer .copyright span, .copyright").forEach((el) => {
       if (el.tagName === "SPAN" || el.classList.contains("copyright")) {
         el.textContent =
-          global.BexoProfile?.getFooterCopyright?.() ||
+          window.BexoProfile?.getFooterCopyright?.() ||
           `© 2026 BEXO From Ace Digital. All rights reserved.`;
       }
     });
@@ -498,8 +498,18 @@
       return;
     }
     const isLocal =
-      window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
-    const webOrigin = isLocal ? "http://localhost:5173" : `${window.location.protocol}//atbexo.com`;
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1" ||
+      window.location.hostname.endsWith(".localhost");
+    let webOrigin;
+    if (isLocal) {
+      webOrigin = "http://localhost:5173";
+    } else {
+      const host = window.location.hostname;
+      const parts = host.split(".");
+      const apex = parts.length > 2 ? parts.slice(1).join(".") : host;
+      webOrigin = `${window.location.protocol}//${apex}`;
+    }
     const url = `${webOrigin}/hire-me/${encodeURIComponent(handle)}`;
     const link = document.querySelector("[data-hire-link]");
     if (link) {
