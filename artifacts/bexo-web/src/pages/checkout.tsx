@@ -526,10 +526,13 @@ export default function CheckoutPage() {
       orderData = parsed;
     }
 
-    if (orderData.mock) {
+    const order = orderData;
+    if (!order?.orderId) throw new Error('Failed to start checkout');
+
+    if (order.mock) {
       await verifyOrder(token, {
         razorpay_payment_id: `mock_payment_${Date.now()}`,
-        razorpay_order_id: orderData.orderId,
+        razorpay_order_id: order.orderId,
         razorpay_signature: 'mock_signature',
       });
       return;
@@ -537,10 +540,10 @@ export default function CheckoutPage() {
 
     openRazorpayModal({
       ...baseRazorpayOptions(),
-      key: orderData.key,
-      amount: orderData.amount,
-      currency: orderData.currency || 'INR',
-      order_id: orderData.orderId,
+      key: order.key,
+      amount: order.amount,
+      currency: order.currency || 'INR',
+      order_id: order.orderId,
       description: opts?.bootstrap
         ? `${selectedPlan?.displayName || 'Plan'} — first invoice (then auto-renews)`
         : `${selectedPlan?.displayName || 'Plan'} — one-time`,
