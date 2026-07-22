@@ -2,13 +2,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useOnboarding } from '../context/OnboardingContext';
 import { useLocation } from 'wouter';
 import { Input, Label, Card } from '../design-system/primitives';
-import { Loader2, ArrowRight, ShieldCheck } from 'lucide-react';
+import { Loader2, ArrowRight, ShieldCheck, Sparkles } from 'lucide-react';
 import { FaWhatsapp } from 'react-icons/fa';
 import logo from '../assets/bexo-logo.png';
 import { usePageSeo } from '../hooks/use-page-seo';
 import { apiUrl } from '../lib/api';
 import { PLATFORM_DOMAIN } from '../lib/platform';
 import { track } from '../lib/track';
+import { AuthBackgroundVideo } from '../components/AuthBackgroundVideo';
 
 export default function Login() {
   const { updateData, setToken } = useOnboarding();
@@ -211,55 +212,60 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-[100dvh] w-full overflow-x-hidden bg-slate-50 flex flex-col justify-center items-center px-3 py-6 sm:p-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
-      <div className="w-full max-w-md space-y-6 sm:space-y-8 animate-in fade-in slide-in-from-bottom duration-300 min-w-0">
+    <div className="relative min-h-[100dvh] w-full overflow-x-hidden bg-slate-950 flex flex-col justify-center items-center px-3 py-6 sm:p-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+      {/* Loop background video across web & mobile */}
+      <AuthBackgroundVideo />
+
+      <div className="relative z-10 w-full max-w-md space-y-6 sm:space-y-8 animate-in fade-in slide-in-from-bottom duration-500 min-w-0">
         <div className="text-center">
-          <a href="/" className="text-xs font-semibold text-slate-400 hover:text-slate-700 transition-colors inline-flex min-h-11 items-center">
-            ← Back to BEXO
+          <a href="/" className="text-xs font-semibold text-slate-300 hover:text-white transition-colors inline-flex min-h-11 items-center px-3 py-1.5 rounded-full bg-white/5 border border-white/10 backdrop-blur-md">
+            ← Return to BEXO
           </a>
         </div>
+
         {/* Logo area */}
-        <div className="flex flex-col items-center gap-3">
-          <img src={logo} alt="BEXO" className="h-10 object-contain select-none" />
-          <h2 className="text-xl font-bold font-serif text-slate-900 tracking-tight text-center">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <div className="p-3 rounded-2xl bg-slate-900/60 border border-white/10 backdrop-blur-xl shadow-xl">
+            <img src={logo} alt="BEXO" className="h-9 object-contain select-none filter drop-shadow" />
+          </div>
+          <h2 className="text-2xl sm:text-3xl font-bold font-serif text-white tracking-tight drop-shadow-md">
             Sign in to BEXO
           </h2>
-          <p className="text-xs text-slate-500 text-center max-w-xs px-1">
-            BEXO by Ace Digital — sign in to edit your portfolio, templates, and subdomain.{" "}
-            <a href="/" className="text-indigo-600 hover:underline">Return to public home</a>.
+          <p className="text-xs text-slate-300 max-w-xs px-1 leading-relaxed">
+            Manage your portfolio, templates, and custom subdomain on <span className="font-semibold text-indigo-300">{PLATFORM_DOMAIN}</span>.
           </p>
         </div>
 
-        {/* Login Card */}
-        <Card className="p-4 sm:p-6 bg-white border border-slate-200/80 shadow-lg rounded-2xl relative overflow-hidden min-w-0">
+        {/* Glassmorphic Login Card */}
+        <Card className="p-5 sm:p-8 bg-slate-900/65 border border-white/15 shadow-2xl rounded-3xl backdrop-blur-2xl relative overflow-hidden min-w-0 text-white">
           {step === 'phone' ? (
             <form onSubmit={handleSendOtp} className="space-y-6">
               <div className="space-y-2">
-                <Label htmlFor="phone" className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                <Label htmlFor="phone" className="text-xs font-bold text-slate-300 uppercase tracking-wider">
                   Mobile Number
                 </Label>
                 <div className="relative flex items-center">
-                  <span className="absolute left-4 text-slate-500 font-medium text-sm select-none">+91</span>
+                  <span className="absolute left-4 text-slate-400 font-semibold text-sm select-none">+91</span>
                   <Input
                     id="phone"
                     type="tel"
                     placeholder="Enter 10-digit number"
                     value={phone}
                     onChange={handlePhoneChange}
-                    className="pl-12 h-12 rounded-xl text-sm font-medium tracking-wide"
+                    className="pl-13 h-13 rounded-2xl bg-slate-950/80 border-slate-700/80 text-white text-base font-medium tracking-wide placeholder:text-slate-500 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/25 transition-all"
                     disabled={isSwooshingSend}
                     required
                   />
                 </div>
                 {phoneError && (
-                  <p className="text-xs font-semibold text-rose-500">{phoneError}</p>
+                  <p className="text-xs font-semibold text-rose-400">{phoneError}</p>
                 )}
               </div>
 
               <button
                 type="submit"
                 disabled={isSwooshingSend || phone.length < 10}
-                className="w-full h-12 bg-indigo-600 text-white hover:bg-indigo-700 transition-all rounded-xl font-bold text-sm shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
+                className="w-full h-13 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white transition-all rounded-2xl font-bold text-sm shadow-xl shadow-indigo-600/30 flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer active:scale-[0.99]"
               >
                 {isSwooshingSend ? (
                   <>
@@ -267,36 +273,36 @@ export default function Login() {
                   </>
                 ) : (
                   <>
-                    Get Verification Code <ArrowRight className="w-4 h-4" />
+                    <span>Get Verification Code</span> <ArrowRight className="w-4 h-4" />
                   </>
                 )}
               </button>
             </form>
           ) : (
             <form onSubmit={handleVerifyOtp} className="space-y-6">
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <div className="flex justify-between items-center">
-                  <Label className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  <Label className="text-xs font-bold text-slate-300 uppercase tracking-wider">
                     Enter Verification Code
                   </Label>
                   <button
                     type="button"
                     onClick={() => setStep('phone')}
-                    className="text-xs font-bold text-indigo-600 hover:text-indigo-800"
+                    className="text-xs font-bold text-indigo-400 hover:text-indigo-300 transition-colors"
                   >
                     Edit Number
                   </button>
                 </div>
                 
-                <p className="text-xs text-slate-500 leading-normal">
-                  Sent a 6-digit OTP to <span className="font-semibold text-slate-800">+91 {phone}</span>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Sent a 6-digit OTP to <span className="font-bold text-white">+91 {phone}</span>
                 </p>
-                <div className="flex items-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">
-                  <FaWhatsapp className="h-4 w-4 text-emerald-500" aria-hidden="true" />
-                  <span>Check WhatsApp. Your OTP is sent through WhatsApp.</span>
+                <div className="flex items-center gap-2.5 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 backdrop-blur-md px-3.5 py-2.5 text-xs font-medium text-emerald-300">
+                  <FaWhatsapp className="h-4 w-4 text-emerald-400 shrink-0" aria-hidden="true" />
+                  <span>Check WhatsApp. Your OTP code is delivered to WhatsApp.</span>
                 </div>
 
-                <div className="grid grid-cols-6 gap-2 pt-2 sm:gap-3">
+                <div className="grid grid-cols-6 gap-2 sm:gap-3 pt-2">
                   {otp.map((digit, idx) => (
                     <Input
                       key={idx}
@@ -311,20 +317,20 @@ export default function Login() {
                       onKeyDown={e => handleKeyDown(idx, e)}
                       onPaste={e => handlePaste(idx, e)}
                       aria-label={`Verification code digit ${idx + 1}`}
-                      className="h-12 min-w-0 w-full text-center text-lg font-bold rounded-xl bg-slate-50 border-slate-200 sm:h-14"
+                      className="h-12 sm:h-14 min-w-0 w-full text-center text-lg sm:text-xl font-bold rounded-2xl bg-slate-950/80 border-slate-700/80 text-white focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/30 transition-all"
                       required
                     />
                   ))}
                 </div>
                 {otpError && (
-                  <p className="text-xs font-semibold text-rose-500">{otpError}</p>
+                  <p className="text-xs font-semibold text-rose-400">{otpError}</p>
                 )}
               </div>
 
               <button
                 type="submit"
                 disabled={isSwooshingVerify}
-                className="w-full h-12 bg-indigo-600 text-white hover:bg-indigo-700 transition-all rounded-xl font-bold text-sm shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
+                className="w-full h-13 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white transition-all rounded-2xl font-bold text-sm shadow-xl shadow-indigo-600/30 flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer active:scale-[0.99]"
               >
                 {isSwooshingVerify ? (
                   <>
@@ -332,7 +338,7 @@ export default function Login() {
                   </>
                 ) : (
                   <>
-                    Verify & Continue <ShieldCheck className="w-4.5 h-4.5" />
+                    <span>Verify & Continue</span> <ShieldCheck className="w-4.5 h-4.5" />
                   </>
                 )}
               </button>
@@ -346,7 +352,7 @@ export default function Login() {
                   <button
                     type="button"
                     onClick={handleSendOtp}
-                    className="text-xs font-bold text-indigo-600 hover:text-indigo-800"
+                    className="text-xs font-bold text-indigo-400 hover:text-indigo-300 transition-colors"
                   >
                     Resend Verification Code
                   </button>
@@ -359,3 +365,4 @@ export default function Login() {
     </div>
   );
 }
+

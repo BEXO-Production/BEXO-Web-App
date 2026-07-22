@@ -66,3 +66,7 @@ dump.rdb
 .env.cloudrun.yaml
 .env.production.server
 lib/db/scripts/delete_*.mjs
+
+# Large source footage (use public/assets/auth-background.mp4)
+Background.MP4
+Background_faststart.mp4
