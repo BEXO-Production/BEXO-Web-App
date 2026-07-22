@@ -65,3 +65,4 @@ dump.rdb
 # Production deploy secrets (never commit)
 .env.cloudrun.yaml
 .env.production.server
+lib/db/scripts/delete_*.mjs
