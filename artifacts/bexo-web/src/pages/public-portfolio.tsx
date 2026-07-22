@@ -4,7 +4,7 @@ import { Loader2, Mail, Phone, Globe, Linkedin, Github, GraduationCap, Briefcase
 import { Card } from '../design-system/primitives';
 import { cn } from '@/lib/utils';
 import { BEXO_FOOTER_COPYRIGHT } from '../lib/brand';
-import logo from '../assets/bexo-logo.png';
+import { BrandLogo } from '../components/BrandLogo';
 import { BUNDLED_PREMIUM_TEMPLATES } from '../lib/templates';
 import { PLATFORM_DOMAIN, portfolioHostname } from '../lib/platform';
 import { UnclaimedHandleBanner } from '../components/UnclaimedHandleBanner';
@@ -58,7 +58,8 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
         const res = await fetch(apiUrl(`/api/profile/public/${handle}`));
         if (!res.ok) {
           if (res.status === 404) {
-            throw new Error('Portfolio not found');
+            setError('Portfolio not found');
+            return;
           }
           if (res.status === 503) {
             const body = await res.json().catch(() => ({}));
@@ -67,7 +68,8 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
               return;
             }
           }
-          throw new Error('Failed to load portfolio');
+          setError(`Failed to load portfolio (${res.status})`);
+          return;
         }
         const result = await res.json();
         setProfileData(result);
@@ -143,17 +145,12 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
 
   useEffect(() => {
     if (profileData && profileData.isPremium && !isSubdomainAccess) {
-      const cleanHost = window.location.host.replace(/^www\./, '');
-      window.location.href = `${window.location.protocol}//${profileData.profile?.handle}.${cleanHost}`;
+      const target = portfolioHostname(profileData.profile?.handle || handle || '');
+      if (target && window.location.host !== target) {
+        window.location.href = `${window.location.protocol}//${target}${window.location.pathname}${window.location.search}`;
+      }
     }
-  }, [profileData, isSubdomainAccess]);
-
-  useEffect(() => {
-    if (profileData && profileData.isPremium && !isSubdomainAccess) {
-      const cleanHost = window.location.host.replace(/^www\./, '');
-      window.location.href = `${window.location.protocol}//${profileData.profile?.handle}.${cleanHost}`;
-    }
-  }, [profileData, isSubdomainAccess]);
+  }, [profileData, isSubdomainAccess, handle]);
 
   // IntersectionObserver for fade-in-on-scroll animations
   useEffect(() => {
@@ -224,7 +221,27 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
   }
 
   if (error || !profileData) {
-    return <UnclaimedHandleBanner handle={handle || handleOverride || 'yourname'} />;
+    const isTrulyUnclaimed = error === 'Portfolio not found';
+    if (isTrulyUnclaimed) {
+      return <UnclaimedHandleBanner handle={handle || handleOverride || 'yourname'} />;
+    }
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6 text-center">
+        <div className="max-w-md space-y-3 rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+          <h1 className="text-xl font-semibold text-slate-900">Portfolio temporarily unavailable</h1>
+          <p className="text-sm text-slate-500">
+            {error || 'We could not load this portfolio right now. Please try again in a moment.'}
+          </p>
+          <button
+            type="button"
+            className="inline-flex h-10 items-center justify-center rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white"
+            onClick={() => window.location.reload()}
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
   }
 
   const { user, profile, aboutEntries, educationEntries, experienceEntries, projectEntries, certificateEntries, achievementEntries, researchEntries, contactData, isPremium } = profileData;
@@ -1336,7 +1353,7 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
           Built with
         </span>
         <span className="text-xs font-serif font-extrabold tracking-tight text-white flex items-center gap-1.5">
-          <img src={logo} alt="" className="w-3.5 h-3.5 object-contain" /> BEXO
+          <BrandLogo size="xs" /> BEXO
         </span>
       </a>
     </div>

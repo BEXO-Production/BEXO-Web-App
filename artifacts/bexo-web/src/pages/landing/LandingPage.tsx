@@ -28,7 +28,7 @@ import {
 import { buildMarketingJsonLd } from "@/lib/seo";
 import { usePageSeo } from "@/hooks/use-page-seo";
 import { PLATFORM_DOMAIN } from "@/lib/platform";
-import logo from "@/assets/bexo-logo.png";
+import { BrandLogo } from "@/components/BrandLogo";
 
 const fadeUp: Variants = {
   hidden: { opacity: 0 },
@@ -255,7 +255,11 @@ export default function LandingPage({
     <div className="landing-root landing-cursor-root">
       <LandingScrollProgress />
       <LandingCursor />
-      <MarketingNav signedIn={signedIn} dashboardReady={dashboardReady} />
+      <MarketingNav
+        signedIn={signedIn}
+        dashboardReady={dashboardReady}
+        continueHref={continueHref}
+      />
 
       {signedIn && (
         <div className="landing-surface-dark border-b border-white/10 px-4 py-2.5 text-center text-xs text-white/80">
@@ -300,7 +304,7 @@ export default function LandingPage({
             transition={{ duration: 0.5 }}
             className="mb-7 inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/[0.06] px-3.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/75"
           >
-            <img src={logo} alt="" className="h-3.5 w-3.5" />
+            <BrandLogo size="xs" />
             Public homepage · No login required to explore
           </motion.div>
 
@@ -337,14 +341,25 @@ export default function LandingPage({
             transition={{ duration: 0.5, delay: 0.28 }}
             className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row"
           >
-            <Link
-              href="/login"
-              data-cursor="Start"
-              className="group inline-flex h-12 items-center gap-2 rounded-full bg-[#2F6BFF] px-8 text-sm font-bold text-white shadow-[0_12px_40px_-8px_rgba(47,107,255,0.55)] transition hover:bg-[#2558e0] active:scale-[0.98]"
-            >
-              Get Started
-              <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
-            </Link>
+            {signedIn ? (
+              <Link
+                href={dashboardReady ? "/dashboard" : continueHref || "/step/1"}
+                data-cursor="Dashboard"
+                className="group inline-flex h-12 items-center gap-2 rounded-full bg-[#2F6BFF] px-8 text-sm font-bold text-white shadow-[0_12px_40px_-8px_rgba(47,107,255,0.55)] transition hover:bg-[#2558e0] active:scale-[0.98]"
+              >
+                {dashboardReady ? "Open dashboard" : "Continue onboarding"}
+                <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
+              </Link>
+            ) : (
+              <Link
+                href="/login"
+                data-cursor="Start"
+                className="group inline-flex h-12 items-center gap-2 rounded-full bg-[#2F6BFF] px-8 text-sm font-bold text-white shadow-[0_12px_40px_-8px_rgba(47,107,255,0.55)] transition hover:bg-[#2558e0] active:scale-[0.98]"
+              >
+                Get Started
+                <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
+              </Link>
+            )}
             <a
               href="#showcase"
               data-cursor="View"
@@ -597,20 +612,34 @@ export default function LandingPage({
           <Reveal>
             <h2 className="font-serif text-4xl font-bold text-white sm:text-5xl">Ready when your next opportunity is.</h2>
             <p className="landing-muted mx-auto mt-4 max-w-lg">
-              Login with your phone, finish onboarding, and ship a portfolio you are proud to send.
+              {signedIn
+                ? dashboardReady
+                  ? "You're signed in — open your dashboard to manage your portfolio."
+                  : "You're signed in — finish onboarding and publish your portfolio."
+                : "Login with your phone, finish onboarding, and ship a portfolio you are proud to send."}
             </p>
             <Link
-              href="/login"
+              href={
+                signedIn
+                  ? dashboardReady
+                    ? "/dashboard"
+                    : continueHref || "/step/1"
+                  : "/login"
+              }
               className="mt-8 inline-flex h-12 items-center gap-2 rounded-full bg-white px-8 text-sm font-bold text-slate-900 transition hover:bg-slate-100"
             >
-              Login to start
+              {signedIn
+                ? dashboardReady
+                  ? "Open dashboard"
+                  : "Continue onboarding"
+                : "Login to start"}
               <ArrowRight className="h-4 w-4" />
             </Link>
           </Reveal>
         </div>
       </section>
 
-      <MarketingFooter />
+      <MarketingFooter signedIn={signedIn} dashboardReady={dashboardReady} />
 
       {previewTemplate && (
         <TemplatePreviewModal

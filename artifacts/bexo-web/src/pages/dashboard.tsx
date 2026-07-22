@@ -46,11 +46,13 @@ import {
   TrendingUp,
   Inbox,
   MousePointerClick,
+  Mail,
+  BadgeCheck,
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { AssetPreviewModal, PreviewTarget } from '../components/AssetPreviewModal';
 import { cn } from '../design-system/primitives';
-import logo from '../assets/bexo-logo.png';
+import { BrandLogo } from '../components/BrandLogo';
 import { supabase } from '../lib/supabase';
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { Calendar } from '../components/ui/calendar';
@@ -79,8 +81,18 @@ const TABS = [
   { id: 'certificates', label: 'Certificates' },
   { id: 'achievements', label: 'Achievements' },
   { id: 'research', label: 'Research' },
+  { id: 'skills', label: 'Skills' },
   { id: 'contact', label: 'Contact' }
 ];
+
+const SKILL_CATEGORIES = [
+  { id: 'technical', label: 'Technical' },
+  { id: 'tools', label: 'Tools' },
+  { id: 'soft', label: 'Soft' },
+  { id: 'languages', label: 'Languages' },
+] as const;
+
+const MAX_SKILLS_UI = 40;
 
 const THEMES = [
   { id: 'blue', label: 'Navy', hex: 'bg-blue-600', textHex: 'text-blue-600' },
@@ -161,7 +173,7 @@ export default function Dashboard() {
   const fabRef = useRef<HTMLDivElement>(null);
 
   // Dynamic Post Update States
-  const [updateCategory, setUpdateCategory] = useState<'achievement' | 'experience' | 'education' | 'project' | 'certificate' | 'research'>('education');
+  const [updateCategory, setUpdateCategory] = useState<'achievement' | 'experience' | 'education' | 'project' | 'certificate' | 'research' | 'skill'>('education');
   const [updateForm, setUpdateForm] = useState<any>({
     assets: { mode: 'images' as AssetMode, images: [], pdfs: [], links: [] }
   });
@@ -700,11 +712,117 @@ export default function Dashboard() {
     if (data.educationEntries && data.educationEntries.length > 0) score += 10;
     if (data.experienceEntries && data.experienceEntries.length > 0) score += 10;
     if (data.projectEntries && data.projectEntries.length > 0) score += 10;
-    if (data.contactData?.email) score += 10;
-    return score;
+    if (data.skillEntries && data.skillEntries.length >= 3) score += 5;
+    if (data.contactData?.email) score += 5;
+    return Math.min(100, score);
   };
 
   const completionScore = calculateCompletion();
+
+  type ReadinessItem = {
+    id: string;
+    label: string;
+    points: number;
+    done: boolean;
+    hint: string;
+    actionLabel: string;
+    onFix: () => void;
+  };
+
+  const readinessItems: ReadinessItem[] = [
+    {
+      id: 'photo',
+      label: 'Profile picture',
+      points: 10,
+      done: !!data.photoUrl,
+      hint: 'Add a clear headshot so recruiters recognize you.',
+      actionLabel: 'Add photo',
+      onFix: () => setShowCompletionModal(true),
+    },
+    {
+      id: 'resume',
+      label: 'Resume (PDF)',
+      points: 20,
+      done: hasResume,
+      hint: 'Upload or generate an ATS resume.',
+      actionLabel: 'Add resume',
+      onFix: () => setShowCompletionModal(true),
+    },
+    {
+      id: 'about',
+      label: 'About / bio',
+      points: 10,
+      done: !!(data.aboutEntries && data.aboutEntries.length > 0),
+      hint: 'A short professional bio on your portfolio.',
+      actionLabel: 'Add bio',
+      onFix: () => setShowCompletionModal(true),
+    },
+    {
+      id: 'education',
+      label: 'Education',
+      points: 10,
+      done: !!(data.educationEntries && data.educationEntries.length > 0),
+      hint: 'Add at least one education entry.',
+      actionLabel: 'Add education',
+      onFix: () => {
+        setCurrentView('edit-profile');
+        setActiveEditorTab('education');
+        setShowCompletionModal(false);
+      },
+    },
+    {
+      id: 'experience',
+      label: 'Experience',
+      points: 10,
+      done: !!(data.experienceEntries && data.experienceEntries.length > 0),
+      hint: 'Add work, internship, or volunteer experience.',
+      actionLabel: 'Add experience',
+      onFix: () => {
+        setCurrentView('edit-profile');
+        setActiveEditorTab('experience');
+        setShowCompletionModal(false);
+      },
+    },
+    {
+      id: 'projects',
+      label: 'Projects',
+      points: 10,
+      done: !!(data.projectEntries && data.projectEntries.length > 0),
+      hint: 'Showcase at least one project.',
+      actionLabel: 'Add project',
+      onFix: () => {
+        setCurrentView('edit-profile');
+        setActiveEditorTab('projects');
+        setShowCompletionModal(false);
+      },
+    },
+    {
+      id: 'skills',
+      label: 'Skills (3+)',
+      points: 5,
+      done: !!(data.skillEntries && data.skillEntries.length >= 3),
+      hint: `Add at least 3 skills (${data.skillEntries?.length || 0}/3 so far).`,
+      actionLabel: 'Post skill update',
+      onFix: () => {
+        setCurrentView('updates');
+        setUpdatesTab('post');
+        setUpdateCategory('skill');
+        setShowCompletionModal(false);
+      },
+    },
+    {
+      id: 'email',
+      label: 'Contact email',
+      points: 5,
+      done: !!data.contactData?.email,
+      hint: 'Public contact email for hire / enquiries.',
+      actionLabel: 'Add email',
+      onFix: () => setShowCompletionModal(true),
+    },
+  ];
+
+  const missingReadiness = readinessItems.filter((item) => !item.done);
+  const openReadiness = () => setShowCompletionModal(true);
   const hasAnalyticsAccess = data.plan === 'essential' || data.plan === 'growth';
   const analyticsSeries: Array<{ day: string; displayViews?: number; views?: number }> = Array.isArray(analyticsSummary?.series)
     ? analyticsSummary.series
@@ -730,7 +848,8 @@ export default function Dashboard() {
     data.projectEntries,
     data.certificateEntries,
     data.achievementEntries,
-    data.researchEntries
+    data.researchEntries,
+    data.skillEntries
   ].reduce((sum, entries) => sum + (entries?.length || 0), 0);
   const nextAction = completionScore < 90
     ? { label: 'Complete portfolio', detail: 'Add the missing profile sections before sharing widely.', action: () => setShowCompletionModal(true), icon: CheckCircle2 }
@@ -786,6 +905,7 @@ export default function Dashboard() {
     certificates: data.certificateEntries || [],
     achievements: data.achievementEntries || [],
     research: data.researchEntries || [],
+    skills: data.skillEntries || [],
   });
   const [contactData, setContactData] = useState(data.contactData || { email: '', phone: '', linkedin: '', github: '', portfolio: '' });
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -808,6 +928,7 @@ export default function Dashboard() {
       certificates: data.certificateEntries || [],
       achievements: data.achievementEntries || [],
       research: data.researchEntries || [],
+      skills: data.skillEntries || [],
     });
     setContactData(data.contactData || { email: '', phone: '', linkedin: '', github: '', portfolio: '' });
   }, [data, currentView]);
@@ -924,6 +1045,7 @@ export default function Dashboard() {
       certificateEntries: newSections.certificates,
       achievementEntries: newSections.achievements,
       researchEntries: newSections.research,
+      skillEntries: newSections.skills,
     });
   };
 
@@ -1353,21 +1475,31 @@ export default function Dashboard() {
   const [settingsName, setSettingsName] = useState(data.name || '');
   const [settingsPronouns, setSettingsPronouns] = useState(data.pronouns || '');
   const [settingsNationality, setSettingsNationality] = useState(data.nationality || '');
-  const [settingsPhone, setSettingsPhone] = useState(data.phone || '');
 
   useEffect(() => {
     setSettingsName(data.name || '');
     setSettingsPronouns(data.pronouns || '');
     setSettingsNationality(data.nationality || '');
-    setSettingsPhone(data.phone || '');
   }, [data, currentView]);
+
+  const verifiedPhone = data.phone || '';
+  const phoneIsVerified = !!(data.phoneVerifiedAt || verifiedPhone);
+  const googleAuthEmail = data.email || '';
+  const hasGoogleAuth = (data.oauthProvider || '').toLowerCase() === 'google' && !!googleAuthEmail;
+  const formatDisplayPhone = (phone: string) => {
+    const digits = phone.replace(/\D/g, '');
+    if (digits.length === 12 && digits.startsWith('91')) {
+      return `+91 ${digits.slice(2, 7)} ${digits.slice(7)}`;
+    }
+    if (digits.length === 10) return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
+    return phone || '—';
+  };
 
   const handleSaveSettings = () => {
     updateData({
       name: settingsName,
       pronouns: settingsPronouns,
       nationality: settingsNationality,
-      phone: settingsPhone
     });
     toast({
       title: 'Settings Saved',
@@ -2036,9 +2168,10 @@ export default function Dashboard() {
       )}
 
       {/* Navigation bar */}
-      <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 px-4 py-3 sm:px-6 sm:py-4 flex items-center justify-between sticky top-0 z-20 transition-colors duration-300 w-full">
-        <div className="flex items-center gap-2 cursor-pointer min-w-0" onClick={() => setCurrentView('overview')}>
-          <img src={logo} alt="BEXO" className="w-7 h-7 object-contain animate-pulse shrink-0" />
+      <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 px-3 py-2.5 sm:px-6 sm:py-4 flex items-center justify-between sticky top-0 z-20 transition-colors duration-300 w-full pt-[max(0.625rem,env(safe-area-inset-top))]">
+        <div className="flex items-center gap-2 cursor-pointer min-w-0 min-h-11" onClick={() => setCurrentView('overview')}>
+          <BrandLogo size="sm" className="sm:hidden" />
+          <BrandLogo size="md" className="hidden sm:inline-flex" />
           <span className="font-serif font-bold text-lg sm:text-xl text-slate-900 tracking-tight">BEXO</span>
         </div>
         <div className="flex items-center gap-3 sm:gap-4 relative shrink-0" ref={profileMenuRef}>
@@ -2261,13 +2394,21 @@ export default function Dashboard() {
                     </Button>
                   </div>
                   <div className="grid grid-cols-3 sm:grid-cols-1 gap-2 sm:gap-3 sm:w-36 min-w-0">
-                    <div className="rounded-xl bg-white/[0.06] border border-white/10 backdrop-blur-sm p-2.5 sm:p-3 min-w-0">
+                    <button
+                      type="button"
+                      onClick={openReadiness}
+                      className="rounded-xl bg-white/[0.06] border border-white/10 backdrop-blur-sm p-2.5 sm:p-3 min-w-0 text-left hover:bg-white/[0.1] hover:border-white/20 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
+                      title="See what’s missing for 100% readiness"
+                    >
                       <p className="text-[10px] sm:text-[11px] text-slate-400 font-semibold">Readiness</p>
                       <p className="text-lg sm:text-xl font-bold mt-0.5 sm:mt-1 tabular-nums">{completionScore}%</p>
                       <div className="mt-1.5 h-1 w-full rounded-full bg-white/10 overflow-hidden">
                         <div className="h-full rounded-full bg-indigo-400 transition-all duration-700" style={{ width: `${completionScore}%` }} />
                       </div>
-                    </div>
+                      <p className="mt-1.5 text-[9px] sm:text-[10px] font-semibold text-indigo-200/90">
+                        {completionScore >= 100 ? 'Complete' : `Tap · ${missingReadiness.length} left`}
+                      </p>
+                    </button>
                     <div className="rounded-xl bg-white/[0.06] border border-white/10 backdrop-blur-sm p-2.5 sm:p-3 min-w-0">
                       <p className="text-[10px] sm:text-[11px] text-slate-400 font-semibold">Entries</p>
                       <p className="text-lg sm:text-xl font-bold mt-0.5 sm:mt-1 tabular-nums">{totalEntries}</p>
@@ -2374,7 +2515,12 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  <div className="hidden sm:flex lg:w-44 shrink-0 flex-col justify-between rounded-2xl border border-indigo-100/80 bg-gradient-to-b from-indigo-50 to-white p-4">
+                  <button
+                    type="button"
+                    onClick={openReadiness}
+                    className="hidden sm:flex lg:w-44 shrink-0 flex-col justify-between rounded-2xl border border-indigo-100/80 bg-gradient-to-b from-indigo-50 to-white p-4 text-left hover:border-indigo-200 hover:shadow-sm transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+                    title="See what’s missing for 100% readiness"
+                  >
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-indigo-400">Readiness</p>
                       <p className="mt-1 text-3xl font-bold tabular-nums text-slate-900 tracking-tight">{completionScore}%</p>
@@ -2382,10 +2528,12 @@ export default function Dashboard() {
                         <div className="h-full rounded-full bg-indigo-500 transition-all duration-700" style={{ width: `${completionScore}%` }} />
                       </div>
                     </div>
-                    <p className="text-[11px] text-slate-500 leading-snug mt-4">
-                      {completionScore >= 90 ? 'Ready for recruiters and applications.' : 'Finish a few details to look sharper live.'}
+                    <p className="text-[11px] text-indigo-600 font-semibold leading-snug mt-4">
+                      {completionScore >= 100
+                        ? 'You’re at 100%.'
+                        : `Tap to fix ${missingReadiness.length} missing item${missingReadiness.length === 1 ? '' : 's'}`}
                     </p>
-                  </div>
+                  </button>
                 </div>
               </div>
             </Card>
@@ -2490,15 +2638,22 @@ export default function Dashboard() {
                             <Inbox className="w-3 h-3" /> Open inbox
                           </p>
                         </button>
-                        <div className="col-span-2 rounded-2xl border border-slate-100 bg-slate-50/80 px-3.5 py-3 flex items-center justify-between gap-3">
+                        <button
+                          type="button"
+                          onClick={openReadiness}
+                          className="col-span-2 rounded-2xl border border-slate-100 bg-slate-50/80 px-3.5 py-3 flex items-center justify-between gap-3 text-left hover:border-indigo-200 hover:bg-indigo-50/40 transition-colors"
+                        >
                           <div className="min-w-0">
                             <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Portfolio readiness</p>
                             <p className="text-sm font-bold text-slate-800 tabular-nums">{completionScore}% complete</p>
+                            <p className="text-[11px] text-indigo-600 font-semibold mt-0.5">
+                              {completionScore >= 100 ? 'All set' : `View ${missingReadiness.length} missing`}
+                            </p>
                           </div>
                           <div className="h-1.5 w-20 rounded-full bg-slate-200 overflow-hidden shrink-0">
                             <div className="h-full rounded-full bg-indigo-500" style={{ width: `${completionScore}%` }} />
                           </div>
-                        </div>
+                        </button>
                       </div>
                     </div>
 
@@ -3085,6 +3240,80 @@ export default function Dashboard() {
                       Save Contact
                     </Button>
                   </div>
+                ) : activeEditorTab === 'skills' ? (
+                  <div className="space-y-6 animate-in fade-in">
+                    <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 border-b pb-3">
+                      <div>
+                        <h3 className="text-lg font-bold text-slate-900">Skills</h3>
+                        <p className="text-sm text-slate-500 mt-1">
+                          Review or remove skills here. New skills must be posted from Updates and use your monthly limit. Max {MAX_SKILLS_UI}.
+                        </p>
+                      </div>
+                      <p className="text-xs font-semibold text-slate-400">{(sections.skills || []).length}/{MAX_SKILLS_UI}</p>
+                    </div>
+
+                    <div className="rounded-xl border border-indigo-100 bg-indigo-50/70 p-4 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-indigo-950">Add a skill via Updates</p>
+                        <p className="text-xs text-indigo-800/80 mt-0.5 leading-snug">
+                          Each new skill counts as 1 monthly profile update.
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-10 shrink-0 touch-manipulation"
+                        onClick={() => {
+                          setCurrentView('updates');
+                          setUpdatesTab('post');
+                          setUpdateCategory('skill');
+                        }}
+                      >
+                        <Plus className="w-4 h-4 mr-1" /> Post skill update
+                      </Button>
+                    </div>
+
+                    {SKILL_CATEGORIES.map((cat) => {
+                      const group = (sections.skills || []).filter((s: any) => (s.category || 'technical') === cat.id);
+                      if (!group.length) return null;
+                      return (
+                        <div key={cat.id} className="space-y-2">
+                          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{cat.label}</p>
+                          <div className="flex flex-wrap gap-2">
+                            {group.map((skill: any) => (
+                              <span
+                                key={skill.id}
+                                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-800"
+                              >
+                                {skill.name}
+                                <button
+                                  type="button"
+                                  className="text-slate-400 hover:text-red-500 min-h-[28px] min-w-[28px] inline-flex items-center justify-center touch-manipulation"
+                                  onClick={() => {
+                                    const next = {
+                                      ...sections,
+                                      skills: (sections.skills || []).filter((s: any) => s.id !== skill.id),
+                                    };
+                                    setSections(next);
+                                    updateContextSections(next);
+                                  }}
+                                  aria-label={`Remove ${skill.name}`}
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {(sections.skills || []).length === 0 && (
+                      <p className="text-sm text-slate-400 italic">
+                        No skills yet — post your first skill from Updates to use a monthly credit.
+                      </p>
+                    )}
+                  </div>
                 ) : activeEditorTab === 'about' ? (
                   <div className="space-y-6 animate-in fade-in">
                     <div className="flex justify-between items-center border-b pb-3 mb-4">
@@ -3668,7 +3897,8 @@ export default function Dashboard() {
                         { id: 'project', label: 'Projects' },
                         { id: 'certificate', label: 'Certificates' },
                         { id: 'achievement', label: 'Achievements' },
-                        { id: 'research', label: 'Research' }
+                        { id: 'research', label: 'Research' },
+                        { id: 'skill', label: 'Skills' }
                       ].map(cat => (
                         <button
                           key={cat.id}
@@ -3938,6 +4168,27 @@ export default function Dashboard() {
                       </>
                     )}
 
+                    {updateCategory === 'skill' && (
+                      <>
+                        <div className="space-y-1">
+                          <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Skill Name</Label>
+                          <Input value={updateForm.name || ''} onChange={e => setUpdateForm({...updateForm, name: e.target.value})} placeholder="E.g., React, Python, Figma" />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Category</Label>
+                          <select
+                            value={updateForm.category || 'technical'}
+                            onChange={e => setUpdateForm({ ...updateForm, category: e.target.value })}
+                            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"
+                          >
+                            {SKILL_CATEGORIES.map((c) => (
+                              <option key={c.id} value={c.id}>{c.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </>
+                    )}
+
                   </div>
 
                   <div className="flex justify-end pt-4 border-t border-slate-100">
@@ -3958,6 +4209,7 @@ export default function Dashboard() {
                         if (updateCategory === 'education' && updateForm.institution?.trim() && updateForm.degree?.trim()) isValid = true;
                         if (updateCategory === 'project' && updateForm.title?.trim()) isValid = true;
                         if (updateCategory === 'certificate' && updateForm.title?.trim() && updateForm.issuer?.trim()) isValid = true;
+                        if (updateCategory === 'skill' && updateForm.name?.trim()) isValid = true;
 
                         if (!isValid) {
                           toast({ title: 'Incomplete', description: 'Please fill out the required primary fields.', variant: 'destructive' });
@@ -3998,7 +4250,8 @@ export default function Dashboard() {
                             'education': 'educationEntries',
                             'project': 'projectEntries',
                             'certificate': 'certificateEntries',
-                            'research': 'researchEntries'
+                            'research': 'researchEntries',
+                            'skill': 'skillEntries',
                           };
                           const targetKey = stateKeyMap[updateCategory];
                           const currentList = Array.isArray((data as any)[targetKey]) ? (data as any)[targetKey] : [];
@@ -4174,19 +4427,53 @@ export default function Dashboard() {
                         <Input value={settingsNationality} onChange={e => setSettingsNationality(e.target.value)} />
                       </div>
                       <div className="space-y-1.5">
-                        <Label className="text-xs font-semibold text-slate-500">Phone</Label>
-                        <div className="flex relative">
-                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-medium">+91</span>
-                          <Input 
-                            value={settingsPhone.replace(/^\+?91/, '').trim()} 
-                            onChange={e => {
-                              const val = e.target.value.replace(/\D/g, '').slice(0, 10);
-                              setSettingsPhone(val ? `+91${val}` : '');
-                            }} 
-                            className="pl-12 text-sm font-medium tracking-wide h-10 rounded-xl"
-                          />
+                        <div className="flex items-center justify-between gap-2">
+                          <Label className="text-xs font-semibold text-slate-500">Verified phone</Label>
+                          {phoneIsVerified && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                              <BadgeCheck className="w-3 h-3" /> Verified
+                            </span>
+                          )}
                         </div>
+                        <div className="flex h-12 w-full items-center rounded-xl border border-slate-100 bg-slate-50 px-4 text-sm font-medium tracking-wide text-slate-900">
+                          {formatDisplayPhone(verifiedPhone)}
+                        </div>
+                        <p className="text-[11px] text-slate-400 leading-normal">
+                          This is your login phone. Change it from account recovery / support if needed.
+                        </p>
                       </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <Label className="text-xs font-semibold text-slate-500">Google account email</Label>
+                        {hasGoogleAuth ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                            <BadgeCheck className="w-3 h-3" /> Linked
+                          </span>
+                        ) : googleAuthEmail ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 border border-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                            On file
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                            Not linked
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex h-12 w-full items-center gap-2.5 rounded-xl border border-slate-100 bg-slate-50 px-4 text-sm text-slate-900">
+                        <Mail className="w-4 h-4 text-slate-400 shrink-0" />
+                        <span className={cn('truncate font-medium', !googleAuthEmail && 'text-slate-400 font-normal')}>
+                          {googleAuthEmail || 'No Google email on this account yet'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 leading-normal">
+                        {hasGoogleAuth
+                          ? 'Signed in with Google. This email is used for receipts and account recovery.'
+                          : googleAuthEmail
+                            ? 'Email is saved on your account. Link Google from login if you want Google sign-in.'
+                            : 'Connect Google on login to show your Google email here.'}
+                      </p>
                     </div>
 
                     <div className="space-y-1.5">
@@ -4886,13 +5173,17 @@ export default function Dashboard() {
               
               <div className="mb-5">
                 <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-indigo-500" /> Complete Your Profile
+                  <Sparkles className="w-5 h-5 text-indigo-500" /> Portfolio readiness
                 </h2>
-                <p className="text-xs text-slate-500 mt-1">Fill in the missing details to fully optimize your portfolio and raise portfolio readiness.</p>
+                <p className="text-xs text-slate-500 mt-1">
+                  {completionScore >= 100
+                    ? 'You’re at 100%. Keep your portfolio updated.'
+                    : `You’re at ${completionScore}%. Fix the items below to reach 100%.`}
+                </p>
               </div>
 
               {/* Progress */}
-              <div className="mb-6 bg-slate-50 border border-slate-100 p-4 rounded-xl">
+              <div className="mb-5 bg-slate-50 border border-slate-100 p-4 rounded-xl">
                 <div className="flex justify-between items-center text-xs font-semibold text-slate-700 mb-2">
                   <span>Completion Status</span>
                   <span>{completionScore}%</span>
@@ -4905,9 +5196,38 @@ export default function Dashboard() {
                 </div>
               </div>
 
+              {missingReadiness.length > 0 && (
+                <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50/80 p-3.5 space-y-2.5">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-amber-700">
+                    Missing for 100% · {missingReadiness.reduce((s, i) => s + i.points, 0)} pts
+                  </p>
+                  {missingReadiness.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-start justify-between gap-3 rounded-lg bg-white/90 border border-amber-100 px-3 py-2.5"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-slate-900">
+                          {item.label}{' '}
+                          <span className="font-semibold text-amber-700">+{item.points}%</span>
+                        </p>
+                        <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">{item.hint}</p>
+                      </div>
+                      <Button
+                        size="sm"
+                        className="h-8 text-[11px] px-2.5 shrink-0"
+                        onClick={item.onFix}
+                      >
+                        {item.actionLabel}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* List of sections */}
               <div className="space-y-4 overflow-y-auto pr-1 flex-1">
-                {/* 1. Profile Picture */}
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">All checklist items</p>
                 <div className="border border-slate-100 rounded-xl p-4 bg-white shadow-sm flex flex-col gap-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -5088,32 +5408,66 @@ export default function Dashboard() {
                 </div>
 
                 {/* 5. Education & Projects redirects */}
-                {(!data.educationEntries || data.educationEntries.length === 0 || !data.projectEntries || data.projectEntries.length === 0) && (
+                {(!data.educationEntries || data.educationEntries.length === 0
+                  || !data.projectEntries || data.projectEntries.length === 0
+                  || !data.experienceEntries || data.experienceEntries.length === 0
+                  || !data.skillEntries || data.skillEntries.length < 3) && (
                   <div className="border border-slate-100 rounded-xl p-4 bg-slate-50 flex flex-col gap-2.5">
-                    <p className="text-[11px] text-slate-500 font-medium">To complete other sections like education, projects, or work history, use the main profile editor.</p>
-                    <div className="flex gap-2">
-                      <Button 
-                        size="sm" 
-                        className="h-8 text-[11px] px-3 bg-white border border-slate-200 text-slate-800 hover:bg-slate-50 flex-1 shadow-none"
-                        onClick={() => {
-                          setCurrentView('edit-profile');
-                          setActiveEditorTab('education');
-                          setShowCompletionModal(false);
-                        }}
-                      >
-                        Add Education
-                      </Button>
-                      <Button 
-                        size="sm" 
-                        className="h-8 text-[11px] px-3 bg-white border border-slate-200 text-slate-800 hover:bg-slate-50 flex-1 shadow-none"
-                        onClick={() => {
-                          setCurrentView('edit-profile');
-                          setActiveEditorTab('projects');
-                          setShowCompletionModal(false);
-                        }}
-                      >
-                        Add Project
-                      </Button>
+                    <p className="text-[11px] text-slate-500 font-medium">Jump to the profile editor for sections that need more detail.</p>
+                    <div className="flex flex-wrap gap-2">
+                      {(!data.educationEntries || data.educationEntries.length === 0) && (
+                        <Button 
+                          size="sm" 
+                          className="h-8 text-[11px] px-3 bg-white border border-slate-200 text-slate-800 hover:bg-slate-50 shadow-none"
+                          onClick={() => {
+                            setCurrentView('edit-profile');
+                            setActiveEditorTab('education');
+                            setShowCompletionModal(false);
+                          }}
+                        >
+                          Add Education
+                        </Button>
+                      )}
+                      {(!data.projectEntries || data.projectEntries.length === 0) && (
+                        <Button 
+                          size="sm" 
+                          className="h-8 text-[11px] px-3 bg-white border border-slate-200 text-slate-800 hover:bg-slate-50 shadow-none"
+                          onClick={() => {
+                            setCurrentView('edit-profile');
+                            setActiveEditorTab('projects');
+                            setShowCompletionModal(false);
+                          }}
+                        >
+                          Add Project
+                        </Button>
+                      )}
+                      {(!data.experienceEntries || data.experienceEntries.length === 0) && (
+                        <Button 
+                          size="sm" 
+                          className="h-8 text-[11px] px-3 bg-white border border-slate-200 text-slate-800 hover:bg-slate-50 shadow-none"
+                          onClick={() => {
+                            setCurrentView('edit-profile');
+                            setActiveEditorTab('experience');
+                            setShowCompletionModal(false);
+                          }}
+                        >
+                          Add Experience
+                        </Button>
+                      )}
+                      {(!data.skillEntries || data.skillEntries.length < 3) && (
+                        <Button 
+                          size="sm" 
+                          className="h-8 text-[11px] px-3 bg-white border border-slate-200 text-slate-800 hover:bg-slate-50 shadow-none"
+                          onClick={() => {
+                            setCurrentView('updates');
+                            setUpdatesTab('post');
+                            setUpdateCategory('skill');
+                            setShowCompletionModal(false);
+                          }}
+                        >
+                          Post Skills ({data.skillEntries?.length || 0}/3)
+                        </Button>
+                      )}
                     </div>
                   </div>
                 )}

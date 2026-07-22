@@ -187,23 +187,41 @@ async function renderEmail(row: typeof emailDeliveries.$inferSelect) {
 
 export async function processEmailOutbox(limit = 20) {
   const now = new Date();
-  const pending = await db
-    .select()
-    .from(emailDeliveries)
-    .where(
-      and(
-        or(eq(emailDeliveries.status, "pending"), eq(emailDeliveries.status, "failed")),
-        or(sql`${emailDeliveries.nextRetryAt} IS NULL`, lte(emailDeliveries.nextRetryAt, now)),
-        sql`${emailDeliveries.attempts} < ${MAX_ATTEMPTS}`,
-      ),
+  // Claim rows atomically across Cloud Run replicas (SKIP LOCKED).
+  const claimed = await db.execute(sql`
+    UPDATE email_deliveries
+    SET
+      status = 'processing',
+      updated_at = NOW(),
+      attempts = attempts + 1
+    WHERE id IN (
+      SELECT id FROM email_deliveries
+      WHERE (status = 'pending' OR status = 'failed')
+        AND (next_retry_at IS NULL OR next_retry_at <= ${now})
+        AND attempts < ${MAX_ATTEMPTS}
+      ORDER BY created_at ASC
+      FOR UPDATE SKIP LOCKED
+      LIMIT ${limit}
     )
-    .limit(limit);
+    RETURNING *
+  `);
 
-  for (const row of pending) {
-    await db
-      .update(emailDeliveries)
-      .set({ status: "processing", updatedAt: new Date(), attempts: row.attempts + 1 })
-      .where(eq(emailDeliveries.id, row.id));
+  const pending = (claimed as { rows?: any[] }).rows
+    || (Array.isArray(claimed) ? claimed : []);
+
+  for (const raw of pending) {
+    const row = {
+      id: raw.id,
+      eventType: raw.event_type ?? raw.eventType,
+      recipient: raw.recipient,
+      subject: raw.subject,
+      payload: raw.payload || {},
+      attempts: Number(raw.attempts) || 0,
+      relatedId: raw.related_id ?? raw.relatedId,
+      userId: raw.user_id ?? raw.userId,
+      dedupeKey: raw.dedupe_key ?? raw.dedupeKey ?? "",
+      status: raw.status,
+    } as typeof emailDeliveries.$inferSelect;
 
     try {
       const rendered = await renderEmail(row);

@@ -12,13 +12,16 @@ import {
   resumeParseAttempts,
   assets,
 } from "@workspace/db";
-import { eq, and, desc, gt, sql } from "drizzle-orm";
+import { eq, and, desc, gt, sql, inArray } from "drizzle-orm";
 import { logger } from "../lib/logger";
+import { agentDebugLog } from "../lib/agentDebugLog";
 import { MARKETING_DEMO_HANDLE, getMarketingDemoProfile, isMarketingDemoHandle } from "../lib/marketingDemoProfile";
+import { invalidatePortfolioRenderCache } from "../lib/portfolioRenderCache";
 import multer from "multer";
 import { createRequire } from "module";
 import { uploadToR2, deleteFromR2 } from "../lib/r2";
 import { generateATSResume } from "../lib/resumeEngine";
+import { executeResilientResumeParsing } from "../lib/aiResilienceEngine";
 import { resolveSubscriptionState, syncStorageQuota, recomputeUserQuota } from "../lib/subscriptions";
 import { resolveSiteAccess } from "../lib/siteAccess";
 import {
@@ -29,6 +32,7 @@ import {
   getUpdatesUsage,
 } from "../lib/entitlements";
 import { buildPublicProfile } from "../lib/publicProfile";
+import { normalizeSkills, MAX_SKILLS } from "../lib/publicProfile";
 import { enqueueEmail } from "../lib/emailOutbox";
 import {
   enqueueWelcomeEmail,
@@ -45,6 +49,23 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 15 * 1024 * 1024 } // 15MB limit to support larger PDFs/images
 });
+
+/** True when `next` introduces any skill name not already on the profile. */
+function skillsContainAdditions(existing: unknown, next: unknown): boolean {
+  const before = new Set(
+    normalizeSkills(existing).map((s) => s.name.toLowerCase()),
+  );
+  return normalizeSkills(next).some((s) => !before.has(s.name.toLowerCase()));
+}
+
+async function loadSkillEntries(profileId: string): Promise<unknown[]> {
+  const [section] = await db
+    .select()
+    .from(profileSections)
+    .where(and(eq(profileSections.profileId, profileId), eq(profileSections.type, "skills")))
+    .limit(1);
+  return Array.isArray(section?.entries) ? (section!.entries as unknown[]) : [];
+}
 
 // Helper to get or create profile
 async function getOrCreateProfile(userId: string): Promise<typeof profiles.$inferSelect> {
@@ -159,8 +180,11 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<voi
       user: {
         id: user.id,
         phone: user.phone,
+        phoneVerifiedAt: user.phoneVerifiedAt,
         name: user.name,
         email: user.email,
+        oauthProvider: user.oauthProvider,
+        oauthId: user.oauthId,
         dob: user.dob,
         photoUrl: user.photoUrl,
         resumeUrl: effectiveResumeUrl,
@@ -213,6 +237,7 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<voi
       certificateEntries: getEntries("certificates"),
       achievementEntries: getEntries("achievements"),
       researchEntries: getEntries("research"),
+      skillEntries: getEntries("skills"),
       contactData: contactEntries || { email: user.email || "", phone: user.phone || "", linkedin: "", github: "", portfolio: "" },
       payments: paymentsList
     });
@@ -228,7 +253,7 @@ router.patch("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<v
     const { 
       name, dob, email, photoUrl, resumeUrl, handle, headline, careerGoal, bio, completionPct, profilePhotoAssetId,
       openToHire, templateId, themeColor, themeBg,
-      aboutEntries, educationEntries, experienceEntries, projectEntries, certificateEntries, achievementEntries, researchEntries, contactData
+      aboutEntries, educationEntries, experienceEntries, projectEntries, certificateEntries, achievementEntries, researchEntries, skillEntries, contactData
     } = req.body;
     try {
       // Resolve premium status for gating
@@ -293,12 +318,45 @@ router.patch("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<v
     const profileUpdates: Partial<typeof profiles.$inferInsert> = {};
     
     if (handle !== undefined && handle !== profile.handle) {
-      const existing = await db.select().from(profiles).where(eq(profiles.handle, handle)).limit(1);
-      if (existing.length > 0) {
-        res.status(400).json({ error: "Handle is already taken" });
+      const normalizedHandle =
+        typeof handle === "string" ? handle.toLowerCase().trim() : "";
+      // #region agent log
+      agentDebugLog("E", "profile.ts:update:handle-claim", "attempting handle claim", {
+        userId,
+        rawHandle: handle,
+        normalized: normalizedHandle,
+        currentHandle: profile.handle,
+      });
+      // #endregion
+      if (!normalizedHandle || !/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/.test(normalizedHandle) || normalizedHandle.length > 40) {
+        res.status(400).json({ error: "Handle must be 1–40 characters: letters, numbers, dots, or hyphens." });
         return;
       }
-      profileUpdates.handle = handle;
+      if (
+        normalizedHandle === MARKETING_DEMO_HANDLE ||
+        normalizedHandle === "bexo" ||
+        normalizedHandle === "www" ||
+        normalizedHandle === "api" ||
+        normalizedHandle === "admin" ||
+        normalizedHandle === "support"
+      ) {
+        res.status(400).json({ error: "That handle is reserved." });
+        return;
+      }
+      if (normalizedHandle === profile.handle) {
+        // no-op (already owned, possibly different casing in request)
+      } else {
+        const existing = await db
+          .select()
+          .from(profiles)
+          .where(eq(profiles.handle, normalizedHandle))
+          .limit(1);
+        if (existing.length > 0) {
+          res.status(409).json({ error: "Handle is already taken", code: "HANDLE_TAKEN" });
+          return;
+        }
+        profileUpdates.handle = normalizedHandle;
+      }
     }
 
     if (headline !== undefined) profileUpdates.headline = headline;
@@ -327,8 +385,29 @@ router.patch("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<v
       { type: "certificates", entries: certificateEntries },
       { type: "achievements", entries: achievementEntries },
       { type: "research", entries: researchEntries },
+      {
+        type: "skills",
+        entries:
+          skillEntries !== undefined
+            ? normalizeSkills(skillEntries).slice(0, MAX_SKILLS)
+            : undefined,
+      },
       { type: "contact", entries: contactData }
     ];
+
+    if (skillEntries !== undefined) {
+      const existingSkills = await loadSkillEntries(profile.id);
+      if (skillsContainAdditions(existingSkills, skillEntries)) {
+        const [gateUser] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+        if (gateUser?.onboardingCompletedAt) {
+          res.status(403).json({
+            error: "New skills must be posted as a profile Update and use your monthly update limit.",
+            code: "SKILL_ADD_REQUIRES_UPDATE",
+          });
+          return;
+        }
+      }
+    }
 
     for (const sec of sectionsToSave) {
       if (sec.entries !== undefined) {
@@ -348,13 +427,22 @@ router.patch("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<v
     await autoGenerateResumeIfNeeded(userId);
 
     // Fresh edits must be visible on the public page immediately
-    if (profile.handle) publicProfileCache.delete(profile.handle);
+    if (profile.handle) { publicProfileCache.delete(profile.handle); invalidatePortfolioRenderCache(profile.handle); }
 
     res.json({ success: true, message: "Profile updated successfully" });
   } catch (err) {
-    // Unique-constraint race (e.g. two requests claiming the same email/phone)
+    // Unique-constraint race (handle / email / phone)
     if ((err as { code?: string })?.code === "23505") {
-      logger.warn({ err, userId }, "Unique constraint conflict on profile update");
+      const constraint = String((err as { constraint?: string }).constraint ?? "");
+      const msg = String((err as { message?: string }).message ?? "");
+      logger.warn({ err, userId, constraint }, "Unique constraint conflict on profile update");
+      if (constraint.includes("handle") || msg.includes("handle")) {
+        res.status(409).json({
+          error: "That handle was just claimed by someone else. Try another.",
+          code: "HANDLE_TAKEN",
+        });
+        return;
+      }
       res.status(409).json({
         error: "That email or phone number is already linked to another BEXO account.",
         code: "DUPLICATE_CONTACT",
@@ -383,11 +471,27 @@ router.get("/check-handle", optionalAuth, async (req: AuthenticatedRequest, res)
       normalized === "admin" ||
       normalized === "support"
     ) {
+      // #region agent log
+      agentDebugLog("E", "profile.ts:check-handle:reserved", "handle reserved", { normalized });
+      // #endregion
       res.json({ available: false, reason: "reserved" });
       return;
     }
-    const existing = await db.select().from(profiles).where(eq(profiles.handle, handle)).limit(1);
+    const existing = await db
+      .select()
+      .from(profiles)
+      .where(eq(profiles.handle, normalized))
+      .limit(1);
     const taken = existing.length > 0 && (!req.user || existing[0].userId !== req.user.id);
+    // #region agent log
+    agentDebugLog("E", "profile.ts:check-handle:result", "handle availability", {
+      normalized,
+      rawHandle: handle,
+      caseMismatch: handle !== normalized,
+      available: !taken,
+      hasUser: !!req.user,
+    });
+    // #endregion
     res.json({ available: !taken });
   } catch (err) {
     logger.error({ err, handle }, "Error checking handle availability");
@@ -406,6 +510,14 @@ router.get("/suggest-handle", optionalAuth, async (req: AuthenticatedRequest, re
   }
 
   try {
+    // #region agent log
+    agentDebugLog("A", "profile.ts:suggest-handle:entry", "suggest-handle entered", {
+      hasUser: !!req.user,
+      userId: req.user?.id ?? null,
+      firstNameLen: firstName.length,
+    });
+    // #endregion
+
     // Generate candidates
     const candidates: string[] = [];
     
@@ -427,35 +539,54 @@ router.get("/suggest-handle", optionalAuth, async (req: AuthenticatedRequest, re
       candidates.push(`${firstName}${rand}`);
     }
 
-    // Find which of these are already in use by other users
-    const matched = await db.select({ handle: profiles.handle, userId: profiles.userId })
-      .from(profiles)
-      .where(and(
-        // Match any of the generated candidates
-        // drizzle doesn't natively do SQL `IN` array matching cleanly without inArray helper,
-        // so we query them all or filter
-        eq(profiles.handle, candidates[0]) // fallback
-      ));
+    const uniqueCandidates = Array.from(new Set(candidates.filter(Boolean)));
+    const matches = uniqueCandidates.length
+      ? await db
+          .select({ handle: profiles.handle, userId: profiles.userId })
+          .from(profiles)
+          .where(inArray(profiles.handle, uniqueCandidates))
+      : [];
 
-    // To be perfectly safe, let's query all existing profiles matching our candidates
-    const allMatches = await db.select().from(profiles);
+    // #region agent log
+    agentDebugLog("B", "profile.ts:suggest-handle:scoped-scan", "checked candidates only", {
+      profileMatchCount: matches.length,
+      candidateCount: uniqueCandidates.length,
+      hasUser: !!req.user,
+    });
+    // #endregion
+
+    const selfId = req.user?.id;
     const takenHandles = new Set(
-      allMatches
-        .filter(p => p.userId !== req.user!.id) // owned by someone else
-        .map(p => p.handle?.toLowerCase())
+      matches
+        .filter((p) => !selfId || p.userId !== selfId)
+        .map((p) => p.handle?.toLowerCase())
+        .filter(Boolean) as string[],
     );
 
     // Find the first candidate that isn't taken
-    let suggestedHandle = candidates[0];
-    for (const cand of candidates) {
+    let suggestedHandle = uniqueCandidates[0];
+    for (const cand of uniqueCandidates) {
       if (!takenHandles.has(cand)) {
         suggestedHandle = cand;
         break;
       }
     }
 
+    // #region agent log
+    agentDebugLog("A", "profile.ts:suggest-handle:ok", "suggest-handle succeeded", {
+      hasUser: !!req.user,
+      suggestedHandle,
+    });
+    // #endregion
+
     res.json({ suggestedHandle });
   } catch (err) {
+    // #region agent log
+    agentDebugLog("A", "profile.ts:suggest-handle:catch", "suggest-handle threw", {
+      hasUser: !!req.user,
+      errMessage: err instanceof Error ? err.message : String(err),
+    });
+    // #endregion
     logger.error({ err, firstName, lastName }, "Error suggesting handle");
     res.status(500).json({ error: "Internal server error" });
   }
@@ -491,16 +622,31 @@ router.patch("/sections/:type", requireAuth, async (req: AuthenticatedRequest, r
 
   try {
     const profile = await getOrCreateProfile(userId);
+    let nextEntries = entries;
+    if (type === "skills") {
+      nextEntries = normalizeSkills(entries).slice(0, MAX_SKILLS);
+      const existingSkills = await loadSkillEntries(profile.id);
+      if (skillsContainAdditions(existingSkills, nextEntries)) {
+        const [gateUser] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+        if (gateUser?.onboardingCompletedAt) {
+          res.status(403).json({
+            error: "New skills must be posted as a profile Update and use your monthly update limit.",
+            code: "SKILL_ADD_REQUIRES_UPDATE",
+          });
+          return;
+        }
+      }
+    }
 
     // Upsert section
     await db.insert(profileSections).values({
       profileId: profile.id,
       type,
-      entries,
+      entries: nextEntries,
       reviewedAt: new Date()
     }).onConflictDoUpdate({
       target: [profileSections.profileId, profileSections.type],
-      set: { entries, reviewedAt: new Date() }
+      set: { entries: nextEntries, reviewedAt: new Date() }
     });
 
     // Auto-generate resume PDF if needed
@@ -526,7 +672,8 @@ function normalizeParsedData(raw: any): any {
     experience: [],
     projects: [],
     certificates: [],
-    achievements: []
+    achievements: [],
+    skills: [],
   };
 
   // Links normalization
@@ -579,6 +726,22 @@ function normalizeParsedData(raw: any): any {
   } else if (data.achievements && typeof data.achievements === "object") {
     res.achievements = [data.achievements];
   }
+
+  // Skills — AI list + tech strings from projects as fallback
+  const skillSeed: unknown[] = Array.isArray(data.skills) ? [...data.skills] : [];
+  if (typeof data.skills === "string" && data.skills.trim()) {
+    skillSeed.push(...data.skills.split(/[,|;/]/).map((s: string) => s.trim()).filter(Boolean));
+  }
+  for (const proj of res.projects) {
+    const tech = typeof proj.tech === "string" ? proj.tech : typeof proj.techStack === "string" ? proj.techStack : "";
+    if (tech) {
+      for (const part of tech.split(/[,|;/]/)) {
+        const t = part.trim();
+        if (t) skillSeed.push({ name: t, category: "technical" });
+      }
+    }
+  }
+  res.skills = normalizeSkills(skillSeed);
 
   return res;
 }
@@ -732,127 +895,10 @@ router.post("/resume", requireAuth, upload.single("resume"), async (req: Authent
       return;
     }
 
-    // 2. Parse text with Gemma via OpenRouter or Fallback
-    let parsedData: any;
-    const apiKey = process.env.OPENROUTER_API_KEY;
-    
-    const modelsToTry = [
-      "openrouter/free",
-      process.env.OPENROUTER_MODEL,
-      "qwen/qwen-2.5-72b-instruct:free",
-      "google/gemini-2.5-flash",
-      process.env.OPENROUTER_BACKUP_MODEL
-    ].filter(Boolean) as string[];
-
-    const systemPrompt = `You are an expert resume parsing AI assistant.
-    Your task is to extract professional information from the provided resume text and format it into a structured JSON object.
-    Return ONLY a valid JSON object. Do not include any explanations, introduction, markdown blocks, or extra text.
-    
-    The JSON structure must match this schema exactly:
-    {
-      "name": "Candidate's full name",
-      "headline": "A short, professional headline (e.g. Frontend Developer Intern)",
-      "bio": "A professional summary or overview of 2-3 sentences.",
-      "email": "Candidate's email address",
-      "phone": "Candidate's phone number",
-      "pronouns": "Candidate's pronouns, e.g. He/Him, She/Her, They/Them. If the candidate's pronouns are not explicitly mentioned in the resume text, intelligently deduce/determine the pronouns based on the candidate's first name (for example: Kavin or Kavinbalaji are male names, so pronouns should be He/Him). Default to He/Him if not clear.",
-      "links": [
-        { "name": "Name of the website/link (e.g. GitHub, LinkedIn, Personal Portfolio, Blog, Custom Project Link)", "url": "The full link URL" }
-      ],
-      "education": [
-        { "institution": "Name of school/university", "degree": "Degree name", "year": "Graduation year or date range", "grade": "GPA, grade, or percentage (optional)" }
-      ],
-      "experience": [
-        { "company": "Company name", "role": "Job title/role", "duration": "Duration (e.g. June 2024 - Present)", "description": "Bullet points of key accomplishments" }
-      ],
-      "projects": [
-        { "title": "Project name", "description": "Brief description of the project", "tech": "Comma-separated list of technologies used" }
-      ],
-      "certificates": [
-        { "title": "Certificate name", "issuer": "Issuing organization", "date": "Date issued" }
-      ],
-      "achievements": [
-        { "title": "Achievement title", "organization": "Awarding organization", "date": "Date awarded" }
-      ]
-    }
-    
-    Fill every field with information extracted from the resume. If a category has no data, return an empty array or empty string. Extra links must be extracted with their names and full URLs.`;
-
-    async function callOpenRouter(model: string): Promise<any> {
-      logger.info({ model }, "Calling OpenRouter for resume parsing");
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 seconds timeout
-
-      try {
-        const openRouterRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${apiKey}`,
-            "HTTP-Referer": "https://atbexo.com",
-            "X-Title": "Bexo Onboarding"
-          },
-          body: JSON.stringify({
-            model,
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: resumeText }
-            ],
-            response_format: { type: "json_object" }
-          }),
-          signal: controller.signal
-        });
-
-        clearTimeout(timeoutId);
-
-        if (!openRouterRes.ok) {
-          const errorText = await openRouterRes.text();
-          logger.error({ errorText, model, status: openRouterRes.status }, "OpenRouter API call failed");
-          throw new Error(`OpenRouter API failed (${openRouterRes.status}): ${openRouterRes.statusText}`);
-        }
-
-        const openRouterData = (await openRouterRes.json()) as any;
-        const content = openRouterData.choices?.[0]?.message?.content || "";
-        const firstBrace = content.indexOf("{");
-        const lastBrace = content.lastIndexOf("}");
-        if (firstBrace === -1 || lastBrace === -1) {
-          throw new Error("No JSON object found in response");
-        }
-        const jsonStr = content.substring(firstBrace, lastBrace + 1);
-        return JSON.parse(jsonStr);
-      } catch (err: any) {
-        clearTimeout(timeoutId);
-        if (err.name === 'AbortError') {
-          logger.error({ model }, "OpenRouter API call timed out after 15 seconds");
-          throw new Error(`OpenRouter API call timed out for model ${model}`);
-        }
-        throw err;
-      }
-    }
-
-    if (apiKey) {
-      for (const model of modelsToTry) {
-        try {
-          const rawParsed = await callOpenRouter(model);
-          if (rawParsed) {
-            parsedData = normalizeParsedData(rawParsed);
-            logger.info({ model }, "Successfully parsed resume using model");
-            break;
-          }
-        } catch (err: any) {
-          logger.warn({ err: err.message, model }, "Model failed for resume parsing, trying next model");
-        }
-      }
-    }
-
-    if (!parsedData) {
-      logger.error({ userId }, "Resume parsing failed across all models");
-      await db
-        .update(resumeParseAttempts)
-        .set({ status: "failed", errorMessage: "AI parsing failed", completedAt: new Date() })
-        .where(eq(resumeParseAttempts.id, attempt.id));
-      throw new Error("AI parsing failed. Please try again or fill details manually.");
-    }
+    // 2. Parse text with resilient AI engine (OpenRouter -> Grok -> Gemini -> Offline Rule Engine)
+    const { data: rawParsed, winningProvider } = await executeResilientResumeParsing(resumeText);
+    const parsedData = normalizeParsedData(rawParsed);
+    logger.info({ userId, winningProvider }, "Resume parsing completed via AI Resilience Engine");
 
     const profile = await getOrCreateProfile(userId);
     
@@ -981,6 +1027,10 @@ router.post("/resume", requireAuth, upload.single("resume"), async (req: Authent
           date: ach.date || "",
           assets: ach.assets || defaultAssets
         }))
+      },
+      {
+        type: "skills",
+        entries: normalizeSkills(parsedData.skills || []).slice(0, MAX_SKILLS),
       },
       { type: "contact", entries: contactData }
     ];
@@ -1357,6 +1407,7 @@ router.get("/public/:handle", async (req, res): Promise<void> => {
       certificateEntries: getEntries("certificates"),
       achievementEntries: getEntries("achievements"),
       researchEntries: getEntries("research"),
+      skillEntries: getEntries("skills"),
       contactData: (contactEntries as Record<string, unknown>) || {
         email: user.email || "",
         linkedin: "",
@@ -1410,7 +1461,8 @@ async function regenerateSystemResume(userId: string): Promise<string | null> {
     projectEntries: getEntries("projects"),
     certificateEntries: getEntries("certificates"),
     achievementEntries: getEntries("achievements"),
-    researchEntries: getEntries("research")
+    researchEntries: getEntries("research"),
+    skillEntries: getEntries("skills"),
   });
 
   const filename = `${user.name?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'portfolio'}_resume.pdf`;
@@ -1543,7 +1595,7 @@ router.delete("/resume-file", requireAuth, async (req: AuthenticatedRequest, res
 
     // Public pages must reflect the change immediately
     const [profile] = await db.select().from(profiles).where(eq(profiles.userId, userId)).limit(1);
-    if (profile?.handle) publicProfileCache.delete(profile.handle);
+    if (profile?.handle) { publicProfileCache.delete(profile.handle); invalidatePortfolioRenderCache(profile.handle); }
 
     res.json({
       success: true,
@@ -1589,7 +1641,7 @@ router.patch("/resume-preference", requireAuth, async (req: AuthenticatedRequest
     await db.update(users).set({ defaultResume: preference }).where(eq(users.id, userId));
 
     const [profile] = await db.select().from(profiles).where(eq(profiles.userId, userId)).limit(1);
-    if (profile?.handle) publicProfileCache.delete(profile.handle);
+    if (profile?.handle) { publicProfileCache.delete(profile.handle); invalidatePortfolioRenderCache(profile.handle); }
 
     res.json({ success: true, defaultResume: preference });
   } catch (err: any) {
@@ -1609,6 +1661,7 @@ const UPDATE_SECTION_MAP: Record<string, string> = {
   certificate: "certificates",
   achievement: "achievements",
   research: "research",
+  skill: "skills",
 };
 
 // POST /profile/updates — append one entry to a section, consuming an update credit
@@ -1653,8 +1706,41 @@ router.post("/updates", requireAuth, async (req: AuthenticatedRequest, res): Pro
       .limit(1);
 
     const existingEntries = Array.isArray(section?.entries) ? (section!.entries as any[]) : [];
-    const newEntry = { ...entry, id: String(entry.id || Date.now()) };
+    if (sectionType === "skills" && existingEntries.length >= MAX_SKILLS) {
+      res.status(400).json({ error: `You can save up to ${MAX_SKILLS} skills.`, code: "SKILLS_CAP" });
+      return;
+    }
+
+    let newEntry: any = { ...entry, id: String(entry.id || Date.now()) };
+    if (sectionType === "skills") {
+      const normalized = normalizeSkills([entry])[0];
+      if (!normalized) {
+        res.status(400).json({ error: "Provide a skill name." });
+        return;
+      }
+      if (existingEntries.some((e: any) => String(e.name || "").toLowerCase() === normalized.name.toLowerCase())) {
+        res.status(409).json({ error: "That skill is already on your profile.", code: "SKILL_DUPLICATE" });
+        return;
+      }
+      newEntry = normalized;
+    }
     const nextEntries = [...existingEntries, newEntry];
+    if (sectionType === "skills" && nextEntries.length > MAX_SKILLS) {
+      res.status(400).json({ error: `You can save up to ${MAX_SKILLS} skills.`, code: "SKILLS_CAP" });
+      return;
+    }
+
+    const consumed = await consumeUpdate(userId, limits.updatesPerMonth);
+    if (!consumed) {
+      res.status(429).json({
+        error: `You have used all ${limits.updatesPerMonth} profile update(s) included in the ${limits.planDisplay} plan this month.`,
+        code: "UPDATE_LIMIT_REACHED",
+        used: usage.limit,
+        limit: usage.limit,
+        daysToReset: usage.daysToReset,
+      });
+      return;
+    }
 
     await db.insert(profileSections).values({
       profileId: profile.id,
@@ -1666,12 +1752,11 @@ router.post("/updates", requireAuth, async (req: AuthenticatedRequest, res): Pro
       set: { entries: nextEntries, reviewedAt: new Date() },
     });
 
-    await consumeUpdate(userId);
     await markOnboardingActivity(userId);
 
     // Keep the generated resume and public page in sync
     await autoGenerateResumeIfNeeded(userId);
-    if (profile.handle) publicProfileCache.delete(profile.handle);
+    if (profile.handle) { publicProfileCache.delete(profile.handle); invalidatePortfolioRenderCache(profile.handle); }
 
     res.json({
       success: true,
@@ -1774,7 +1859,7 @@ async function detachAssetFromSections(userId: string, url: string): Promise<voi
     }
   }
 
-  if (profile.handle) publicProfileCache.delete(profile.handle);
+  if (profile.handle) { publicProfileCache.delete(profile.handle); invalidatePortfolioRenderCache(profile.handle); }
 }
 
 // DELETE /profile/assets/:id — remove from R2, reclaim quota, detach from sections

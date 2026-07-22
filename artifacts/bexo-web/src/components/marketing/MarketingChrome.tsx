@@ -2,7 +2,7 @@ import React from "react";
 import { Link } from "wouter";
 import { BEXO_FOOTER_COPYRIGHT, BEXO_OAUTH_APP_NAME } from "@/lib/brand";
 import { resolveAppOrigin } from "@/lib/platform";
-import logo from "@/assets/bexo-logo.png";
+import { BrandLogo } from "@/components/BrandLogo";
 import type { LegalDoc } from "@/content/legal/types";
 import { usePageSeo } from "@/hooks/use-page-seo";
 
@@ -44,10 +44,12 @@ export function MarketingNav({
   solid = false,
   signedIn = false,
   dashboardReady = false,
+  continueHref = "/step/1",
 }: {
   solid?: boolean;
   signedIn?: boolean;
   dashboardReady?: boolean;
+  continueHref?: string;
 }) {
   const links = [
     { href: "/#about", label: "About" },
@@ -66,12 +68,8 @@ export function MarketingNav({
       style={solid ? undefined : { backgroundColor: "rgba(11, 18, 32, 0.92)" }}
     >
       <div className="mx-auto flex h-[4.25rem] max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
-        <Link href="/" className="group flex items-center gap-2.5">
-          <img
-            src={logo}
-            alt={BEXO_OAUTH_APP_NAME}
-            className="h-8 w-8 object-contain transition group-hover:scale-105"
-          />
+        <Link href="/" className="group flex items-center gap-2.5 min-h-11">
+          <BrandLogo size="md" className="transition group-hover:scale-105" />
           <span
             className={`font-serif text-xl font-bold tracking-tight ${
               solid ? "text-slate-900" : "text-white"
@@ -111,39 +109,48 @@ export function MarketingNav({
         </nav>
 
         <div className="flex items-center gap-2 sm:gap-3">
-          {signedIn && dashboardReady && (
+          {signedIn ? (
             <Link
-              href="/dashboard"
-              className={`hidden text-sm font-semibold sm:inline ${
-                solid ? "text-slate-700 hover:text-slate-900" : "text-white/80 hover:text-white"
-              }`}
+              href={dashboardReady ? "/dashboard" : continueHref || "/step/1"}
+              className="inline-flex h-10 items-center rounded-full bg-[#2F6BFF] px-5 text-sm font-bold text-white shadow-lg shadow-blue-500/25 transition hover:bg-[#2558e0] active:scale-[0.98]"
             >
-              Dashboard
+              {dashboardReady ? "Dashboard" : "Continue"}
             </Link>
+          ) : (
+            <>
+              <Link
+                href="/login"
+                className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
+                  solid
+                    ? "text-slate-700 hover:bg-slate-900/5"
+                    : "text-white/90 hover:bg-white/10"
+                }`}
+              >
+                Login
+              </Link>
+              <Link
+                href="/login"
+                className="inline-flex h-10 items-center rounded-full bg-[#2F6BFF] px-5 text-sm font-bold text-white shadow-lg shadow-blue-500/25 transition hover:bg-[#2558e0] active:scale-[0.98]"
+              >
+                Get Started
+              </Link>
+            </>
           )}
-          <Link
-            href="/login"
-            className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
-              solid
-                ? "text-slate-700 hover:bg-slate-900/5"
-                : "text-white/90 hover:bg-white/10"
-            }`}
-          >
-            Login
-          </Link>
-          <Link
-            href="/login"
-            className="inline-flex h-10 items-center rounded-full bg-[#2F6BFF] px-5 text-sm font-bold text-white shadow-lg shadow-blue-500/25 transition hover:bg-[#2558e0] active:scale-[0.98]"
-          >
-            Get Started
-          </Link>
         </div>
       </div>
     </header>
   );
 }
 
-export function MarketingFooter({ light = false }: { light?: boolean }) {
+export function MarketingFooter({
+  light = false,
+  signedIn = false,
+  dashboardReady = false,
+}: {
+  light?: boolean;
+  signedIn?: boolean;
+  dashboardReady?: boolean;
+}) {
   return (
     <footer
       className={`border-t ${
@@ -155,7 +162,7 @@ export function MarketingFooter({ light = false }: { light?: boolean }) {
       <div className="mx-auto flex max-w-6xl flex-col gap-8 px-4 py-12 sm:px-6 md:flex-row md:items-start md:justify-between">
         <div className="max-w-sm">
           <div className="mb-3 flex items-center gap-2">
-            <img src={logo} alt="" className="h-7 w-7 object-contain" />
+            <BrandLogo size="sm" />
             <span className={`font-serif text-lg font-bold ${light ? "text-slate-900" : "text-white"}`}>
               BEXO
             </span>
@@ -174,7 +181,11 @@ export function MarketingFooter({ light = false }: { light?: boolean }) {
               <li><a href="/#how" className="hover:underline">How it works</a></li>
               <li><a href="/#features" className="hover:underline">Features</a></li>
               <li><a href="/#pricing" className="hover:underline">Pricing</a></li>
-              <li><Link href="/login" className="hover:underline">Login</Link></li>
+              <li>
+                <Link href={signedIn ? (dashboardReady ? "/dashboard" : "/step/1") : "/login"} className="hover:underline">
+                  {signedIn ? (dashboardReady ? "Dashboard" : "Continue") : "Login"}
+                </Link>
+              </li>
             </ul>
           </div>
           <div>

@@ -34,6 +34,7 @@ export type ExperienceEntry = { id: string; company: string; role: string; start
 export type CertificateEntry = { id: string; title: string; issuer: string; date: string; assets: AssetData };
 export type AchievementEntry = { id: string; title: string; organization: string; date: string; assets: AssetData };
 export type ResearchEntry = { id: string; title: string; organization: string; date: string; assets: AssetData };
+export type SkillEntry = { id: string; name: string; category: 'technical' | 'tools' | 'soft' | 'languages' };
 export type ContactData = { email: string; phone?: string; linkedin: string; github: string; portfolio: string; customLinks?: { name: string; url: string }[] };
 
 export type PlanLimitsData = {
@@ -59,12 +60,14 @@ export type CanBuyData = {
 
 export type OnboardingData = {
   phone: string;
+  phoneVerifiedAt?: string | Date | null;
   name: string;
   dob: string;
   handle?: string;
   firstName?: string;
   lastName?: string;
   email?: string;
+  oauthProvider?: string | null;
   nationality?: string;
   pronouns?: string;
   resumeFileName: string;
@@ -81,6 +84,7 @@ export type OnboardingData = {
   certificateEntries: CertificateEntry[];
   achievementEntries: AchievementEntry[];
   researchEntries: ResearchEntry[];
+  skillEntries: SkillEntry[];
   contactData: ContactData;
   plan: string | null; // 'identity' | 'essential' | 'growth' | 'studentplus' | 'free' | legacy ids | null
   templateId: string;
@@ -123,10 +127,12 @@ interface OnboardingContextType {
 
 const defaultData: OnboardingData = {
   phone: '',
+  phoneVerifiedAt: null,
   name: '',
   dob: '',
   handle: '',
   email: '',
+  oauthProvider: null,
   firstName: '',
   lastName: '',
   nationality: 'India',
@@ -142,6 +148,7 @@ const defaultData: OnboardingData = {
   certificateEntries: [],
   achievementEntries: [],
   researchEntries: [],
+  skillEntries: [],
   contactData: {
     email: '',
     phone: '',
@@ -262,6 +269,16 @@ const ensureIdsAndDefaults = (entries: any[], type: string) => {
           date: entry.date || '',
           assets: entry.assets || defaultAssets
         };
+      case 'skills': {
+        const cat = String(entry.category || 'technical').toLowerCase();
+        const category =
+          cat === 'tools' || cat === 'soft' || cat === 'languages' ? cat : 'technical';
+        return {
+          id,
+          name: entry.name || entry.title || entry.skill || '',
+          category,
+        };
+      }
       default:
         return entry;
     }
@@ -309,6 +326,8 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
           ...prev,
           handle: result.profile.handle || prev.handle,
           email: result.user.email || prev.email,
+          phoneVerifiedAt: result.user.phoneVerifiedAt ?? prev.phoneVerifiedAt,
+          oauthProvider: result.user.oauthProvider ?? prev.oauthProvider,
           firstName: result.user.name?.split(' ')[0] || prev.firstName,
           lastName: result.user.name?.split(' ').slice(1).join(' ') || prev.lastName,
           name: result.user.name || prev.name,
@@ -326,6 +345,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
           certificateEntries: result.certificateEntries !== undefined ? ensureIdsAndDefaults(result.certificateEntries, 'certificates') : prev.certificateEntries,
           achievementEntries: result.achievementEntries !== undefined ? ensureIdsAndDefaults(result.achievementEntries, 'achievements') : prev.achievementEntries,
           researchEntries: result.researchEntries !== undefined ? ensureIdsAndDefaults(result.researchEntries, 'research') : prev.researchEntries,
+          skillEntries: result.skillEntries !== undefined ? ensureIdsAndDefaults(result.skillEntries, 'skills') : prev.skillEntries,
           contactData: result.contactData || prev.contactData,
           plan: result.plan !== undefined ? result.plan : prev.plan,
           openToHire: result.user?.openToHire !== undefined ? result.user.openToHire : prev.openToHire,
@@ -426,9 +446,20 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
   };
 
   const nextStep = (currentStep: number) => {
-    if (currentStep < 9) {
-      setLocation(`/step/${currentStep + 1}`);
+    if (currentStep >= 9) return;
+    const destination = currentStep + 1;
+    // Unlock the destination before navigating. The route guard reads
+    // bexo_highest_step synchronously; bumping it only after mount caused a
+    // first-click bounce back to the current step.
+    try {
+      const prevHighest = parseInt(localStorage.getItem('bexo_highest_step') || '1', 10);
+      if (destination > prevHighest) {
+        localStorage.setItem('bexo_highest_step', String(destination));
+      }
+    } catch {
+      /* ignore quota / private mode */
     }
+    setLocation(`/step/${destination}`);
   };
 
   const prevStep = (currentStep: number) => {

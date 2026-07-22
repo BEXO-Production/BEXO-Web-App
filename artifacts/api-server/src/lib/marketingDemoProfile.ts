@@ -170,6 +170,14 @@ export function getMarketingDemoProfile(templateOverride?: string) {
       },
     ],
     researchEntries: [],
+    skillEntries: [
+      { id: "1", name: "Figma", category: "tools" },
+      { id: "2", name: "Design Systems", category: "technical" },
+      { id: "3", name: "Product Strategy", category: "soft" },
+      { id: "4", name: "Prototyping", category: "tools" },
+      { id: "5", name: "Brand Identity", category: "technical" },
+      { id: "6", name: "User Research", category: "soft" },
+    ],
     contactData: {
       email: "hello@ariamehta.studio",
       linkedin: "https://linkedin.com/in/example-aria-mehta",

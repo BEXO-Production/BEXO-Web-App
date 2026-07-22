@@ -29,7 +29,7 @@ import WelcomeSuccess from './pages/welcome';
 import LandingPage from './pages/landing/LandingPage';
 import { TermsPage, PrivacyPage, RefundPage, CookiesPage } from './pages/legal';
 import { useToast } from './hooks/use-toast';
-import { resolvePlatformDomain } from './lib/platform';
+import { isCombinedMarketingHost, resolvePlatformDomain } from './lib/platform';
 
 const queryClient = new QueryClient();
 
@@ -149,6 +149,7 @@ function Router() {
     const savedHighest = parseInt(localStorage.getItem('bexo_highest_step') || '1', 10);
 
     // Step 5: Resume Upload or Manual Profile Data
+    // Step 4 (photo) is optional and never gates progress.
     const hasResumeOrData =
       !!data.resumeFileName ||
       !!data.resumeUrl ||
@@ -161,22 +162,31 @@ function Router() {
       savedHighest >= 6;
 
     if (!hasResumeOrData) {
+      // Allow arriving at step 5; block theme/publish until content exists.
       return 5;
     }
 
-    // If user has reached step 7 or higher, allow 7/8/9
-    if (savedHighest >= 7) {
-      return Math.min(9, savedHighest);
+    // Step 6 review gate: must visit core tabs once before leaving review,
+    // unless the user already progressed past it (refresh / revisit).
+    const requiredTabs = [
+      'about',
+      'education',
+      'experience',
+      'projects',
+      'certificates',
+      'achievements',
+      'research',
+      'skills',
+      'contact',
+    ];
+    const hasVisitedAllTabs = requiredTabs.every((t) => data.visitedTabs?.includes(t));
+    if (!hasVisitedAllTabs && savedHighest < 7) {
+      return 6;
     }
 
-    // Step 6: Review & Verify
-    const requiredTabs = ['about', 'education', 'experience', 'projects', 'certificates', 'achievements', 'research', 'contact'];
-    const hasVisitedAllTabs = requiredTabs.every(t => data.visitedTabs?.includes(t));
-    if (hasVisitedAllTabs || savedHighest >= 6) {
-      return Math.max(6, Math.min(9, savedHighest));
-    }
-
-    return 6;
+    // Resume/review complete — allow through theme → publish → plan based on
+    // the highest step already unlocked (bumped in nextStep before navigate).
+    return Math.min(9, Math.max(6, savedHighest));
   };
 
   const maxAllowedStep = getMaxAllowedStep();
@@ -184,17 +194,39 @@ function Router() {
   return (
     <Switch>
       <Route path="/">
-        <LandingPage
-          signedIn={hasToken}
-          dashboardReady={!!data.hasCompletedOnboarding}
-          continueHref={
-            hasToken
-              ? data.hasCompletedOnboarding
-                ? "/dashboard"
-                : `/step/${maxAllowedStep}`
-              : undefined
+        {() => {
+          // Production: marketing is mybexo.com (static). This SPA on dash / local
+          // Vite sends guests to /login and signed-in users to their workspace.
+          // Dev combined host mybexo.cyou still serves the React landing page.
+          const showMarketingLanding = isCombinedMarketingHost();
+          if (!showMarketingLanding) {
+            if (hasToken) {
+              return (
+                <Redirect
+                  to={
+                    data.hasCompletedOnboarding
+                      ? "/dashboard"
+                      : `/step/${maxAllowedStep}`
+                  }
+                />
+              );
+            }
+            return <Redirect to="/login" />;
           }
-        />
+          return (
+            <LandingPage
+              signedIn={hasToken}
+              dashboardReady={!!data.hasCompletedOnboarding}
+              continueHref={
+                hasToken
+                  ? data.hasCompletedOnboarding
+                    ? "/dashboard"
+                    : `/step/${maxAllowedStep}`
+                  : undefined
+              }
+            />
+          );
+        }}
       </Route>
       <Route path="/login">
         {hasToken ? (
@@ -282,8 +314,10 @@ function Router() {
             return <Redirect to={`/step/${maxAllowedStep}`} />;
           }
 
-          // Store highest step reached by user
-          if (stepId >= 1 && stepId <= 9) {
+          // Record progress after the step is allowed (effect-safe: only when
+          // the destination passes the gate below). Prefer nextStep()'s bump
+          // for forward navigation so the first Continue click succeeds.
+          if (stepId >= 1 && stepId <= 9 && stepId <= maxAllowedStep) {
             const prevHighest = parseInt(localStorage.getItem('bexo_highest_step') || '1', 10);
             if (stepId > prevHighest) {
               localStorage.setItem('bexo_highest_step', String(stepId));

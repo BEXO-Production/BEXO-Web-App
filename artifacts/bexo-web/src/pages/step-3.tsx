@@ -82,12 +82,24 @@ export default function Step3Info() {
   const [dobError, setDobError] = useState('');
   const [pronounsError, setPronounsError] = useState('');
   const [isSwooshing, setIsSwooshing] = useState(false);
-  const [isHandleManuallyEdited, setIsHandleManuallyEdited] = useState(false);
+  const [isHandleManuallyEdited, setIsHandleManuallyEdited] = useState(() => {
+    try {
+      return !!(localStorage.getItem('bexo_claim_handle') || data.handle);
+    } catch {
+      return !!data.handle;
+    }
+  });
 
   // Fetch unique handle suggestion from backend
   const fetchSuggestedHandle = async (fName: string, lName: string) => {
     if (!fName.trim()) return;
     try {
+      // Never overwrite a claimed/pre-filled handle
+      if (isHandleManuallyEdited) return;
+      try {
+        if (localStorage.getItem('bexo_claim_handle')) return;
+      } catch { /* ignore */ }
+
       const token = localStorage.getItem('token');
       const headers: HeadersInit = {};
       if (token) {
@@ -194,15 +206,13 @@ export default function Step3Info() {
 
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/profile/check-handle?handle=${handle.trim()}`, { headers });
+        const res = await fetch(`/api/profile/check-handle?handle=${encodeURIComponent(handle.trim())}`, { headers });
         if (!res.ok) {
-          if (res.status === 409) {
-            setHandleAvailability('taken');
-            setHandleError('Handle is already taken');
-          } else {
-            setHandleAvailability('available');
-            setHandleError('');
-          }
+          // #region agent log
+          fetch('http://127.0.0.1:7832/ingest/75f7dbfa-a2dc-49fd-b6f9-b1432ff24dc1',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d16a15'},body:JSON.stringify({sessionId:'d16a15',runId:'post-fix',hypothesisId:'H',location:'step-3.tsx:check-handle:!ok',message:'check-handle non-OK — NOT treating as available',data:{status:res.status,handle:handle.trim()},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
+          setHandleAvailability('idle');
+          setHandleError('Could not verify handle right now. Try again.');
           return;
         }
         const result = await res.json();
@@ -211,12 +221,15 @@ export default function Step3Info() {
           setHandleError('');
         } else {
           setHandleAvailability('taken');
-          setHandleError('Handle is already taken');
+          setHandleError(result.reason === 'reserved' ? 'That handle is reserved' : 'Handle is already taken');
         }
       } catch (err) {
+        // #region agent log
+        fetch('http://127.0.0.1:7832/ingest/75f7dbfa-a2dc-49fd-b6f9-b1432ff24dc1',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d16a15'},body:JSON.stringify({sessionId:'d16a15',runId:'post-fix',hypothesisId:'H',location:'step-3.tsx:check-handle:catch',message:'network error — NOT treating as available',data:{handle:handle.trim()},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         console.error(err);
-        setHandleAvailability('available');
-        setHandleError('');
+        setHandleAvailability('idle');
+        setHandleError('Could not verify handle right now. Try again.');
       }
     }, 300);
 

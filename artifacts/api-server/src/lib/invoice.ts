@@ -20,11 +20,19 @@ function loadAsset(filename: string): Buffer | null {
   return null;
 }
 
+export type InvoiceBillingDetails = {
+  fullName?: string;
+  email?: string | null;
+  phone?: string | null;
+  addressLines?: string[];
+};
+
 export const generateInvoicePDF = async (
   userName: string,
   plan: string,
   amount: number,
-  transactionId: string
+  transactionId: string,
+  billing?: InvoiceBillingDetails | null,
 ): Promise<Buffer> => {
   return new Promise((resolve, reject) => {
     try {
@@ -200,35 +208,54 @@ export const generateInvoicePDF = async (
       // ═══════════════════════════════════════════
       // SECTION 3: BILL TO / PROJECT CARDS
       // ═══════════════════════════════════════════
-      const cardY = 182, cardH = 58, halfW = (cw - 15) / 2;
+      const billName = (billing?.fullName || userName || 'Customer').slice(0, 60);
+      const billLines = (billing?.addressLines || []).filter(Boolean).slice(0, 4);
+      const billMeta = [billing?.email, billing?.phone].filter(Boolean).join(' · ');
+      const hasExtra = billLines.length > 0 || !!billMeta;
+      const cardY = 182, cardH = hasExtra ? 92 : 58, halfW = (cw - 15) / 2;
 
       // Bill To
       doc.roundedRect(ml, cardY, halfW, cardH, 8).fill(white);
       doc.roundedRect(ml, cardY, halfW, cardH, 8).lineWidth(0.5).strokeColor(border).stroke();
-      doc.circle(ml + 24, cardY + cardH / 2, 14).fill(ltIndigo);
+      doc.circle(ml + 24, cardY + 28, 14).fill(ltIndigo);
       doc.fontSize(12).font('Helvetica-Bold').fillColor(indigo)
-        .text('B', ml + 24 - 6, cardY + cardH / 2 - 7, { width: 12, align: 'center' });
+        .text('B', ml + 24 - 6, cardY + 21, { width: 12, align: 'center' });
       doc.fontSize(7).font('Helvetica-Bold').fillColor(indigo)
-        .text('BILL TO', ml + 47, cardY + 12, { characterSpacing: 0.8 });
-      doc.fontSize(11).font('Helvetica-Bold').fillColor(darkTxt).text(userName, ml + 47, cardY + 24);
-      doc.fontSize(8).font('Helvetica').fillColor(grayTxt).text('Customer Ref: ' + custRef, ml + 47, cardY + 40);
+        .text('BILL TO', ml + 47, cardY + 10, { characterSpacing: 0.8 });
+      doc.fontSize(10).font('Helvetica-Bold').fillColor(darkTxt)
+        .text(billName, ml + 47, cardY + 22, { width: halfW - 58 });
+      let billY = cardY + 36;
+      if (billMeta) {
+        doc.fontSize(7).font('Helvetica').fillColor(grayTxt)
+          .text(billMeta, ml + 47, billY, { width: halfW - 58 });
+        billY += 11;
+      }
+      billLines.forEach((line) => {
+        doc.fontSize(7).font('Helvetica').fillColor(grayTxt)
+          .text(line, ml + 47, billY, { width: halfW - 58 });
+        billY += 10;
+      });
+      if (!hasExtra) {
+        doc.fontSize(8).font('Helvetica').fillColor(grayTxt).text('Customer Ref: ' + custRef, ml + 47, cardY + 40);
+      }
 
       // Project
       const c2X = ml + halfW + 15;
       doc.roundedRect(c2X, cardY, halfW, cardH, 8).fill(white);
       doc.roundedRect(c2X, cardY, halfW, cardH, 8).lineWidth(0.5).strokeColor(border).stroke();
-      doc.circle(c2X + 24, cardY + cardH / 2, 14).fill(ltIndigo);
+      doc.circle(c2X + 24, cardY + 28, 14).fill(ltIndigo);
       doc.fontSize(12).font('Helvetica-Bold').fillColor(indigo)
-        .text('P', c2X + 24 - 6, cardY + cardH / 2 - 7, { width: 12, align: 'center' });
+        .text('P', c2X + 24 - 6, cardY + 21, { width: 12, align: 'center' });
       doc.fontSize(7).font('Helvetica-Bold').fillColor(indigo)
         .text('PROJECT', c2X + 47, cardY + 12, { characterSpacing: 0.8 });
-      doc.fontSize(11).font('Helvetica-Bold').fillColor(darkTxt).text('Bexo Pro Service', c2X + 47, cardY + 24);
-      doc.fontSize(8).font('Helvetica').fillColor(grayTxt).text(displayPlanName, c2X + 47, cardY + 40);
+      doc.fontSize(11).font('Helvetica-Bold').fillColor(darkTxt).text('Bexo Pro Service', c2X + 47, cardY + 28);
+      doc.fontSize(8).font('Helvetica').fillColor(grayTxt)
+        .text(displayPlanName, c2X + 47, cardY + 44, { width: halfW - 58 });
 
       // ═══════════════════════════════════════════
       // SECTION 4: DARK NAVY BANNER
       // ═══════════════════════════════════════════
-      const bnY = 256, bnH = 58;
+      const bnY = cardY + cardH + 16, bnH = 58;
       doc.roundedRect(ml, bnY, cw, bnH, 10).fill(navy);
       // Shield icon from asset (right side of banner)
       if (shieldIcon) {

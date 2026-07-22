@@ -25,7 +25,7 @@ import {
   PORTFOLIO_TEMPLATES,
 } from "../lib/templates";
 import { PLAN_LABELS } from "../lib/pricing";
-import logo from "../assets/bexo-logo.png";
+import { BrandLogo } from "../components/BrandLogo";
 
 import { portfolioHostname, portfolioPublicUrl } from "../lib/platform";
 
@@ -195,7 +195,7 @@ function GiftBox({ opening, onOpen }: { opening: boolean; onOpen: () => void }) 
           <div className="absolute inset-0 bg-gradient-to-r from-white/15 via-transparent to-black/25" />
           {/* BEXO mark on the box */}
           <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 backdrop-blur-sm">
-            <img src={logo} alt="" className="h-3.5 w-3.5 object-contain" />
+            <BrandLogo size="xs" />
             <span className="text-[10px] font-bold tracking-widest text-white/90">BEXO</span>
           </div>
         </div>
@@ -361,7 +361,7 @@ export default function WelcomeSuccess() {
           className="absolute top-0 flex w-full max-w-5xl items-center justify-between px-5 pt-6"
         >
           <div className="flex items-center gap-2.5">
-            <img src={logo} alt="BEXO" className="h-8 w-8 object-contain" />
+            <BrandLogo size="md" />
             <span className="font-serif text-lg font-bold tracking-tight">BEXO</span>
           </div>
           <button
@@ -440,7 +440,7 @@ export default function WelcomeSuccess() {
           className="flex items-center justify-between gap-3"
         >
           <div className="flex items-center gap-2.5">
-            <img src={logo} alt="BEXO" className="h-8 w-8 object-contain" />
+            <BrandLogo size="md" />
             <span className="font-serif text-lg font-bold tracking-tight">BEXO</span>
           </div>
           <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-emerald-300">

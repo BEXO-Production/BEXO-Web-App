@@ -55,7 +55,23 @@ export default function Step9Plan() {
   const [cancelStep, setCancelStep] = useState<'closed' | 'reason' | 'confirm'>('closed');
   const [cancelReason, setCancelReason] = useState('');
   const [cancelConfirmText, setCancelConfirmText] = useState('');
+  const [needsMandateSetup, setNeedsMandateSetup] = useState(false);
+  const [pendingMandateSubId, setPendingMandateSubId] = useState<string | null>(null);
+  const [pendingMandateKey, setPendingMandateKey] = useState<string | null>(null);
+  const [isConfirmingMandate, setIsConfirmingMandate] = useState(false);
   const [isCancellingSub, setIsCancellingSub] = useState(false);
+  const [billingProfile, setBillingProfile] = useState<{
+    fullName: string;
+    email: string;
+    phone: string;
+    line1: string;
+    line2?: string | null;
+    city: string;
+    state: string;
+    postalCode: string;
+    country: string;
+    addressLines?: string[];
+  } | null>(null);
 
   // Free flow states
   const [freeFlowStep, setFreeFlowStep] = useState<'none' | 'warning' | 'handle'>('none');
@@ -95,7 +111,7 @@ export default function Step9Plan() {
           canBuy: result.canBuy || computeCanBuy(!!result.isPremium, planId),
           renewalMode: result.renewalMode || 'purchase',
           expiresAt: result.expiresAt,
-          autopay: result.subscription?.autopay ?? false,
+          autopay: result.autopay ?? result.subscription?.autopay ?? false,
           billingPeriod: result.billingPeriod,
           addonBlocks: result.addonBlocks ?? 0,
           addonHasAutopay: result.addonHasAutopay ?? result.addon?.hasAutopay ?? false,
@@ -109,6 +125,11 @@ export default function Step9Plan() {
           isPausedForVisitors: !!result.isPausedForVisitors,
           overStorage: !!result.overStorage,
         } as any);
+        const mandatePending = !!(result.needsMandateSetup || result.subscription?.needsMandateSetup);
+        setNeedsMandateSetup(mandatePending);
+        setPendingMandateSubId(result.subscription?.razorpaySubscriptionId || null);
+        setPendingMandateKey(result.razorpayKey || null);
+        setBillingProfile(result.billingProfile || null);
       } catch (err) {
         console.error('Billing status refresh failed:', err);
       }
@@ -116,6 +137,98 @@ export default function Step9Plan() {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.hasCompletedOnboarding]);
+
+  const completeAutopaySetup = async () => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      toast({ title: 'Autopay unavailable', description: 'Sign in again and try from Billing.', variant: 'destructive' });
+      return;
+    }
+    if (!window.Razorpay) {
+      toast({ title: 'Error', description: 'Razorpay SDK failed to load. Refresh and try again.', variant: 'destructive' });
+      return;
+    }
+    setIsConfirmingMandate(true);
+    try {
+      let subscriptionId = pendingMandateSubId;
+      let key = pendingMandateKey;
+      if (!subscriptionId) {
+        const resumeRes = await fetch(apiUrl('/api/payments/resume-autopay-setup'), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: '{}',
+        });
+        const resumeData = await resumeRes.json().catch(() => ({}));
+        if (!resumeRes.ok) throw new Error(resumeData.error || 'Could not start Autopay setup');
+        if (resumeData.autopay && !resumeData.needsMandateSetup) {
+          updateData({ autopay: true } as any);
+          setNeedsMandateSetup(false);
+          toast({ title: 'Autopay enabled', description: 'Renewals are already authorized.' });
+          setIsConfirmingMandate(false);
+          return;
+        }
+        subscriptionId = resumeData.subscriptionId;
+        key = resumeData.key || key;
+        setPendingMandateSubId(subscriptionId);
+        setPendingMandateKey(key);
+        setNeedsMandateSetup(true);
+      }
+      if (!subscriptionId) throw new Error('Missing Autopay subscription');
+
+      const rzp = new window.Razorpay({
+        key,
+        name: 'Bexo',
+        description: 'Authorize Razorpay Autopay for renewals',
+        subscription_id: subscriptionId,
+        prefill: {
+          name: data.name,
+          email: data.contactData?.email || '',
+          contact: data.phone || '',
+        },
+        theme: { color: '#4f46e5' },
+        handler: async (response: any) => {
+          try {
+            const res = await fetch(apiUrl('/api/payments/confirm-autopay'), {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify(response),
+            });
+            const result = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(result.error || 'Autopay confirmation failed');
+            updateData({ autopay: true } as any);
+            setNeedsMandateSetup(false);
+            setPendingMandateSubId(null);
+            toast({ title: 'Autopay enabled', description: 'Renewals will charge automatically at full plan price.' });
+          } catch (err: any) {
+            toast({ title: 'Autopay failed', description: err.message || 'Try again.', variant: 'destructive' });
+          } finally {
+            setIsConfirmingMandate(false);
+          }
+        },
+        modal: {
+          ondismiss: () => setIsConfirmingMandate(false),
+        },
+      });
+      rzp.on('payment.failed', (response: any) => {
+        toast({
+          title: 'Autopay failed',
+          description: response.error?.description || 'Authorization failed',
+          variant: 'destructive',
+        });
+        setIsConfirmingMandate(false);
+      });
+      rzp.open();
+    } catch (err: any) {
+      toast({ title: 'Autopay failed', description: err.message || 'Try again.', variant: 'destructive' });
+      setIsConfirmingMandate(false);
+    }
+  };
 
   const portfolioHTML = useMemo(
     () => buildMinimalPortfolioHTML(data, freeTheme, freeHandle || 'yourhandle', freeThemeBg),
@@ -528,6 +641,65 @@ export default function Step9Plan() {
               </div>
             </div>
           </Card>
+
+          {billingProfile && (
+            <Card className="p-6 bg-white border border-slate-200 shadow-sm">
+              <h3 className="text-xs font-bold tracking-[0.12em] text-slate-900 uppercase mb-4">
+                Billing information
+              </h3>
+              <dl className="space-y-2.5 text-sm">
+                <div className="grid grid-cols-[7rem_1fr] gap-2">
+                  <dt className="text-slate-400">Name</dt>
+                  <dd className="text-slate-900 font-medium">{billingProfile.fullName}</dd>
+                </div>
+                <div className="grid grid-cols-[7rem_1fr] gap-2">
+                  <dt className="text-slate-400">Email</dt>
+                  <dd className="text-slate-900 break-all">{billingProfile.email}</dd>
+                </div>
+                <div className="grid grid-cols-[7rem_1fr] gap-2">
+                  <dt className="text-slate-400">Billing address</dt>
+                  <dd className="text-slate-900 leading-snug">
+                    {(billingProfile.addressLines || [
+                      billingProfile.line1,
+                      billingProfile.line2,
+                      `${billingProfile.city} ${billingProfile.postalCode}`,
+                      billingProfile.state,
+                      billingProfile.country,
+                    ])
+                      .filter(Boolean)
+                      .map((line) => (
+                        <div key={String(line)}>{line}</div>
+                      ))}
+                  </dd>
+                </div>
+                <div className="grid grid-cols-[7rem_1fr] gap-2">
+                  <dt className="text-slate-400">Phone number</dt>
+                  <dd className="text-slate-900">{billingProfile.phone}</dd>
+                </div>
+              </dl>
+              <p className="text-xs text-slate-400 mt-4">
+                Used for tax invoices and monthly Autopay. Update it next time you check out.
+              </p>
+            </Card>
+          )}
+
+          {!isLifetimePlan && needsMandateSetup && (
+            <Card className="p-6 bg-amber-50 border border-amber-200 shadow-sm space-y-3">
+              <h3 className="font-bold text-slate-900 text-base mb-1.5">Finish Autopay to activate</h3>
+              <p className="text-sm text-slate-600">
+                Your first invoice is on hold. Authorize Razorpay Autopay to activate the plan. Closing without authorizing triggers a refund.
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                className="h-9 text-xs"
+                disabled={isConfirmingMandate || !pendingMandateSubId}
+                onClick={completeAutopaySetup}
+              >
+                {isConfirmingMandate ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Authorize Autopay'}
+              </Button>
+            </Card>
+          )}
 
           {!isLifetimePlan && (data.autopay || data.cancelAtPeriodEnd) && (
             <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-3">

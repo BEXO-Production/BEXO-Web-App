@@ -1,107 +1,129 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { CinematicBackdrop } from "./CinematicBackdrop";
 
-/** Same-origin first (no CORS). CDN fallback for production deploys without a local copy. */
-const LOCAL_VIDEO_URL = "/assets/auth-background.mp4";
-const R2_VIDEO_URL =
+const LOCAL_VIDEO = "/assets/auth-background.mp4";
+const CDN_VIDEO =
   "https://pub-dea3489e0d644467a9a61d41406280f0.r2.dev/assets/auth-background.mp4";
 
-const SOURCES = [LOCAL_VIDEO_URL, R2_VIDEO_URL] as const;
-
 /**
- * Full-bleed muted loop behind auth screens.
- * Must stay muted + playsInline for Safari/Chrome autoplay policies.
+ * Auth atmosphere: cinematic looping video with Unsplash poster fallback.
+ * Still paints instantly; video fades in once playback actually starts.
  */
 export function AuthBackgroundVideo() {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [sourceIndex, setSourceIndex] = useState(0);
-  const [isReady, setIsReady] = useState(false);
-  const videoSrc = SOURCES[Math.min(sourceIndex, SOURCES.length - 1)];
-
-  const tryPlay = useCallback(async () => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    video.muted = true;
-    video.defaultMuted = true;
-    video.setAttribute("muted", "");
-    video.playsInline = true;
-
-    try {
-      await video.play();
-      setIsReady(true);
-    } catch (err) {
-      console.warn("[AuthBackgroundVideo] autoplay blocked or failed:", err);
-    }
-  }, []);
+  const [videoReady, setVideoReady] = useState(false);
+  const [useCdn, setUseCdn] = useState(false);
+  const preferReducedMotion =
+    typeof window !== "undefined" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
+    if (preferReducedMotion) return;
 
-    setIsReady(false);
+    const el = videoRef.current;
+    if (!el) return;
 
-    const onCanPlay = () => {
+    let cancelled = false;
+    let retries = 0;
+
+    const markPlaying = () => {
+      if (!cancelled && !el.paused) setVideoReady(true);
+    };
+
+    const tryPlay = async () => {
+      if (cancelled || !el) return;
+      try {
+        el.muted = true;
+        el.defaultMuted = true;
+        el.setAttribute("muted", "");
+        el.playsInline = true;
+        el.setAttribute("playsinline", "");
+        el.setAttribute("webkit-playsinline", "");
+        const p = el.play();
+        if (p !== undefined) await p;
+        markPlaying();
+      } catch {
+        retries += 1;
+        if (retries < 8 && !cancelled) {
+          window.setTimeout(() => void tryPlay(), 280 * retries);
+        }
+      }
+    };
+
+    const onReady = () => {
       void tryPlay();
     };
-    const onPlaying = () => setIsReady(true);
-    const onVisibility = () => {
+
+    const onError = () => {
+      if (!useCdn) setUseCdn(true);
+    };
+
+    const onVisible = () => {
       if (document.visibilityState === "visible") void tryPlay();
     };
 
-    video.addEventListener("canplay", onCanPlay);
-    video.addEventListener("playing", onPlaying);
-    document.addEventListener("visibilitychange", onVisibility);
+    el.addEventListener("playing", markPlaying);
+    el.addEventListener("canplay", onReady);
+    el.addEventListener("loadeddata", onReady);
+    el.addEventListener("error", onError);
+    document.addEventListener("visibilitychange", onVisible);
 
     void tryPlay();
-    const retry = window.setTimeout(() => void tryPlay(), 350);
-
-    return () => {
-      video.removeEventListener("canplay", onCanPlay);
-      video.removeEventListener("playing", onPlaying);
-      document.removeEventListener("visibilitychange", onVisibility);
-      window.clearTimeout(retry);
-    };
-  }, [videoSrc, tryPlay]);
-
-  useEffect(() => {
-    const unlock = () => {
+    const kick = window.setInterval(() => {
+      if (cancelled || (!el.paused && el.readyState >= 2)) {
+        window.clearInterval(kick);
+        markPlaying();
+        return;
+      }
       void tryPlay();
-    };
-    window.addEventListener("pointerdown", unlock, { once: true, passive: true });
-    window.addEventListener("keydown", unlock, { once: true });
-    return () => {
-      window.removeEventListener("pointerdown", unlock);
-      window.removeEventListener("keydown", unlock);
-    };
-  }, [tryPlay]);
+    }, 900);
 
-  const advanceSource = () => {
-    setSourceIndex((i) => (i + 1 < SOURCES.length ? i + 1 : i));
-  };
+    return () => {
+      cancelled = true;
+      window.clearInterval(kick);
+      el.removeEventListener("playing", markPlaying);
+      el.removeEventListener("canplay", onReady);
+      el.removeEventListener("loadeddata", onReady);
+      el.removeEventListener("error", onError);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [preferReducedMotion, useCdn]);
+
+  const src = useCdn ? CDN_VIDEO : LOCAL_VIDEO;
 
   return (
-    <div className="fixed inset-0 z-0 overflow-hidden select-none pointer-events-none bg-slate-950">
-      <video
-        ref={videoRef}
-        key={videoSrc}
-        src={videoSrc}
-        autoPlay
-        loop
-        muted
-        playsInline
-        preload="auto"
-        disablePictureInPicture
-        disableRemotePlayback
-        className={`absolute inset-0 h-full w-full object-cover scale-105 transition-opacity duration-700 ${
-          isReady ? "opacity-100" : "opacity-0"
+    <div className="fixed inset-0 z-0 overflow-hidden select-none pointer-events-none bg-[#05070f]">
+      <CinematicBackdrop
+        atmosphere="auth"
+        intensity="soft"
+        animate={!videoReady}
+        className={`!absolute transition-opacity duration-700 ${
+          videoReady ? "opacity-0" : "opacity-100"
         }`}
-        onError={advanceSource}
       />
 
-      {/* Keep type readable while letting the footage read as motion, not flat black */}
-      <div className="absolute inset-0 bg-slate-950/25" />
-      <div className="absolute inset-0 bg-gradient-to-t from-slate-950/75 via-transparent to-slate-950/35" />
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_transparent_25%,_rgba(2,6,23,0.35)_100%)]" />
+      {!preferReducedMotion && (
+        <video
+          key={src}
+          ref={videoRef}
+          className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-[1.1s] ease-out ${
+            videoReady ? "opacity-100" : "opacity-0"
+          }`}
+          src={src}
+          poster="/assets/atmosphere/auth-deep.jpg"
+          muted
+          loop
+          playsInline
+          autoPlay
+          preload="auto"
+          aria-hidden
+        />
+      )}
+
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_20%_0%,_rgba(56,189,248,0.16)_0%,_transparent_48%),radial-gradient(ellipse_at_85%_90%,_rgba(99,102,241,0.14)_0%,_transparent_42%)]" />
+      <div className="absolute inset-0 bg-gradient-to-t from-[#05070f]/78 via-[#05070f]/25 to-[#05070f]/40" />
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_transparent_20%,_rgba(5,7,15,0.45)_100%)]" />
+      <div className="absolute inset-0 opacity-[0.05] mix-blend-overlay bexo-film-grain" />
     </div>
   );
 }

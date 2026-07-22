@@ -1,7 +1,9 @@
 /**
- * Platform hostname for portfolios and marketing links.
+ * Platform hostname for portfolios.
  * Development: mybexo.cyou (site + {handle}.mybexo.cyou)
- * Production portfolios: atbexo.com (main app may be mybexo.com via FRONTEND_URL)
+ * Production portfolios: atbexo.com
+ * Production app (FRONTEND_URL): https://dash.mybexo.com
+ * Production marketing: https://mybexo.com
  */
 export const PLATFORM_DOMAIN =
   process.env.PLATFORM_DOMAIN?.toLowerCase().trim() ||
@@ -61,6 +63,15 @@ export function appOrigin(): string {
   return (
     process.env.FRONTEND_URL ||
     process.env.WEB_URL ||
-    `https://${PLATFORM_DOMAIN}`
+    `https://dash.mybexo.com`
+  ).replace(/\/$/, "");
+}
+
+/** Public marketing site (mybexo.com). */
+export function marketingOrigin(): string {
+  return (
+    process.env.MARKETING_URL ||
+    process.env.VITE_MARKETING_ORIGIN ||
+    "https://mybexo.com"
   ).replace(/\/$/, "");
 }

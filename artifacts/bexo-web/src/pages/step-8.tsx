@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useOnboarding } from '../context/OnboardingContext';
 import { Button, Card } from '../design-system/primitives';
 import { CheckCircle2, Copy, ExternalLink, Sparkles, ArrowRight, Share2 } from 'lucide-react';
-import logo from '../assets/bexo-logo.png';
+import { BrandLogo } from '../components/BrandLogo';
 import { useToast } from '../hooks/use-toast';
 import { portfolioHostname, portfolioPublicUrl } from '../lib/platform';
 
@@ -61,7 +61,7 @@ export default function Step8Publish() {
       <div className="absolute top-0 w-full h-[300px] bg-gradient-to-b from-blue-50 to-transparent -z-10" />
       
       <div className="w-20 h-20 bg-white rounded-2xl shadow-sm border border-slate-200 flex items-center justify-center mb-8 animate-in slide-in-from-top-4 fade-in duration-500">
-        <img src={logo} alt="BEXO" className="w-10 h-10 object-contain" />
+        <BrandLogo size="md" />
       </div>
 
       <div className="text-center max-w-2xl mb-12 animate-in slide-in-from-bottom-4 fade-in duration-700 delay-100 fill-mode-both">

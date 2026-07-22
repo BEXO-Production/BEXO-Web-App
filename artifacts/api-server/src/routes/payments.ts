@@ -34,9 +34,15 @@ import {
   recordCouponRedemption,
   toPublicPricingPayload,
 } from "../lib/pricingCatalog";
-import { resolveCouponOfferId } from "../lib/razorpayOffers";
 import { generateAndStoreInvoice, backfillMissingInvoices } from "../lib/invoiceStore";
 import { getPlanLimits, getUpdatesUsage, getParsesUsage } from "../lib/entitlements";
+import {
+  claimWebhookEvent,
+  expireStaleAwaitingMandates,
+  isMandateReadyStatus,
+  markWebhookProcessed,
+  recordLedgerEvent,
+} from "../lib/billingEngine";
 import {
   clearPaymentGrace,
   enterPaymentGrace,
@@ -46,6 +52,13 @@ import {
 } from "../lib/siteAccess";
 import { enqueueEmail } from "../lib/emailOutbox";
 import { rollupPortfolioStats } from "../lib/analytics";
+import {
+  ensureBillingProfileForCheckout,
+  getBillingProfile,
+  toPublicBillingProfile,
+  upsertBillingProfile,
+  validateBillingProfile,
+} from "../lib/billingProfile";
 
 const router = Router();
 
@@ -79,6 +92,99 @@ const getRazorpayPlanIdFor = async (plan: PaidPlan | "storage_addon"): Promise<s
   const envValue = process.env[`RAZORPAY_PLAN_ID_${plan.toUpperCase()}`];
   return envValue || null;
 };
+
+/** Razorpay Autopay is only live after the customer authenticates the mandate in Checkout. */
+async function fetchRazorpaySubscriptionStatus(subscriptionId: string | null | undefined): Promise<string | null> {
+  if (!razorpay || !subscriptionId || subscriptionId.startsWith("mock_")) return null;
+  try {
+    const sub: any = await razorpay.subscriptions.fetch(subscriptionId);
+    return typeof sub?.status === "string" ? sub.status : null;
+  } catch (err) {
+    logger.warn({ err, subscriptionId }, "Could not fetch Razorpay subscription status");
+    return null;
+  }
+}
+
+/**
+ * Delayed Autopay start for coupon first-invoice:
+ * charge coupon amount NOW via order; Razorpay Plan amount only at period end.
+ * Never allow a near-term start_at (that caused same-day full-price charges).
+ */
+function bootstrapAutopayStartAt(plan: PaidPlan, expiresAt: Date): number {
+  const periodEnd = planTermEnd(plan, new Date()) || expiresAt;
+  const targetMs = Math.max(periodEnd.getTime(), expiresAt.getTime());
+  const minDelayMs =
+    planBillingPeriod(plan) === "monthly"
+      ? 28 * 24 * 60 * 60 * 1000
+      : 360 * 24 * 60 * 60 * 1000;
+  const minStartMs = Date.now() + minDelayMs;
+  return Math.floor(Math.max(targetMs, minStartMs) / 1000);
+}
+
+/**
+ * After a discounted first invoice (order), create a delayed Razorpay subscription
+ * that charges the full plan price at the end of the paid period.
+ * The customer must still authorize the mandate via Checkout (needsMandateSetup).
+ */
+async function scheduleBootstrapAutopay(opts: {
+  userId: string;
+  plan: PaidPlan;
+  expiresAt: Date | null;
+  paymentRowId: string;
+  orderId: string;
+  couponCode?: string | null;
+  existingSubscriptionId?: string | null;
+}): Promise<{ subscriptionId: string; planId: string } | null> {
+  if (!razorpay || !opts.expiresAt || !SUBSCRIPTION_PLANS.includes(opts.plan)) return null;
+
+  if (opts.existingSubscriptionId) {
+    const status = await fetchRazorpaySubscriptionStatus(opts.existingSubscriptionId);
+    if (status && status !== "cancelled" && status !== "completed" && status !== "expired") {
+      const planId = (await getRazorpayPlanIdFor(opts.plan)) || "";
+      return { subscriptionId: opts.existingSubscriptionId, planId };
+    }
+  }
+
+  const planId = (await getRazorpayPlanIdFor(opts.plan)) || null;
+  if (!planId) return null;
+
+  const startAt = bootstrapAutopayStartAt(opts.plan, opts.expiresAt);
+  const totalCount = planBillingPeriod(opts.plan) === "monthly" ? 100 : 10;
+  const subscription: any = await razorpay.subscriptions.create({
+    plan_id: planId,
+    total_count: totalCount,
+    quantity: 1,
+    customer_notify: 1,
+    start_at: startAt,
+    notes: {
+      userId: opts.userId,
+      plan: opts.plan,
+      coupon: opts.couponCode || "",
+      bootstrapFromOrder: opts.orderId,
+      mode: "subscription_bootstrap",
+      firstInvoice: "coupon_order",
+      renewalPaise: "plan_list_price",
+    },
+  } as any);
+
+  await db
+    .update(payments)
+    .set({ razorpaySubscriptionId: subscription.id })
+    .where(eq(payments.id, opts.paymentRowId));
+
+  logger.info(
+    {
+      userId: opts.userId,
+      plan: opts.plan,
+      subscriptionId: subscription.id,
+      startAt,
+      startAtIso: new Date(startAt * 1000).toISOString(),
+    },
+    "Scheduled delayed Autopay after coupon first invoice",
+  );
+
+  return { subscriptionId: subscription.id as string, planId };
+}
 
 const parsePlanParam = (value: unknown): PaidPlan | null => {
   const normalized = normalizePlanId(typeof value === "string" ? value : null);
@@ -177,6 +283,21 @@ router.get("/status", requireAuth, async (req: any, res: any) => {
     const latestPayment = history[0];
     const catalog = await loadPricingCatalog();
     const storageAddon = await getStorageAddonControl(userId);
+    const rzpSubId = state.subscription?.razorpaySubscriptionId || null;
+    const rzpStatus = await fetchRazorpaySubscriptionStatus(rzpSubId);
+    const autopayLive = !!rzpSubId && (rzpSubId.startsWith("mock_") || isMandateReadyStatus(rzpStatus));
+
+    const [heldMandate] = await db
+      .select()
+      .from(payments)
+      .where(and(eq(payments.userId, userId), eq(payments.status, "awaiting_mandate")))
+      .orderBy(desc(payments.createdAt))
+      .limit(1);
+
+    const needsMandateSetup =
+      !!heldMandate ||
+      (!!rzpSubId && !rzpSubId.startsWith("mock_") && rzpStatus === "created" && !state.isPremium);
+
     res.json({
       plan: state.plan,
       status: state.status,
@@ -230,16 +351,42 @@ router.get("/status", requireAuth, async (req: any, res: any) => {
       },
       canBuy: state.canBuy,
       renewalMode: state.renewalMode,
+      autopay: autopayLive,
+      needsMandateSetup,
+      razorpayKey: needsMandateSetup ? razorpayKeyId : undefined,
+      pendingCheckout: heldMandate
+        ? {
+            paymentId: heldMandate.id,
+            plan: heldMandate.plan,
+            amount: heldMandate.amount,
+            subscriptionId: heldMandate.razorpaySubscriptionId,
+            status: heldMandate.status,
+          }
+        : null,
       subscription: state.subscription
         ? {
             plan: normalizePlanId(state.subscription.plan) || state.subscription.plan,
             status: state.subscription.status,
             expiresAt: state.subscription.expiresAt,
             createdAt: state.subscription.createdAt,
-            autopay: !!state.subscription.razorpaySubscriptionId,
+            autopay: autopayLive,
+            razorpayStatus: rzpStatus,
+            razorpaySubscriptionId: heldMandate?.razorpaySubscriptionId || rzpSubId,
+            needsMandateSetup,
             cancelAtPeriodEnd: access.cancelAtPeriodEnd,
           }
-        : null,
+        : heldMandate
+          ? {
+              plan: heldMandate.plan,
+              status: "awaiting_mandate",
+              expiresAt: null,
+              createdAt: heldMandate.createdAt,
+              autopay: false,
+              razorpaySubscriptionId: heldMandate.razorpaySubscriptionId,
+              needsMandateSetup: true,
+              cancelAtPeriodEnd: false,
+            }
+          : null,
       latestPayment: latestPayment
         ? {
             amount: latestPayment.amount,
@@ -261,10 +408,39 @@ router.get("/status", requireAuth, async (req: any, res: any) => {
         createdAt: p.createdAt,
       })),
       pricing: await toPublicPricingPayload(catalog),
+      billingProfile: toPublicBillingProfile(await getBillingProfile(userId)),
     });
   } catch (error) {
     logger.error({ error, userId }, "Failed to load billing status");
     res.status(500).json({ error: "Unable to load billing status right now." });
+  }
+});
+
+router.get("/billing-profile", requireAuth, async (req: any, res: any) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: "Unauthorized" });
+  try {
+    const profile = await getBillingProfile(userId);
+    res.json({ billingProfile: toPublicBillingProfile(profile) });
+  } catch (error) {
+    logger.error({ error, userId }, "Failed to load billing profile");
+    res.status(500).json({ error: "Unable to load billing information right now." });
+  }
+});
+
+router.put("/billing-profile", requireAuth, async (req: any, res: any) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: "Unauthorized" });
+  try {
+    const validated = validateBillingProfile(req.body?.billing || req.body);
+    if (!validated.ok) {
+      return res.status(400).json({ error: validated.error, code: "BILLING_INVALID" });
+    }
+    const profile = await upsertBillingProfile(userId, validated.value);
+    res.json({ billingProfile: toPublicBillingProfile(profile) });
+  } catch (error) {
+    logger.error({ error, userId }, "Failed to save billing profile");
+    res.status(500).json({ error: "Unable to save billing information right now." });
   }
 });
 
@@ -281,25 +457,30 @@ router.post("/create-order", requireAuth, async (req: any, res: any) => {
   }
 
   try {
+    const billingGate = await ensureBillingProfileForCheckout(userId, req.body?.billing);
+    if (!billingGate.ok) {
+      return res.status(400).json({ error: billingGate.error, code: billingGate.code });
+    }
+
     const current = await resolveSubscriptionState(userId);
     const blocked = assertCanPurchase(current, plan);
     if (blocked) {
       return res.status(409).json({ error: blocked, canBuy: current.canBuy, renewalMode: current.renewalMode });
     }
 
-    // Autopay plans must go through subscription checkout when configured.
-    if (SUBSCRIPTION_PLANS.includes(plan) && isRazorpayConfigured) {
-      const rzpPlanId = await getRazorpayPlanIdFor(plan);
-      if (rzpPlanId) {
-        return res.status(409).json({
-          error: "This plan is an auto-renewing subscription. Use subscription checkout instead.",
-          code: "USE_SUBSCRIPTION",
-          canBuy: current.canBuy,
-          renewalMode: current.renewalMode,
-        });
-      }
+    // Identity / Essential / Growth must use subscription (or subscription_bootstrap)
+    // checkout. One-time create-order is only for Student+ and legacy fallbacks
+    // that are explicitly not autopay plans.
+    if (SUBSCRIPTION_PLANS.includes(plan)) {
+      return res.status(409).json({
+        error: "This plan is an auto-renewing subscription. Use subscription checkout instead.",
+        code: "USE_SUBSCRIPTION",
+        canBuy: current.canBuy,
+        renewalMode: current.renewalMode,
+      });
     }
 
+    // If a coupon or order checkout fallback is used, calculate plan amount directly
     const pricing = await calculatePlanAmount(plan, couponCode);
     const amountInPaise = pricing.totalPaise;
     const orderOptions = {
@@ -377,6 +558,11 @@ router.post("/create-subscription", requireAuth, async (req: any, res: any) => {
   }
 
   try {
+    const billingGate = await ensureBillingProfileForCheckout(userId, req.body?.billing);
+    if (!billingGate.ok) {
+      return res.status(400).json({ error: billingGate.error, code: billingGate.code });
+    }
+
     const current = await resolveSubscriptionState(userId);
     const blocked = assertCanPurchase(current, plan);
     if (blocked) {
@@ -421,6 +607,8 @@ router.post("/create-subscription", requireAuth, async (req: any, res: any) => {
       }
 
       // Guard against catalog drift vs Razorpay Plan (always compare FULL list price).
+      // Invalid plan IDs (e.g. leftover test-mode IDs after switching to live keys)
+      // must fail loudly — otherwise subscriptions.create returns a generic 500.
       try {
         const rzpPlan: any = await razorpay.plans.fetch(rzpPlanId);
         const planAmount = Number(rzpPlan?.item?.amount);
@@ -432,28 +620,70 @@ router.post("/create-subscription", requireAuth, async (req: any, res: any) => {
           });
         }
       } catch (planErr) {
-        logger.warn({ planErr, rzpPlanId }, "Could not fetch Razorpay plan for amount check");
+        logger.error({ planErr, rzpPlanId, plan }, "Razorpay plan id is invalid or inaccessible for current API keys");
+        return res.status(503).json({
+          error: "Autopay is not configured for this plan yet. Please try again later or contact support.",
+          code: "RAZORPAY_PLAN_INVALID",
+        });
       }
 
       const planRow = await getPlanById(plan);
-      let offerId: string | null = null;
+      void planRow; // reserved for future display metadata on bootstrap receipts
+      // Coupon / discounted first invoice: ALWAYS charge coupon via order now,
+      // then Autopay full list price next cycle. Do not use Razorpay Offers or
+      // an immediate subscription charge (that double-billed testers).
       if (firstPricing.totalPaise < fullPlanPaise) {
-        const resolved = await resolveCouponOfferId({
-          razorpay,
-          couponCode,
+        logger.info(
+          { plan, couponCode, firstPaise: amountInPaise, renewalPaise: fullPlanPaise },
+          "Discounted first invoice — subscription_bootstrap (coupon now, full price next cycle)",
+        );
+
+        const orderOptions = {
+          amount: amountInPaise,
+          currency: "INR",
+          receipt: `bexo_boot_${userId.slice(0, 8)}_${Date.now()}`.slice(0, 40),
+          notes: {
+            userId,
+            plan,
+            coupon: firstPricing.coupon || "",
+            mode: "subscription_bootstrap",
+            renewalPaise: String(fullPlanPaise),
+            upgradeFrom: upgrading && current.plan ? current.plan : "",
+            previousSubscriptionId: upgrading ? current.subscription?.razorpaySubscriptionId || "" : "",
+          },
+        };
+        const razorpayOrder = await razorpay.orders.create(orderOptions);
+        await db.insert(payments).values({
+          userId,
+          razorpayOrderId: razorpayOrder.id,
+          amount: Number(razorpayOrder.amount),
+          status: "pending",
+          plan,
+          kind: "subscription_bootstrap",
+          couponCode: firstPricing.coupon || null,
+        });
+
+        return res.json({
+          mode: "subscription_bootstrap",
+          orderId: razorpayOrder.id,
+          amount: Number(razorpayOrder.amount),
+          currency: razorpayOrder.currency || "INR",
+          key: razorpayKeyId,
+          mock: false,
+          pricing: firstPricing,
           list: listPricing,
           first: firstPricing,
-          planDisplayName: planRow?.displayName || plan,
+          discountApplies: quote.discountApplies,
+          renewalLabel: quote.renewalLabel,
+          message: quote.message,
+          offerApplied: false,
+          plan,
+          renewalMode: current.renewalMode,
+          canBuy: current.canBuy,
         });
-        offerId = resolved.offerId;
-        if (!offerId) {
-          return res.status(503).json({
-            error: "This coupon can't be applied to autopay right now. Try again without a coupon, or contact support.",
-            code: "COUPON_OFFER_UNAVAILABLE",
-          });
-        }
       }
 
+      // Full-price Autopay (no coupon): charge plan amount on first subscription invoice.
       const totalCount = planBillingPeriod(plan) === "monthly" ? 100 : 10;
       const subscriptionPayload: Record<string, unknown> = {
         plan_id: rzpPlanId,
@@ -463,40 +693,39 @@ router.post("/create-subscription", requireAuth, async (req: any, res: any) => {
         notes: {
           userId,
           plan,
-          coupon: firstPricing.coupon || "",
+          coupon: "",
           upgradeFrom: upgrading && current.plan ? current.plan : "",
           previousSubscriptionId: upgrading ? current.subscription?.razorpaySubscriptionId || "" : "",
-          firstInvoicePaise: String(amountInPaise),
+          firstInvoicePaise: String(fullPlanPaise),
           renewalPaise: String(fullPlanPaise),
         },
       };
-      if (offerId) subscriptionPayload.offer_id = offerId;
 
       const subscription: any = await razorpay.subscriptions.create(subscriptionPayload as any);
 
       await db.insert(payments).values({
         userId,
         razorpaySubscriptionId: subscription.id,
-        amount: amountInPaise,
+        amount: fullPlanPaise,
         status: "pending",
         plan,
         kind: "subscription",
-        couponCode: firstPricing.coupon || null,
+        couponCode: null,
       });
 
       return res.json({
         subscriptionId: subscription.id,
-        amount: amountInPaise,
+        amount: fullPlanPaise,
         currency: "INR",
         key: razorpayKeyId,
         mock: false,
-        pricing: firstPricing,
+        pricing: listPricing,
         list: listPricing,
-        first: firstPricing,
+        first: listPricing,
         discountApplies: quote.discountApplies,
         renewalLabel: quote.renewalLabel,
         message: quote.message,
-        offerApplied: !!offerId,
+        offerApplied: false,
         plan,
         renewalMode: current.renewalMode,
         canBuy: current.canBuy,
@@ -672,18 +901,74 @@ router.post("/verify", requireAuth, async (req: any, res: any) => {
       return res.status(404).json({ error: "Payment order was not found for this account." });
     }
 
-    if (payment.status === "success") {
+    if (payment.status === "success" || payment.status === "awaiting_mandate") {
       const state = await resolveSubscriptionState(userId);
+      // HARD MANDATE: first invoice held until Autopay is authorized — never silent-activate.
+      if (
+        (payment.status === "awaiting_mandate" || payment.kind === "subscription_bootstrap") &&
+        SUBSCRIPTION_PLANS.includes(plan as PaidPlan) &&
+        payment.status !== "success"
+      ) {
+        let subscriptionId = payment.razorpaySubscriptionId;
+        const provisionalExpiry = await getRenewalExpiry(userId, plan as PaidPlan);
+        const status = await fetchRazorpaySubscriptionStatus(subscriptionId);
+        if (!isMandateReadyStatus(status)) {
+          if (!subscriptionId || status === "cancelled" || status === "completed" || status === "expired" || !status) {
+            try {
+              const scheduled = await scheduleBootstrapAutopay({
+                userId,
+                plan: plan as PaidPlan,
+                expiresAt: provisionalExpiry,
+                paymentRowId: payment.id,
+                orderId: razorpay_order_id,
+                couponCode: payment.couponCode,
+                existingSubscriptionId: subscriptionId,
+              });
+              if (scheduled) subscriptionId = scheduled.subscriptionId;
+            } catch (subErr) {
+              logger.error({ subErr, userId, orderId: razorpay_order_id }, "Failed to resume bootstrap Autopay schedule");
+            }
+          }
+          if (subscriptionId) {
+            return res.json({
+              success: true,
+              message: "First invoice received — authorize Autopay to activate your plan.",
+              plan: null,
+              isPremium: false,
+              activated: false,
+              expiresAt: null,
+              storageQuotaBytes: state.storageQuotaBytes,
+              storageBonusBytes: state.storageBonusBytes,
+              stacked: false,
+              renewalMode: state.renewalMode,
+              autopay: false,
+              bootstrap: true,
+              needsMandateSetup: true,
+              subscriptionId,
+              key: razorpayKeyId,
+            });
+          }
+          return res.status(409).json({
+            error: "Autopay setup is incomplete. Retry checkout or contact support.",
+            code: "MANDATE_REQUIRED",
+            needsMandateSetup: true,
+          });
+        }
+      }
       return res.json({
         success: true,
         message: "Payment already verified.",
         plan: state.plan,
         isPremium: state.isPremium,
+        activated: state.isPremium,
         expiresAt: state.expiresAt,
         storageQuotaBytes: state.storageQuotaBytes,
         storageBonusBytes: state.storageBonusBytes,
         stacked: false,
         renewalMode: state.renewalMode,
+        autopay: !!state.subscription?.razorpaySubscriptionId,
+        bootstrap: payment.kind === "subscription_bootstrap",
+        needsMandateSetup: false,
       });
     }
 
@@ -711,15 +996,98 @@ router.post("/verify", requireAuth, async (req: any, res: any) => {
     }
 
     // Mark success before activating so retries are idempotent.
+    // HARD MANDATE bootstrap: hold as awaiting_mandate — activate only after confirm-autopay.
+    const isBootstrap = payment.kind === "subscription_bootstrap" && SUBSCRIPTION_PLANS.includes(plan);
     await db
       .update(payments)
-      .set({ razorpayPaymentId: razorpay_payment_id, status: "success", plan, kind: "order" })
+      .set({
+        razorpayPaymentId: razorpay_payment_id,
+        status: isBootstrap ? "awaiting_mandate" : "success",
+        plan,
+        kind: payment.kind || "order",
+      })
       .where(eq(payments.id, payment.id));
 
     const previousRzpId = current.subscription?.razorpaySubscriptionId || null;
     const expiresAt = await getRenewalExpiry(userId, plan);
+
+    if (isBootstrap) {
+      let subscriptionIdForLink: string | null = null;
+      let planIdForLink: string | null = null;
+      try {
+        const scheduled = await scheduleBootstrapAutopay({
+          userId,
+          plan,
+          expiresAt,
+          paymentRowId: payment.id,
+          orderId: razorpay_order_id,
+          couponCode: payment.couponCode,
+          existingSubscriptionId: payment.razorpaySubscriptionId,
+        });
+        if (scheduled) {
+          subscriptionIdForLink = scheduled.subscriptionId;
+          planIdForLink = scheduled.planId;
+        }
+      } catch (subErr) {
+        logger.error(
+          { subErr, userId, plan, orderId: razorpay_order_id },
+          "Bootstrap invoice captured but Autopay schedule failed",
+        );
+      }
+
+      await recordLedgerEvent({
+        userId,
+        paymentId: payment.id,
+        eventType: "first_invoice_captured",
+        amountPaise: payment.amount,
+        plan,
+        razorpayPaymentId: razorpay_payment_id,
+        razorpayOrderId: razorpay_order_id,
+        razorpaySubscriptionId: subscriptionIdForLink,
+        idempotencyKey: `first_invoice:${payment.id}`,
+        metadata: { hardMandate: true },
+      });
+      await recordLedgerEvent({
+        userId,
+        paymentId: payment.id,
+        eventType: "mandate_required",
+        amountPaise: 0,
+        plan,
+        razorpaySubscriptionId: subscriptionIdForLink,
+        idempotencyKey: `mandate_required:${payment.id}`,
+        metadata: { planId: planIdForLink },
+      });
+
+      if (!subscriptionIdForLink) {
+        return res.status(503).json({
+          error: "Payment received but Autopay could not be scheduled. Contact support — do not pay again.",
+          code: "AUTOPAY_SCHEDULE_FAILED",
+          paymentId: payment.id,
+        });
+      }
+
+      // Do NOT activate, redeem coupon, invoice, or complete onboarding until mandate is confirmed.
+      return res.json({
+        success: true,
+        message: "First invoice received — authorize Autopay to activate your plan.",
+        plan: null,
+        isPremium: false,
+        activated: false,
+        expiresAt: null,
+        storageQuotaBytes: current.storageQuotaBytes,
+        storageBonusBytes: current.storageBonusBytes,
+        stacked: false,
+        renewalMode: current.renewalMode,
+        autopay: false,
+        bootstrap: true,
+        needsMandateSetup: true,
+        subscriptionId: subscriptionIdForLink,
+        key: razorpayKeyId,
+        provisionalExpiresAt: expiresAt,
+      });
+    }
+
     const activated = await activatePaidPlan(userId, plan, expiresAt);
-    // One-time upgrade (e.g. to Student+) should stop prior autopay.
     await cancelPreviousRazorpaySubscription(userId, previousRzpId, null);
     const couponCode =
       (typeof req.body?.couponCode === "string" ? req.body.couponCode : undefined) ||
@@ -731,17 +1099,31 @@ router.post("/verify", requireAuth, async (req: any, res: any) => {
     await markOnboardingComplete(userId).catch((err) =>
       logger.warn({ err, userId }, "markOnboardingComplete failed after payment"),
     );
+    await recordLedgerEvent({
+      userId,
+      paymentId: payment.id,
+      eventType: "plan_activated",
+      amountPaise: payment.amount,
+      plan,
+      razorpayPaymentId: razorpay_payment_id,
+      razorpayOrderId: razorpay_order_id,
+      idempotencyKey: `plan_activated:${payment.id}`,
+    });
 
     res.json({
       success: true,
       message: "Payment verified successfully",
       plan: activated.plan,
       isPremium: true,
+      activated: true,
       expiresAt: activated.expiresAt,
       storageQuotaBytes: activated.storageQuotaBytes,
       storageBonusBytes: activated.storageBonusBytes,
       stacked: activated.stacked,
       renewalMode: activated.renewalMode,
+      autopay: false,
+      bootstrap: false,
+      needsMandateSetup: false,
     });
   } catch (error) {
     logger.error({ error, userId }, "Failed to verify Razorpay payment");
@@ -749,6 +1131,344 @@ router.post("/verify", requireAuth, async (req: any, res: any) => {
   }
 });
 
+// After bootstrap first-invoice: customer authorizes the delayed Autopay mandate.
+router.post("/confirm-autopay", requireAuth, async (req: any, res: any) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+  const { razorpay_subscription_id, razorpay_payment_id, razorpay_signature } = req.body || {};
+  if (!razorpay_subscription_id || typeof razorpay_subscription_id !== "string") {
+    return res.status(400).json({ error: "Missing subscription id for Autopay confirmation." });
+  }
+
+  try {
+    const [payment] = await db
+      .select()
+      .from(payments)
+      .where(and(eq(payments.razorpaySubscriptionId, razorpay_subscription_id), eq(payments.userId, userId)))
+      .limit(1);
+
+    if (!payment) {
+      return res.status(404).json({ error: "Autopay subscription was not found for this account." });
+    }
+
+    const plan = (normalizePlanId(payment.plan) || "growth") as PaidPlan;
+
+    // Idempotent: already fully activated
+    if (payment.status === "success") {
+      const state = await resolveSubscriptionState(userId);
+      if (state.isPremium) {
+        return res.json({
+          success: true,
+          message: "Autopay already authorized.",
+          plan: state.plan,
+          isPremium: true,
+          activated: true,
+          expiresAt: state.expiresAt,
+          storageQuotaBytes: state.storageQuotaBytes,
+          storageBonusBytes: state.storageBonusBytes,
+          stacked: false,
+          renewalMode: state.renewalMode,
+          autopay: true,
+          bootstrap: payment.kind === "subscription_bootstrap",
+          needsMandateSetup: false,
+        });
+      }
+    }
+
+    if (payment.status === "abandoned" || payment.status === "refunded" || payment.status === "failed") {
+      return res.status(409).json({
+        error: "This checkout was cancelled or refunded. Start a new checkout.",
+        code: "CHECKOUT_CLOSED",
+      });
+    }
+
+    if (isRazorpayConfigured) {
+      // Checkout still returns a signed payload for mandate auth (payment_id|subscription_id).
+      if (razorpay_payment_id && razorpay_signature) {
+        const hmac = crypto.createHmac("sha256", razorpayKeySecret!);
+        hmac.update(`${razorpay_payment_id}|${razorpay_subscription_id}`);
+        const generatedSignature = hmac.digest("hex");
+        if (!timingSafeEqualHex(generatedSignature, razorpay_signature)) {
+          return res.status(400).json({ error: "Invalid Autopay signature." });
+        }
+      }
+
+      const status = await fetchRazorpaySubscriptionStatus(razorpay_subscription_id);
+      if (!isMandateReadyStatus(status) && status !== "created") {
+        return res.status(409).json({
+          error: "Autopay authorization is not complete yet. Please try again.",
+          code: "MANDATE_NOT_READY",
+          status,
+        });
+      }
+      // status===created can briefly race; if signature verified, treat as authorized.
+      if (status === "created" && !(razorpay_payment_id && razorpay_signature)) {
+        return res.status(409).json({
+          error: "Complete the Autopay authorization in the Razorpay window.",
+          code: "MANDATE_PENDING",
+          needsMandateSetup: true,
+          subscriptionId: razorpay_subscription_id,
+          key: razorpayKeyId,
+        });
+      }
+    }
+
+    const prior = await resolveSubscriptionState(userId);
+    const previousRzpId = prior.subscription?.razorpaySubscriptionId || null;
+    const expiresAt = await getRenewalExpiry(userId, plan);
+
+    await db
+      .update(payments)
+      .set({
+        status: "success",
+        razorpayPaymentId: payment.razorpayPaymentId || razorpay_payment_id || null,
+      })
+      .where(eq(payments.id, payment.id));
+
+    const activated = await activatePaidPlan(userId, plan, expiresAt, {
+      subscriptionId: razorpay_subscription_id,
+      planId: (await getRazorpayPlanIdFor(plan)) || null,
+    });
+    await cancelPreviousRazorpaySubscription(userId, previousRzpId, razorpay_subscription_id);
+
+    const couponCode =
+      (typeof req.body?.couponCode === "string" ? req.body.couponCode : undefined) ||
+      payment.couponCode ||
+      undefined;
+    await recordCouponRedemption(couponCode, { userId, paymentId: payment.id });
+    await generateAndStoreInvoice(payment.id);
+    if (payment.razorpayPaymentId || razorpay_payment_id) {
+      await sendBillingReceipts(
+        userId,
+        plan,
+        payment.amount / 100,
+        (payment.razorpayPaymentId || razorpay_payment_id) as string,
+      );
+    }
+    await markOnboardingComplete(userId).catch((err) =>
+      logger.warn({ err, userId }, "markOnboardingComplete failed after Autopay confirm"),
+    );
+
+    await recordLedgerEvent({
+      userId,
+      paymentId: payment.id,
+      eventType: "mandate_confirmed",
+      amountPaise: 0,
+      plan,
+      razorpaySubscriptionId: razorpay_subscription_id,
+      razorpayPaymentId: payment.razorpayPaymentId || razorpay_payment_id,
+      idempotencyKey: `mandate_confirmed:${payment.id}`,
+    });
+    await recordLedgerEvent({
+      userId,
+      paymentId: payment.id,
+      eventType: "plan_activated",
+      amountPaise: payment.amount,
+      plan,
+      razorpaySubscriptionId: razorpay_subscription_id,
+      razorpayPaymentId: payment.razorpayPaymentId,
+      razorpayOrderId: payment.razorpayOrderId,
+      idempotencyKey: `plan_activated:${payment.id}`,
+      metadata: { via: "hard_mandate" },
+    });
+
+    res.json({
+      success: true,
+      message: "Autopay authorized. Your plan is now active.",
+      plan: activated.plan,
+      isPremium: true,
+      activated: true,
+      expiresAt: activated.expiresAt,
+      storageQuotaBytes: activated.storageQuotaBytes,
+      storageBonusBytes: activated.storageBonusBytes,
+      stacked: activated.stacked,
+      renewalMode: activated.renewalMode,
+      autopay: true,
+      bootstrap: payment.kind === "subscription_bootstrap",
+      needsMandateSetup: false,
+    });
+  } catch (error) {
+    logger.error({ error, userId }, "Failed to confirm Autopay mandate");
+    res.status(500).json({ error: "Unable to confirm Autopay right now." });
+  }
+});
+
+// HARD MANDATE: user closed Autopay window — cancel pending sub, refund first invoice, no premium.
+router.post("/abandon-autopay-setup", requireAuth, async (req: any, res: any) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+  const subscriptionId =
+    typeof req.body?.razorpay_subscription_id === "string" ? req.body.razorpay_subscription_id : null;
+
+  try {
+    const [payment] = await db
+      .select()
+      .from(payments)
+      .where(
+        and(
+          eq(payments.userId, userId),
+          eq(payments.kind, "subscription_bootstrap"),
+          eq(payments.status, "awaiting_mandate"),
+        ),
+      )
+      .orderBy(desc(payments.createdAt))
+      .limit(1);
+
+    const linkedId = subscriptionId || payment?.razorpaySubscriptionId || null;
+    if (linkedId && razorpay && !linkedId.startsWith("mock_")) {
+      try {
+        await razorpay.subscriptions.cancel(linkedId, false);
+      } catch (err) {
+        logger.warn({ err, linkedId }, "Failed to cancel unauthenticated bootstrap subscription");
+      }
+    }
+
+    let refundId: string | null = null;
+    if (payment?.razorpayPaymentId && razorpay && payment.amount > 0) {
+      try {
+        const refund: any = await razorpay.payments.refund(payment.razorpayPaymentId, {
+          amount: payment.amount,
+          notes: { reason: "autopay_mandate_abandoned", userId },
+        } as any);
+        refundId = refund?.id || null;
+      } catch (err) {
+        logger.error({ err, paymentId: payment.id }, "Refund after mandate abandon failed — flagging abandoned");
+      }
+    }
+
+    if (payment) {
+      await db
+        .update(payments)
+        .set({ status: refundId ? "refunded" : "abandoned" })
+        .where(eq(payments.id, payment.id));
+      await recordLedgerEvent({
+        userId,
+        paymentId: payment.id,
+        eventType: refundId ? "payment_refunded" : "mandate_abandoned",
+        amountPaise: payment.amount,
+        plan: payment.plan,
+        razorpayPaymentId: payment.razorpayPaymentId,
+        razorpayOrderId: payment.razorpayOrderId,
+        razorpaySubscriptionId: linkedId,
+        razorpayRefundId: refundId,
+        idempotencyKey: `abandon:${payment.id}`,
+        metadata: { hardMandate: true },
+      });
+    }
+
+    const refreshed = await resolveSubscriptionState(userId);
+    res.json({
+      success: true,
+      message: refundId
+        ? "Autopay was not authorized. Your first invoice has been refunded — plan was not activated."
+        : "Autopay was not authorized. Plan was not activated. Contact support if a charge remains.",
+      plan: refreshed.plan,
+      isPremium: refreshed.isPremium,
+      activated: false,
+      expiresAt: refreshed.expiresAt,
+      storageQuotaBytes: refreshed.storageQuotaBytes,
+      storageBonusBytes: refreshed.storageBonusBytes,
+      autopay: false,
+      needsMandateSetup: false,
+      refunded: !!refundId,
+    });
+  } catch (error) {
+    logger.error({ error, userId }, "Failed to abandon Autopay setup");
+    res.status(500).json({ error: "Unable to update Autopay setup right now." });
+  }
+});
+
+// Resume Autopay authorization for an awaiting_mandate checkout (hard mandate).
+router.post("/resume-autopay-setup", requireAuth, async (req: any, res: any) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+  try {
+    const [held] = await db
+      .select()
+      .from(payments)
+      .where(
+        and(
+          eq(payments.userId, userId),
+          eq(payments.kind, "subscription_bootstrap"),
+          eq(payments.status, "awaiting_mandate"),
+        ),
+      )
+      .orderBy(desc(payments.createdAt))
+      .limit(1);
+
+    if (held) {
+      const plan = (normalizePlanId(held.plan) || "essential") as PaidPlan;
+      let subscriptionId = held.razorpaySubscriptionId;
+      const status = await fetchRazorpaySubscriptionStatus(subscriptionId);
+      if (!subscriptionId || status === "cancelled" || status === "completed" || status === "expired" || !status) {
+        const expiresAt = await getRenewalExpiry(userId, plan);
+        const scheduled = await scheduleBootstrapAutopay({
+          userId,
+          plan,
+          expiresAt,
+          paymentRowId: held.id,
+          orderId: held.razorpayOrderId || `resume_${userId.slice(0, 8)}`,
+          couponCode: held.couponCode,
+          existingSubscriptionId: subscriptionId,
+        });
+        subscriptionId = scheduled?.subscriptionId || null;
+      }
+      if (!subscriptionId) {
+        return res.status(503).json({ error: "Unable to resume Autopay setup right now." });
+      }
+      return res.json({
+        success: true,
+        needsMandateSetup: true,
+        subscriptionId,
+        key: razorpayKeyId,
+        plan,
+        activated: false,
+        isPremium: false,
+        message: "Authorize Autopay to activate your plan.",
+      });
+    }
+
+    const state = await resolveSubscriptionState(userId);
+    if (!state.isPremium || !state.plan || !SUBSCRIPTION_PLANS.includes(state.plan as PaidPlan)) {
+      return res.status(409).json({
+        error: "No pending Autopay checkout found. Start checkout again.",
+        code: "NO_PENDING_MANDATE",
+      });
+    }
+    if (state.subscription?.razorpaySubscriptionId) {
+      const status = await fetchRazorpaySubscriptionStatus(state.subscription.razorpaySubscriptionId);
+      if (isMandateReadyStatus(status)) {
+        return res.json({
+          success: true,
+          autopay: true,
+          needsMandateSetup: false,
+          message: "Autopay is already active.",
+        });
+      }
+      if (status === "created") {
+        return res.json({
+          success: true,
+          needsMandateSetup: true,
+          subscriptionId: state.subscription.razorpaySubscriptionId,
+          key: razorpayKeyId,
+          plan: state.plan,
+          expiresAt: state.expiresAt,
+        });
+      }
+    }
+
+    return res.status(409).json({
+      error: "No Autopay setup to resume. Start a new checkout if needed.",
+      code: "NO_PENDING_MANDATE",
+    });
+  } catch (error) {
+    logger.error({ error, userId }, "Failed to resume Autopay setup");
+    res.status(500).json({ error: "Unable to start Autopay setup right now." });
+  }
+});
 // ---------------------------------------------------------------------------
 // Storage add-on: ₹25 / 50MB block
 // - First purchase → new Razorpay subscription
@@ -764,6 +1484,11 @@ router.post("/create-addon-subscription", requireAuth, async (req: any, res: any
   }
 
   try {
+    const billingGate = await ensureBillingProfileForCheckout(userId, req.body?.billing);
+    if (!billingGate.ok) {
+      return res.status(400).json({ error: billingGate.error, code: billingGate.code });
+    }
+
     const current = await resolveSubscriptionState(userId);
     if (!current.isPremium) {
       return res.status(409).json({
@@ -1511,9 +2236,21 @@ router.post("/webhook", async (req: any, res: any) => {
     }
 
     const event = req.body?.event as string | undefined;
+    const eventId = (req.body?.id as string | undefined) || "";
     const paymentEntity = req.body?.payload?.payment?.entity;
     const subscriptionEntity = req.body?.payload?.subscription?.entity;
 
+    const claimed = await claimWebhookEvent({
+      eventId: eventId || `${event || "unknown"}:${paymentEntity?.id || subscriptionEntity?.id || Date.now()}`,
+      eventType: event || "unknown",
+      payload: req.body,
+    });
+    if (claimed.claim === "duplicate") {
+      return res.json({ received: true, duplicate: true });
+    }
+
+    let webhookFailed: string | null = null;
+    try {
     // ---- One-time order payments (Student+, fallback orders) ----
     if (event === "payment.captured" && paymentEntity?.order_id) {
       const orderId = paymentEntity.order_id as string;
@@ -1525,10 +2262,15 @@ router.post("/webhook", async (req: any, res: any) => {
         .limit(1);
 
       if (!payment) {
+        await markWebhookProcessed(claimed.rowId, "ignored");
         return res.json({ received: true, ignored: true });
       }
 
-      if (payment.status !== "success" && payment.kind !== "subscription") {
+      if (
+        payment.status !== "success" &&
+        payment.status !== "awaiting_mandate" &&
+        payment.kind !== "subscription"
+      ) {
         // Storage pool increase (merge into existing add-on)
         if (payment.kind === "addon_increase" || paymentEntity?.notes?.kind === "addon_increase") {
           let addonId = String(paymentEntity?.notes?.addonId || "");
@@ -1562,6 +2304,7 @@ router.post("/webhook", async (req: any, res: any) => {
           } else {
             logger.warn({ orderId, paymentId }, "Webhook addon increase missing notes");
           }
+          await markWebhookProcessed(claimed.rowId, "processed");
           return res.json({ received: true });
         }
 
@@ -1569,10 +2312,59 @@ router.post("/webhook", async (req: any, res: any) => {
         const storedPlan = parsePlanParam(payment.plan);
         const notePlan = parsePlanParam(paymentEntity.notes?.plan);
         const plan: PaidPlan = storedPlan ?? notePlan ?? "studentplus";
+        const isBootstrap = payment.kind === "subscription_bootstrap";
+
+        if (isBootstrap && SUBSCRIPTION_PLANS.includes(plan)) {
+          // HARD MANDATE: capture first invoice, schedule delayed Autopay, do NOT activate.
+          const expiresAt = await getRenewalExpiry(payment.userId, plan);
+          await db
+            .update(payments)
+            .set({
+              razorpayPaymentId: paymentId,
+              status: "awaiting_mandate",
+              plan,
+              kind: "subscription_bootstrap",
+            })
+            .where(eq(payments.id, payment.id));
+          try {
+            await scheduleBootstrapAutopay({
+              userId: payment.userId,
+              plan,
+              expiresAt,
+              paymentRowId: payment.id,
+              orderId,
+              couponCode: payment.couponCode,
+              existingSubscriptionId: payment.razorpaySubscriptionId,
+            });
+          } catch (subErr) {
+            logger.error(
+              { subErr, userId: payment.userId, orderId },
+              "Webhook bootstrap paid but Autopay schedule failed",
+            );
+          }
+          await recordLedgerEvent({
+            userId: payment.userId,
+            paymentId: payment.id,
+            eventType: "first_invoice_captured",
+            amountPaise: payment.amount,
+            plan,
+            razorpayPaymentId: paymentId,
+            razorpayOrderId: orderId,
+            idempotencyKey: `first_invoice:${payment.id}`,
+            metadata: { via: "webhook", hardMandate: true },
+          });
+          await markWebhookProcessed(claimed.rowId, "processed");
+          return res.json({ received: true, awaitingMandate: true });
+        }
 
         await db
           .update(payments)
-          .set({ razorpayPaymentId: paymentId, status: "success", plan, kind: "order" })
+          .set({
+            razorpayPaymentId: paymentId,
+            status: "success",
+            plan,
+            kind: payment.kind || "order",
+          })
           .where(eq(payments.id, payment.id));
 
         const state = await resolveSubscriptionState(payment.userId);
@@ -1588,11 +2380,23 @@ router.post("/webhook", async (req: any, res: any) => {
           await generateAndStoreInvoice(payment.id);
           await sendBillingReceipts(payment.userId, plan, payment.amount / 100, paymentId);
           await markOnboardingComplete(payment.userId).catch(() => undefined);
+          await recordLedgerEvent({
+            userId: payment.userId,
+            paymentId: payment.id,
+            eventType: "plan_activated",
+            amountPaise: payment.amount,
+            plan,
+            razorpayPaymentId: paymentId,
+            razorpayOrderId: orderId,
+            idempotencyKey: `plan_activated:${payment.id}`,
+            metadata: { via: "webhook" },
+          });
         } else {
           logger.warn({ userId: payment.userId, plan, blocked }, "Webhook skipped activate: plan not purchasable");
         }
       }
 
+      await markWebhookProcessed(claimed.rowId, "processed");
       return res.json({ received: true });
     }
 
@@ -1844,6 +2648,12 @@ router.post("/webhook", async (req: any, res: any) => {
     }
 
     res.json({ received: true });
+    } catch (innerErr) {
+      webhookFailed = innerErr instanceof Error ? innerErr.message : String(innerErr);
+      throw innerErr;
+    } finally {
+      await markWebhookProcessed(claimed.rowId, webhookFailed ? "failed" : "processed", webhookFailed || undefined);
+    }
   } catch (error) {
     logger.error({ error }, "Razorpay webhook failed");
     res.status(500).json({ error: "Webhook processing failed." });
@@ -1890,6 +2700,22 @@ router.post("/jobs/daily", async (req: any, res: any) => {
     const expired = await expireGraceWindows(500);
     const rolled = await rollupPortfolioStats(3);
 
+    const mandateSweep = await expireStaleAwaitingMandates({
+      limit: 100,
+      cancelSubscription: async (subscriptionId) => {
+        if (!razorpay || subscriptionId.startsWith("mock_")) return;
+        await razorpay.subscriptions.cancel(subscriptionId, false);
+      },
+      refundPayment: async (paymentId, amountPaise) => {
+        if (!razorpay || paymentId.startsWith("mock_")) return null;
+        const refund: any = await razorpay.payments.refund(paymentId, {
+          amount: amountPaise,
+          notes: { reason: "awaiting_mandate_ttl" },
+        } as any);
+        return refund?.id ? { id: refund.id as string } : null;
+      },
+    });
+
     // Day 7 / 14 dunning for users still in grace
     const graceUsers = await db
       .select()
@@ -1910,7 +2736,7 @@ router.post("/jobs/daily", async (req: any, res: any) => {
       }
     }
 
-    res.json({ ok: true, expired, rolled, dunning });
+    res.json({ ok: true, expired, rolled, dunning, mandateSweep });
   } catch (error) {
     logger.error({ error }, "Daily billing/analytics job failed");
     res.status(500).json({ error: "Job failed" });

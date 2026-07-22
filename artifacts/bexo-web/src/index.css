@@ -623,5 +623,33 @@
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
   }
+
+  /* Keep sticky CTA light so form actions stay readable over cinematic night */
+  .bexo-onboarding-cinematic .onboarding-cta {
+    background: linear-gradient(
+      to top,
+      rgba(247, 248, 252, 0.98) 0%,
+      rgba(247, 248, 252, 0.94) 72%,
+      rgba(247, 248, 252, 0) 100%
+    );
+  }
+}
+
+@keyframes bexo-ken-burns {
+  0% { transform: scale(1.08) translate3d(0, 0, 0); }
+  50% { transform: scale(1.16) translate3d(-1.5%, -1%, 0); }
+  100% { transform: scale(1.08) translate3d(0, 0, 0); }
+}
+.bexo-ken-burns {
+  animation: bexo-ken-burns 28s ease-in-out infinite;
+  will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bexo-ken-burns { animation: none; transform: scale(1.06); }
+}
+
+.bexo-film-grain {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
 }
 

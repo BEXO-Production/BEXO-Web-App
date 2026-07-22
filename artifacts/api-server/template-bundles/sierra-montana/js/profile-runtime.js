@@ -187,16 +187,27 @@
     }));
 
     // Skills may arrive as a dedicated section or nested on about/profile
+    const skillCategorySet = new Set(["technical", "tools", "soft", "languages"]);
     const skillEntries = asArray(
       raw.skillEntries?.length
         ? raw.skillEntries
         : sections.skills?.entries || raw.profile?.skills || [],
     )
-      .map((entry) => {
-        if (typeof entry === "string") return { name: entry };
-        return { name: pick(entry, ["name", "title", "skill", "label"]) };
+      .map((entry, index) => {
+        if (typeof entry === "string") {
+          const name = entry.trim();
+          return name ? { id: String(index + 1), name, category: "technical" } : null;
+        }
+        const name = pick(entry, ["name", "title", "skill", "label"]);
+        if (!name) return null;
+        const categoryRaw = String(entry.category || "technical").toLowerCase();
+        return {
+          id: entry.id || String(index + 1),
+          name,
+          category: skillCategorySet.has(categoryRaw) ? categoryRaw : "technical",
+        };
       })
-      .filter((entry) => entry.name);
+      .filter(Boolean);
 
     const socials = normalizeLinks(contactRaw);
     const email = asString(contactRaw.email) || asString(raw.user?.email);

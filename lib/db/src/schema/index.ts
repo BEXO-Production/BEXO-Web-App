@@ -57,7 +57,7 @@ export const profiles = pgTable("profiles", {
 export const profileSections = pgTable("profile_sections", {
   id: uuid("id").defaultRandom().primaryKey(),
   profileId: uuid("profile_id").references(() => profiles.id).notNull(),
-  type: text("type").notNull(), // 'about' | 'education' | 'projects' | 'experience' | 'certificates' | 'achievements' | 'research' | 'contact'
+  type: text("type").notNull(), // 'about' | 'education' | 'projects' | 'experience' | 'certificates' | 'achievements' | 'research' | 'skills' | 'contact'
   entries: jsonb("entries").default([]),
   reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
 }, (table) => {
@@ -150,12 +150,43 @@ export const payments = pgTable("payments", {
   razorpayPaymentId: text("razorpay_payment_id").unique(),
   razorpaySubscriptionId: text("razorpay_subscription_id"),
   plan: text("plan"), // 'annual' | 'lifetime' | null (legacy rows)
-  kind: text("kind").notNull().default("order"), // 'order' | 'subscription' | 'addon_increase'
+  kind: text("kind").notNull().default("order"), // 'order' | 'subscription' | 'subscription_bootstrap' | 'addon_increase'
   amount: integer("amount").notNull(), // in paise
-  status: text("status").notNull(), // 'pending' | 'success' | 'failed'
+  // pending | awaiting_mandate | success | failed | abandoned | refunded
+  status: text("status").notNull(),
   invoiceUrl: text("invoice_url"),
   couponCode: text("coupon_code"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});
+
+/** Append-only money / lifecycle audit for the billing engine. */
+export const billingLedger = pgTable("billing_ledger", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  paymentId: uuid("payment_id").references(() => payments.id, { onDelete: "set null" }),
+  eventType: text("event_type").notNull(),
+  amountPaise: integer("amount_paise").notNull().default(0),
+  currency: text("currency").notNull().default("INR"),
+  plan: text("plan"),
+  razorpayPaymentId: text("razorpay_payment_id"),
+  razorpayOrderId: text("razorpay_order_id"),
+  razorpaySubscriptionId: text("razorpay_subscription_id"),
+  razorpayRefundId: text("razorpay_refund_id"),
+  idempotencyKey: text("idempotency_key").notNull().unique(),
+  metadata: jsonb("metadata").notNull().default({}),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});
+
+/** Razorpay webhook inbox — one row per provider event id (dedupe). */
+export const razorpayWebhookEvents = pgTable("razorpay_webhook_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  eventId: text("event_id").notNull().unique(),
+  eventType: text("event_type").notNull(),
+  payload: jsonb("payload").notNull().default({}),
+  processingStatus: text("processing_status").notNull().default("processed"), // received | processed | failed | ignored
+  error: text("error"),
+  receivedAt: timestamp("received_at", { withTimezone: true }).defaultNow(),
+  processedAt: timestamp("processed_at", { withTimezone: true }),
 });
 
 // 11. Contact Submissions (portfolio enquiry form)
@@ -240,6 +271,24 @@ export const billingSettings = pgTable("billing_settings", {
   id: text("id").primaryKey().default("default"),
   currency: text("currency").notNull().default("INR"),
   gstRate: real("gst_rate").notNull().default(0.18),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
+/** Customer billing identity for checkout, GST invoices, and Autopay. */
+export const billingProfiles = pgTable("billing_profiles", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  fullName: text("full_name").notNull(),
+  email: text("email").notNull(),
+  phone: text("phone").notNull(),
+  line1: text("line1").notNull(),
+  line2: text("line2"),
+  city: text("city").notNull(),
+  state: text("state").notNull(),
+  postalCode: text("postal_code").notNull(),
+  country: text("country").notNull().default("IN"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
 

@@ -1,5 +1,5 @@
 import { db, users } from "@workspace/db";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getPlanById } from "./pricingCatalog";
 import { resolveSubscriptionState, type PlanId, type SubscriptionState } from "./subscriptions";
 
@@ -91,11 +91,19 @@ export async function getUpdatesUsage(
   };
 }
 
-export async function consumeUpdate(userId: string): Promise<void> {
-  await db
+export async function consumeUpdate(userId: string, limit: number): Promise<boolean> {
+  // Atomic: only increment when under the monthly cap (closes TOCTOU under parallel posts).
+  const updated = await db
     .update(users)
     .set({ updatesThisMonth: sql`coalesce(${users.updatesThisMonth}, 0) + 1` })
-    .where(eq(users.id, userId));
+    .where(
+      and(
+        eq(users.id, userId),
+        sql`coalesce(${users.updatesThisMonth}, 0) < ${limit}`,
+      ),
+    )
+    .returning({ id: users.id });
+  return updated.length > 0;
 }
 
 /**

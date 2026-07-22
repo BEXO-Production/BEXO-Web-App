@@ -9,6 +9,7 @@ import { logger } from "./lib/logger";
 import { subdomainRouter, marketingDemoStatic } from "./middlewares/subdomainRouter";
 import { renderPortfolioForHandle } from "./middlewares/subdomainRouter";
 import { registerSitemapRoutes } from "./routes/sitemap";
+import { createRateLimiter } from "./middlewares/rateLimit";
 
 const app: Express = express();
 
@@ -34,18 +35,73 @@ app.use(
     },
   }),
 );
-app.use(cors());
+
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  process.env.WEB_URL,
+  process.env.MARKETING_URL,
+  "https://mybexo.com",
+  "https://www.mybexo.com",
+  "https://dash.mybexo.com",
+  "https://atbexo.com",
+  "https://www.atbexo.com",
+  "https://mybexo.cyou",
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "http://localhost:4173",
+].filter(Boolean) as string[];
+
+app.use(
+  cors({
+    origin(origin, cb) {
+      if (!origin) return cb(null, true); // same-origin / curl / server-to-server
+      if (process.env.NODE_ENV !== "production") return cb(null, true);
+      if (allowedOrigins.some((o) => origin === o || origin.endsWith(".atbexo.com") || origin.endsWith(".mybexo.com") || origin.endsWith(".mybexo.cyou"))) {
+        return cb(null, true);
+      }
+      return cb(null, false);
+    },
+    credentials: true,
+  }),
+);
+
 // Keep the raw body around for Razorpay webhook signature verification —
 // signatures are computed over the exact bytes, not re-serialized JSON.
 app.use(
   express.json({
+    limit: process.env.JSON_BODY_LIMIT || "1mb",
     verify: (req, _res, buf) => {
       (req as express.Request & { rawBody?: Buffer }).rawBody = buf;
     },
   }),
 );
 app.use(cookieParser());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({ extended: true, limit: process.env.JSON_BODY_LIMIT || "1mb" }));
+
+// Hot-path rate limits (per instance). Edge/CDN limits should also be configured in prod.
+const authLimiter = createRateLimiter({
+  windowMs: 60_000,
+  max: Number(process.env.RATE_LIMIT_AUTH_PER_MIN || 30),
+  message: "Too many auth attempts. Please wait a minute and try again.",
+  keyFn: (req) => {
+    const xf = req.headers["x-forwarded-for"];
+    const ip = (typeof xf === "string" ? xf.split(",")[0]?.trim() : undefined) || req.ip || "unknown";
+    return `auth:${ip}`;
+  },
+});
+const checkHandleLimiter = createRateLimiter({
+  windowMs: 60_000,
+  max: Number(process.env.RATE_LIMIT_HANDLE_PER_MIN || 120),
+  message: "Too many handle checks. Please slow down.",
+  keyFn: (req) => {
+    const xf = req.headers["x-forwarded-for"];
+    const ip = (typeof xf === "string" ? xf.split(",")[0]?.trim() : undefined) || req.ip || "unknown";
+    return `handle:${ip}`;
+  },
+});
+app.use("/api/auth", authLimiter);
+app.use("/api/profile/check-handle", checkHandleLimiter);
+app.use("/api/profile/suggest-handle", checkHandleLimiter);
 
 // AI marketing demo assets for landing template previews (fictional persona)
 app.use("/api/marketing-demo", marketingDemoStatic);

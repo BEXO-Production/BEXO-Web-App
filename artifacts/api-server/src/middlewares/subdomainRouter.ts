@@ -25,6 +25,17 @@ import {
   portfolioHostname,
 } from "../lib/platform";
 import { buildUnclaimedHandleHtml } from "../lib/claimUnclaimedHandleHtml";
+import {
+  getPortfolioRenderCache,
+  setPortfolioRenderCache,
+} from "../lib/portfolioRenderCache";
+import { agentDebugLog } from "../lib/agentDebugLog";
+
+type CachedPortfolio = {
+  profileData: ReturnType<typeof buildPublicProfile>;
+  siteAccess: Awaited<ReturnType<typeof resolveSiteAccess>>;
+  userName: string | null;
+};
 
 // Map template IDs to their deployed URLs (or localhost for dev)
 const TEMPLATE_URLS: Record<string, string> = {
@@ -180,33 +191,90 @@ export async function renderPortfolioForHandle(
       return;
     }
 
-    // 1. Look up profile by handle or subdomain
-    const profileMatch = await db.select()
-      .from(profiles)
-      .where(or(eq(profiles.handle, subdomain), eq(profiles.subdomain, subdomain)))
-      .limit(1);
+    // 1. Look up + assemble profile (short TTL cache absorbs concurrent viewers)
+    const cacheKey = subdomain;
+    let cached = getPortfolioRenderCache<CachedPortfolio>(cacheKey);
+    let profileData: ReturnType<typeof buildPublicProfile>;
+    let siteAccess: Awaited<ReturnType<typeof resolveSiteAccess>>;
+    let ownerName: string | null | undefined;
 
-    if (profileMatch.length === 0) {
-      res
-        .status(404)
-        .type("html")
-        .set("Cache-Control", "public, max-age=60")
-        .send(buildUnclaimedHandleHtml(subdomain));
-      return;
-    }
+    if (cached) {
+      // #region agent log
+      agentDebugLog("L", "subdomainRouter:cache-hit", "portfolio render cache hit", { subdomain });
+      // #endregion
+      profileData = cached.profileData;
+      siteAccess = cached.siteAccess;
+      ownerName = cached.userName;
+    } else {
+      // #region agent log
+      agentDebugLog("L", "subdomainRouter:cache-miss", "portfolio render cache miss", { subdomain });
+      // #endregion
+      const profileMatch = await db.select()
+        .from(profiles)
+        .where(or(eq(profiles.handle, subdomain), eq(profiles.subdomain, subdomain)))
+        .limit(1);
 
-    const profile = profileMatch[0];
+      if (profileMatch.length === 0) {
+        res
+          .status(404)
+          .type("html")
+          .set("Cache-Control", "public, max-age=60")
+          .send(buildUnclaimedHandleHtml(subdomain));
+        return;
+      }
 
-    // 2. Fetch associated user and subscription
-    const userMatch = await db.select().from(users).where(eq(users.id, profile.userId)).limit(1);
-    if (userMatch.length === 0) {
-      res.status(404).send("User not found.");
-      return;
-    }
-    const user = userMatch[0];
+      const profile = profileMatch[0];
+
+      // 2. Fetch associated user and subscription
+      const userMatch = await db.select().from(users).where(eq(users.id, profile.userId)).limit(1);
+      if (userMatch.length === 0) {
+        res.status(404).send("User not found.");
+        return;
+      }
+      const user = userMatch[0];
+      ownerName = user.name;
     
-    const subscriptionState = await resolveSubscriptionState(user.id);
-    const siteAccess = await resolveSiteAccess(user.id);
+      const subscriptionState = await resolveSubscriptionState(user.id);
+      siteAccess = await resolveSiteAccess(user.id);
+
+      // 3. Fetch profile sections
+      const sections = await db.select().from(profileSections).where(eq(profileSections.profileId, profile.id));
+      const getEntries = (type: string) => sections.find((s) => s.type === type)?.entries || [];
+      const contactEntries = sections.find((s) => s.type === "contact")?.entries as Record<string, string> | undefined;
+
+      // 4. Construct the canonical public profile (phone redacted)
+      const templateIdForUser =
+        profile.templateId && profile.templateId !== "minimal"
+          ? profile.templateId
+          : (user.templateId ?? "minimal");
+
+      profileData = buildPublicProfile({
+        profile,
+        user: {
+          ...user,
+          templateId: subscriptionState.isPremium || profile.isPremium ? templateIdForUser : "minimal",
+          themeColor: user.themeColor ?? "blue",
+          themeBg: user.themeBg ?? "grid",
+          openToHire: user.openToHire ?? false,
+        },
+        isPremium: profile.isPremium || subscriptionState.isPremium,
+        aboutEntries: getEntries("about"),
+        educationEntries: getEntries("education"),
+        experienceEntries: getEntries("experience"),
+        projectEntries: getEntries("projects"),
+        certificateEntries: getEntries("certificates"),
+        achievementEntries: getEntries("achievements"),
+        researchEntries: getEntries("research"),
+        skillEntries: getEntries("skills"),
+        contactData: (contactEntries as Record<string, unknown>) || { email: user.email || "", linkedin: "", github: "", portfolio: "" },
+      });
+
+      setPortfolioRenderCache(cacheKey, {
+        profileData,
+        siteAccess,
+        userName: ownerName ?? null,
+      } satisfies CachedPortfolio);
+    }
 
     // Paused portfolios: never serve the live template to visitors.
     // Owners still manage content from the dashboard / billing.
@@ -225,42 +293,11 @@ export async function renderPortfolioForHandle(
           buildPausedPortfolioHtml({
             handle: subdomain,
             reason: siteAccess.pauseReason,
-            ownerName: user.name,
+            ownerName: ownerName,
           }),
         );
       return;
     }
-
-    // 3. Fetch profile sections
-    const sections = await db.select().from(profileSections).where(eq(profileSections.profileId, profile.id));
-    const getEntries = (type: string) => sections.find((s) => s.type === type)?.entries || [];
-    const contactEntries = sections.find((s) => s.type === "contact")?.entries as Record<string, string> | undefined;
-
-    // 4. Construct the canonical public profile (phone redacted)
-    const templateIdForUser =
-      profile.templateId && profile.templateId !== "minimal"
-        ? profile.templateId
-        : (user.templateId ?? "minimal");
-
-    const profileData = buildPublicProfile({
-      profile,
-      user: {
-        ...user,
-        templateId: subscriptionState.isPremium || profile.isPremium ? templateIdForUser : "minimal",
-        themeColor: user.themeColor ?? "blue",
-        themeBg: user.themeBg ?? "grid",
-        openToHire: user.openToHire ?? false,
-      },
-      isPremium: profile.isPremium || subscriptionState.isPremium,
-      aboutEntries: getEntries("about"),
-      educationEntries: getEntries("education"),
-      experienceEntries: getEntries("experience"),
-      projectEntries: getEntries("projects"),
-      certificateEntries: getEntries("certificates"),
-      achievementEntries: getEntries("achievements"),
-      researchEntries: getEntries("research"),
-      contactData: (contactEntries as Record<string, unknown>) || { email: user.email || "", linkedin: "", github: "", portfolio: "" },
-    });
 
     // 5. Shared Hire Me page is template-neutral and served by the web app
     if (requestPath === "/hire-me" || requestPath.startsWith("/hire-me/")) {
@@ -326,9 +363,15 @@ export async function renderPortfolioForHandle(
       // injection on every HTML document, not only index.html.
       if (templateFile.endsWith(".html")) {
         const html = await readFile(templateFile, "utf8");
+        const isPreview = Boolean(previewOverride);
         res
           .status(200)
-          .set("Cache-Control", "private, no-cache, no-store, must-revalidate")
+          .set(
+            "Cache-Control",
+            isPreview
+              ? "private, no-cache, no-store, must-revalidate"
+              : "public, max-age=30, stale-while-revalidate=120",
+          )
           .type("html")
           .send(injectPortfolioBootstrap(html, profileData, basePath));
         return;
@@ -362,7 +405,7 @@ export async function renderPortfolioForHandle(
         process.env.WEB_URL ||
         "http://localhost:5173";
       const freeUrl = `${webBase.replace(/\/$/, "")}/${encodeURIComponent(subdomain)}`;
-      const isPremiumUser = !!(subscriptionState.isPremium || profile.isPremium);
+      const isPremiumUser = !!profileData?.isPremium;
       res
         .status(200)
         .type("html")

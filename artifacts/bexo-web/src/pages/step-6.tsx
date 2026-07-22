@@ -15,8 +15,18 @@ const TABS = [
   { id: 'certificates', label: 'Certificates' },
   { id: 'achievements', label: 'Achievements' },
   { id: 'research', label: 'Research' },
+  { id: 'skills', label: 'Skills' },
   { id: 'contact', label: 'Contact' }
 ];
+
+const SKILL_CATEGORIES = [
+  { id: 'technical', label: 'Technical' },
+  { id: 'tools', label: 'Tools' },
+  { id: 'soft', label: 'Soft' },
+  { id: 'languages', label: 'Languages' },
+] as const;
+
+const MAX_SKILLS_UI = 40;
 
 const SUMMARY_MAX_LENGTH = 150;
 
@@ -43,7 +53,10 @@ export default function Step6Review() {
     certificates: data.certificateEntries,
     achievements: data.achievementEntries,
     research: data.researchEntries,
+    skills: data.skillEntries || [],
   });
+  const [skillDraft, setSkillDraft] = useState('');
+  const [skillCategory, setSkillCategory] = useState<'technical' | 'tools' | 'soft' | 'languages'>('technical');
   
   const [contactData, setContactData] = useState(data.contactData);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -75,9 +88,10 @@ export default function Step6Review() {
       certificates: data.certificateEntries || [],
       achievements: data.achievementEntries || [],
       research: data.researchEntries || [],
+      skills: data.skillEntries || [],
     });
     setContactData(data.contactData);
-  }, [data.aboutEntries, data.educationEntries, data.experienceEntries, data.projectEntries, data.certificateEntries, data.achievementEntries, data.researchEntries, data.contactData]);
+  }, [data.aboutEntries, data.educationEntries, data.experienceEntries, data.projectEntries, data.certificateEntries, data.achievementEntries, data.researchEntries, data.skillEntries, data.contactData]);
 
   // Compute total used storage
   const [usedStorage, setUsedStorage] = useState(0);
@@ -212,6 +226,7 @@ export default function Step6Review() {
       certificateEntries: newSections.certificates,
       achievementEntries: newSections.achievements,
       researchEntries: newSections.research,
+      skillEntries: newSections.skills,
     });
   };
 
@@ -281,6 +296,7 @@ export default function Step6Review() {
       certificateEntries: sections.certificates,
       achievementEntries: sections.achievements,
       researchEntries: sections.research,
+      skillEntries: sections.skills,
       phone: formattedPhone,
       contactData: finalContact
     });
@@ -1129,6 +1145,119 @@ export default function Step6Review() {
                   )}
                 </div>
               </div>
+            </div>
+          ) : activeTab === 'skills' ? (
+            <div className="space-y-6 animate-in fade-in">
+              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 border-b pb-3">
+                <div>
+                  <h3 className="text-xl font-bold text-slate-900">Skills</h3>
+                  <p className="text-sm text-slate-500 mt-1">
+                    Extracted from your resume — add, remove, or regroup. Max {MAX_SKILLS_UI}.
+                  </p>
+                </div>
+                <p className="text-xs font-semibold text-slate-400">{(sections.skills || []).length}/{MAX_SKILLS_UI}</p>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Input
+                  value={skillDraft}
+                  onChange={(e) => setSkillDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      const name = skillDraft.trim();
+                      if (!name || (sections.skills || []).length >= MAX_SKILLS_UI) return;
+                      if ((sections.skills || []).some((s: any) => s.name.toLowerCase() === name.toLowerCase())) {
+                        setSkillDraft('');
+                        return;
+                      }
+                      const next = {
+                        ...sections,
+                        skills: [
+                          ...(sections.skills || []),
+                          { id: String(Date.now()), name, category: skillCategory },
+                        ],
+                      };
+                      setSections(next);
+                      updateContextSections(next);
+                      setSkillDraft('');
+                    }
+                  }}
+                  placeholder="Type a skill and press Enter"
+                  className="flex-1"
+                />
+                <select
+                  value={skillCategory}
+                  onChange={(e) => setSkillCategory(e.target.value as typeof skillCategory)}
+                  className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700"
+                >
+                  {SKILL_CATEGORIES.map((c) => (
+                    <option key={c.id} value={c.id}>{c.label}</option>
+                  ))}
+                </select>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    const name = skillDraft.trim();
+                    if (!name || (sections.skills || []).length >= MAX_SKILLS_UI) return;
+                    if ((sections.skills || []).some((s: any) => s.name.toLowerCase() === name.toLowerCase())) {
+                      setSkillDraft('');
+                      return;
+                    }
+                    const next = {
+                      ...sections,
+                      skills: [
+                        ...(sections.skills || []),
+                        { id: String(Date.now()), name, category: skillCategory },
+                      ],
+                  };
+                    setSections(next);
+                    updateContextSections(next);
+                    setSkillDraft('');
+                  }}
+                >
+                  <Plus className="w-4 h-4 mr-1" /> Add
+                </Button>
+              </div>
+
+              {SKILL_CATEGORIES.map((cat) => {
+                const group = (sections.skills || []).filter((s: any) => (s.category || 'technical') === cat.id);
+                if (!group.length) return null;
+                return (
+                  <div key={cat.id} className="space-y-2">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{cat.label}</p>
+                    <div className="flex flex-wrap gap-2">
+                      {group.map((skill: any) => (
+                        <span
+                          key={skill.id}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-800"
+                        >
+                          {skill.name}
+                          <button
+                            type="button"
+                            className="text-slate-400 hover:text-red-500"
+                            onClick={() => {
+                              const next = {
+                                ...sections,
+                                skills: (sections.skills || []).filter((s: any) => s.id !== skill.id),
+                              };
+                              setSections(next);
+                              updateContextSections(next);
+                            }}
+                            aria-label={`Remove ${skill.name}`}
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {(sections.skills || []).length === 0 && (
+                <p className="text-sm text-slate-400 italic">No skills yet — add a few so your portfolio feels hire-ready.</p>
+              )}
             </div>
           ) : activeTab === 'about' ? (
             <div className="space-y-6 animate-in fade-in">

@@ -226,7 +226,15 @@ export default function Step5Resume() {
           organization: ach.organization || '',
           date: ach.date || '',
           assets: defaultAssets
-        }))
+        })),
+        skillEntries: (parsed.skills || []).map((sk: any, idx: number) => {
+          const cat = String(sk?.category || 'technical').toLowerCase();
+          return {
+            id: String(idx + 1),
+            name: typeof sk === 'string' ? sk : (sk.name || sk.title || ''),
+            category: (cat === 'tools' || cat === 'soft' || cat === 'languages' ? cat : 'technical') as 'technical' | 'tools' | 'soft' | 'languages',
+          };
+        }).filter((s: any) => s.name),
       });
 
       setStatus('success');

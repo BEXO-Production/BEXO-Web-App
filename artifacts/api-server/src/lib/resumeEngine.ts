@@ -17,6 +17,7 @@ export interface ResumeData {
   certificateEntries?: any[];
   achievementEntries?: any[];
   researchEntries?: any[];
+  skillEntries?: any[];
 }
 
 async function fetchImageBuffer(url: string): Promise<Buffer | null> {
@@ -207,6 +208,20 @@ export async function generateATSResume(data: ResumeData): Promise<Buffer> {
           doc.moveDown(0.6);
         });
         doc.moveDown(0.2);
+      }
+
+      // Skills
+      if (data.skillEntries && data.skillEntries.length > 0) {
+        drawSectionHeader(doc, 'SKILLS', primaryColor);
+        const skillLine = data.skillEntries
+          .map((s: any) => s.name || s.title || "")
+          .filter(Boolean)
+          .join(" · ");
+        doc.font('Helvetica')
+           .fontSize(10)
+           .fillColor(secondaryColor)
+           .text(skillLine, 40, doc.y, { align: 'left', lineGap: 2 });
+        doc.moveDown(0.8);
       }
 
       // Certifications & Achievements

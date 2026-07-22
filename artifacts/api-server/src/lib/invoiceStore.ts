@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { generateInvoicePDF } from "./invoice";
 import { uploadToR2 } from "./r2";
 import { logger } from "./logger";
+import { formatBillingAddressLines, getBillingProfile } from "./billingProfile";
 
 /**
  * Generate the PDF tax invoice for a successful payment, upload it to R2 and
@@ -17,13 +18,26 @@ export async function generateAndStoreInvoice(paymentId: string): Promise<string
     if (!payment.amount || payment.amount <= 0) return null;
 
     const [user] = await db.select().from(users).where(eq(users.id, payment.userId)).limit(1);
+    const profile = await getBillingProfile(payment.userId);
     const reference = payment.razorpayPaymentId || payment.razorpayOrderId || payment.id;
 
     const pdfBuffer = await generateInvoicePDF(
-      user?.name || "Bexo User",
+      profile?.fullName || user?.name || "Bexo User",
       payment.plan || "annual",
       payment.amount / 100,
       reference,
+      profile
+        ? {
+            fullName: profile.fullName,
+            email: profile.email,
+            phone: profile.phone,
+            addressLines: formatBillingAddressLines(profile),
+          }
+        : {
+            fullName: user?.name || undefined,
+            email: user?.email || undefined,
+            phone: user?.phone || undefined,
+          },
     );
 
     const invoiceUrl = await uploadToR2(pdfBuffer, `Bexo_Invoice_${reference}.pdf`, "application/pdf");

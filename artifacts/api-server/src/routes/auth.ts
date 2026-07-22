@@ -5,6 +5,7 @@ import { randomUUID } from "crypto";
 import { db, users, profiles } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
+import { agentDebugLog } from "../lib/agentDebugLog";
 
 const router = Router();
 
@@ -86,6 +87,32 @@ class RedisOrMemoryStore {
       }
     }
   }
+
+  /** Atomic increment for rate limits (Redis INCR, or sync Map in-process). */
+  async incr(key: string, ttlSeconds: number): Promise<number> {
+    if (this.redis) {
+      try {
+        const n = await this.redis.incr(key);
+        if (n === 1 && ttlSeconds > 0) {
+          await this.redis.expire(key, ttlSeconds);
+        }
+        const expires = ttlSeconds ? Date.now() + ttlSeconds * 1000 : Infinity;
+        this.memory.set(key, { value: String(n), expires });
+        return n;
+      } catch (err) {
+        logger.warn("Redis incr failed, using memory fallback");
+      }
+    }
+    const item = this.memory.get(key);
+    let n = 1;
+    let expires = ttlSeconds ? Date.now() + ttlSeconds * 1000 : Infinity;
+    if (item && Date.now() <= item.expires) {
+      n = (parseInt(item.value, 10) || 0) + 1;
+      expires = item.expires;
+    }
+    this.memory.set(key, { value: String(n), expires });
+    return n;
+  }
 }
 
 const store = new RedisOrMemoryStore();
@@ -116,25 +143,34 @@ router.post("/phone/otp", async (req, res): Promise<void> => {
     return;
   }
 
+  try {
   const lockKey = `otp_limit:lock:${phone}`;
   const isLocked = await store.get(lockKey);
   if (isLocked) {
+    // #region agent log
+    agentDebugLog("D", "auth.ts:otp:locked", "OTP locked out", { phoneSuffix: phone.slice(-4) });
+    // #endregion
     res.status(429).json({ error: "Too many OTP requests. Please try again after 15 minutes." });
     return;
   }
 
   const countKey = `otp_limit:count:${phone}`;
-  const countVal = await store.get(countKey);
-  const currentCount = countVal ? parseInt(countVal, 10) : 0;
+  const currentCount = await store.incr(countKey, 900);
+  // #region agent log
+  agentDebugLog("D", "auth.ts:otp:count", "OTP rate count after atomic incr", {
+    phoneSuffix: phone.slice(-4),
+    currentCount,
+    redisConfigured: !!process.env.REDIS_URL,
+  });
+  // #endregion
 
-  if (currentCount >= 5) {
+  if (currentCount > 5) {
     await store.set(lockKey, "true", "EX", 900);
-    await store.del(countKey);
     res.status(429).json({ error: "Too many OTP requests. Please try again after 15 minutes." });
     return;
   }
 
-  // Reuse existing unexpired OTP if one was generated recently (< 90s ago)
+  // Reuse existing unexpired OTP if one was generated recently
   // to avoid sending conflicting OTP codes on rapid resend requests.
   const existingOtp = await store.get(`otp:${phone}`);
   let otp = existingOtp;
@@ -143,20 +179,18 @@ router.post("/phone/otp", async (req, res): Promise<void> => {
     await store.set(`otp:${phone}`, otp, "EX", 300);
   }
 
-  // Increment the request count
-  await store.set(countKey, (currentCount + 1).toString(), "EX", 900);
-
   const authKey = process.env.MSG91_AUTH_KEY;
   const integratedNumber = process.env.MSG91_INTEGRATED_NUMBER;
   const templateName = process.env.MSG91_TEMPLATE_NAME;
   const namespace = process.env.MSG91_TEMPLATE_NAMESPACE;
 
-  const isConfigured = authKey && authKey !== "your_msg91_auth_key" &&
+  const isConfigured = !!(authKey && authKey !== "your_msg91_auth_key" &&
                        integratedNumber && integratedNumber !== "your_whatsapp_number_with_country_code" &&
-                       templateName && templateName !== "your_approved_template_name";
+                       templateName && templateName !== "your_approved_template_name");
 
   logger.info({ phone, isConfigured, isReused: !!existingOtp }, "Generated OTP for phone");
 
+  let deliveryOk = !isConfigured; // mock path is intentionally local-only
   if (isConfigured) {
     try {
       const payload = {
@@ -192,14 +226,22 @@ router.post("/phone/otp", async (req, res): Promise<void> => {
         }
       };
 
-      const response = await fetch("https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/", {
-        method: "POST",
-        headers: {
-          "authkey": authKey!,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(payload)
-      });
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      let response: Response;
+      try {
+        response = await fetch("https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/", {
+          method: "POST",
+          headers: {
+            "authkey": authKey!,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
 
       if (!response.ok) {
         const errText = await response.text();
@@ -208,15 +250,48 @@ router.post("/phone/otp", async (req, res): Promise<void> => {
       }
 
       const respData = await response.json();
+      deliveryOk = true;
       logger.info({ respData }, "Successfully sent OTP via MSG91 WhatsApp");
     } catch (err) {
+      // #region agent log
+      agentDebugLog("C", "auth.ts:otp:msg91-fail", "MSG91 send failed — will not fake success", {
+        phoneSuffix: phone.slice(-4),
+        errMessage: err instanceof Error ? err.message : String(err),
+      });
+      // #endregion
       logger.error({ err }, "Failed to send OTP via MSG91 WhatsApp API");
+      deliveryOk = false;
     }
   } else {
+    // #region agent log
+    agentDebugLog("C", "auth.ts:otp:mock", "OTP mock path — success returned without WhatsApp", {
+      phoneSuffix: phone.slice(-4),
+      isConfigured: false,
+    });
+    // #endregion
     logger.info(`[MSG91 OTP MOCK] Auth key not set. Code for ${phone} is ${otp}`);
   }
 
+  // #region agent log
+  agentDebugLog("C", "auth.ts:otp:response", "OTP endpoint finishing", {
+    phoneSuffix: phone.slice(-4),
+    isConfigured,
+    deliveryOk,
+  });
+  // #endregion
+
+  if (!deliveryOk) {
+    res.status(502).json({
+      error: "We couldn't deliver the WhatsApp code right now. Please try again in a moment.",
+    });
+    return;
+  }
+
   res.json({ success: true, message: "OTP sent successfully" });
+  } catch (err) {
+    logger.error({ err, phone }, "OTP send route failed");
+    res.status(500).json({ error: "We couldn't send a verification code right now. Please try again." });
+  }
 });
 
 // POST /auth/phone/otp/verify
@@ -232,17 +307,31 @@ router.post("/phone/otp/verify", async (req, res): Promise<void> => {
   }
 
   try {
-    // 1. Idempotency Check: if this phone was verified <30s ago, return the session
-    // response to absorb rapid double-submits (e.g. auto-submit + form button tap)
-    const recentSessionJson = await store.get(`verified_session:${phone}`);
+    // 1. Idempotency: only replay the cached session for the SAME OTP
+    // (absorbs double-submit). Wrong OTP must never mint a JWT.
+    const recentSessionJson = await store.get(`verified_session:${phone}:${otp}`);
     if (recentSessionJson) {
       try {
         const recentSession = JSON.parse(recentSessionJson);
+        // #region agent log
+        agentDebugLog("J", "auth.ts:verify:idempotent", "returning OTP-bound cached session", {
+          phoneSuffix: phone.slice(-4),
+          userId: recentSession.user?.id ?? null,
+        });
+        // #endregion
         logger.info({ phone, userId: recentSession.user?.id }, "Returning cached session for duplicate verification request");
         res.json(recentSession);
         return;
       } catch {}
     }
+
+    // #region agent log
+    const leakedProbe = await store.get(`verified_session:${phone}`);
+    agentDebugLog("J", "auth.ts:verify:otp-check", "verify path (no phone-only session cache)", {
+      phoneSuffix: phone.slice(-4),
+      legacyPhoneOnlyCachePresent: !!leakedProbe,
+    });
+    // #endregion
 
     // 2. Verify OTP code against cached OTP
     const cachedOtp = await store.get(`otp:${phone}`);
@@ -334,8 +423,8 @@ router.post("/phone/otp/verify", async (req, res): Promise<void> => {
       }
     };
 
-    // Cache the verified response for 30s to absorb rapid double-submit race conditions
-    await store.set(`verified_session:${phone}`, JSON.stringify(responseData), "EX", 30);
+    // Cache the verified response for 30s keyed by phone+otp (double-submit only)
+    await store.set(`verified_session:${phone}:${otp}`, JSON.stringify(responseData), "EX", 30);
 
     res.json(responseData);
   } catch (err: any) {

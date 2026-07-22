@@ -55,7 +55,13 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: Number(process.env.PG_POOL_MAX || 20),
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 10_000,
+  statement_timeout: Number(process.env.PG_STATEMENT_TIMEOUT_MS || 15_000),
+});
 
 // Surface connection-pool errors immediately (DNS typos, credential issues, etc.)
 pool.on("error", (err) => {

@@ -66,6 +66,14 @@ if (!process.env.JWT_SECRET || process.env.JWT_SECRET === "super_secret_jwt_key"
   logger.warn("JWT_SECRET is missing or using the insecure default. Set JWT_SECRET before production.");
 }
 
+if (!process.env.REDIS_URL) {
+  if (process.env.NODE_ENV === "production") {
+    logger.fatal("REDIS_URL is required in production for OTP rate limits across Cloud Run instances");
+    process.exit(1);
+  }
+  logger.warn("REDIS_URL is not set — OTP limits are in-memory only (unsafe for multi-instance).");
+}
+
 await verifyMailer().catch(() => false);
 startEmailOutboxWorker();
 setInterval(() => {
@@ -81,4 +89,12 @@ app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
+});
+
+process.on("unhandledRejection", (reason) => {
+  logger.error({ err: reason }, "Unhandled promise rejection");
+});
+process.on("uncaughtException", (err) => {
+  logger.fatal({ err }, "Uncaught exception");
+  process.exit(1);
 });

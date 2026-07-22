@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useOnboarding } from '../context/OnboardingContext';
 import { Input, Label } from '../design-system/primitives';
-import { Loader2, ArrowRight } from 'lucide-react';
+import { Loader2, ArrowRight, ShieldCheck } from 'lucide-react';
 import { useLocation } from 'wouter';
 import { FaWhatsapp } from 'react-icons/fa';
 import { apiUrl } from '../lib/api';
-import { AuthBackgroundVideo } from '../components/AuthBackgroundVideo';
 
+/**
+ * Step 1 — phone verification inside the cinematic onboarding shell.
+ * Light form chrome (panel already frosted over Unsplash atmosphere).
+ */
 export default function Step1Phone() {
   const { data, updateData, nextStep, setToken } = useOnboarding();
   const [, setLocation] = useLocation();
@@ -48,27 +51,27 @@ export default function Step1Phone() {
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanPhone = phone.replace(/\D/g, '');
-    if (cleanPhone.length < 10) {
+    if (cleanPhone.length !== 10) {
       setPhoneError('Please enter a valid 10-digit mobile number.');
       return;
     }
     setPhoneError('');
     setIsSwooshingSend(true);
-    
+
     try {
       const formattedPhone = getFormattedPhone(phone);
-      
+
       const res = await fetch(apiUrl('/api/auth/phone/otp'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: formattedPhone })
+        body: JSON.stringify({ phone: formattedPhone }),
       });
-      
+
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         throw new Error(errorData.error || 'Failed to send OTP');
       }
-      
+
       setIsSwooshingSend(false);
       setStep('otp');
       setCooldown(30);
@@ -78,8 +81,10 @@ export default function Step1Phone() {
       setPhoneError(
         /load failed|failed to fetch|networkerror/i.test(msg)
           ? 'Could not reach the server. Check your connection and try again.'
-          : msg || 'Failed to send OTP. Please check your connection or try again later.',
+          : msg || 'Failed to send OTP. Please try again.',
       );
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -89,27 +94,27 @@ export default function Step1Phone() {
     setOtpError('');
     setIsVerifying(true);
     setIsSwooshingVerify(true);
-    
+
     try {
       const formattedPhone = getFormattedPhone(phone);
-      
+
       const res = await fetch(apiUrl('/api/auth/phone/otp/verify'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: formattedPhone, otp: otpCode })
+        body: JSON.stringify({ phone: formattedPhone, otp: otpCode }),
       });
-      
+
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         throw new Error(errorData.error || 'Invalid OTP');
       }
-      
+
       const responseData = await res.json();
       localStorage.setItem('token', responseData.accessToken);
       setToken(responseData.accessToken);
-      
-      setIsSwooshingVerify(false);
       updateData({ phone: formattedPhone });
+      setIsSwooshingVerify(false);
+
       if (responseData.hasCompletedOnboarding) {
         setLocation('/dashboard');
       } else {
@@ -141,9 +146,9 @@ export default function Step1Phone() {
   };
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value.replace(/\D/g, '').slice(0, 12);
+    const val = e.target.value.replace(/\D/g, '').slice(0, 10);
     setPhone(val);
-    if (val.length >= 10) setPhoneError('');
+    if (val.length === 10) setPhoneError('');
   };
 
   const handleOtpChange = (index: number, value: string) => {
@@ -160,171 +165,186 @@ export default function Step1Phone() {
     const nextIndex = Math.min(index + Math.max(digits.length, 1), 5);
     window.requestAnimationFrame(() => document.getElementById(`otp-${nextIndex}`)?.focus());
 
-    // Auto-submit OTP when fully entered (6 digits)
     const otpCode = newOtp.join('');
     if (otpCode.length === 6 && !isSubmittingOtp.current) {
       verifyOtpCode(otpCode);
     }
   };
 
-  const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Backspace' && !otp[index] && index > 0) {
-      const prevInput = document.getElementById(`otp-${index - 1}`);
-      prevInput?.focus();
-    }
-  };
-
   const handlePaste = (index: number, e: React.ClipboardEvent<HTMLInputElement>) => {
     e.preventDefault();
-    const pastedData = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6 - index);
-    if (!pastedData) return;
+    const pastedDigits = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6 - index);
+    if (!pastedDigits) return;
 
     const newOtp = [...otp];
-    for (let i = 0; i < pastedData.length; i++) {
-      newOtp[index + i] = pastedData[i];
-    }
+    pastedDigits.split('').forEach((digit, offset) => {
+      newOtp[index + offset] = digit;
+    });
     setOtp(newOtp);
     setOtpError('');
 
-    const focusIndex = Math.min(index + pastedData.length, 5);
-    window.requestAnimationFrame(() => document.getElementById(`otp-${focusIndex}`)?.focus());
     const otpCode = newOtp.join('');
+    const nextIndex = Math.min(index + pastedDigits.length, 5);
+    window.requestAnimationFrame(() => document.getElementById(`otp-${nextIndex}`)?.focus());
     if (otpCode.length === 6) verifyOtpCode(otpCode);
   };
 
+  const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace' && !otp[index] && index > 0) {
+      document.getElementById(`otp-${index - 1}`)?.focus();
+    }
+  };
+
+  const fieldClass =
+    'h-12 rounded-2xl border border-slate-200 bg-white text-slate-900 text-base font-medium placeholder:text-slate-400 shadow-sm focus:border-sky-400 focus:ring-2 focus:ring-sky-200/80';
+  const otpClass =
+    'h-12 min-w-0 w-full text-center text-lg font-bold rounded-xl border border-slate-200 bg-white text-slate-900 shadow-sm focus:border-sky-400 focus:ring-2 focus:ring-sky-200/80 focus:scale-[1.03] transition-transform';
+  const primaryBtn =
+    'w-full min-h-12 rounded-2xl font-bold text-sm text-white flex items-center justify-center gap-2 cursor-pointer disabled:opacity-45 disabled:pointer-events-none bg-gradient-to-r from-sky-500 via-blue-500 to-indigo-500 shadow-[0_12px_28px_-10px_rgba(56,189,248,0.55)] transition-[transform,filter] hover:brightness-110 active:scale-[0.985]';
+
   return (
-    <div className="relative min-h-full w-full flex flex-col justify-center items-center py-6 sm:py-10 min-w-0">
-      {/* Background Video layer */}
-      <AuthBackgroundVideo />
-
-      <div className="relative z-10 flex flex-col h-full justify-center max-w-md w-full mx-auto min-w-0">
-        <div className="mb-6 text-center">
-          <h1 className="font-serif text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-2 tracking-tight drop-shadow-md">
-            Welcome to BEXO
-          </h1>
-          <p className="text-slate-300 text-sm sm:text-base leading-relaxed max-w-xs mx-auto">
-            Let's start by verifying your mobile number. We'll send a secure code via WhatsApp.
-          </p>
-        </div>
-
-        <div className="p-5 sm:p-8 bg-slate-900/65 border border-white/15 shadow-2xl rounded-3xl backdrop-blur-2xl text-white">
-          {step === 'phone' ? (
-            <form onSubmit={handleSendOtp} className="space-y-6">
-              <div className="space-y-2">
-                <Label htmlFor="phone" className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-                  Mobile Number
-                </Label>
-                <div className="flex relative items-center">
-                  <span className="absolute left-4 text-slate-400 font-semibold text-sm select-none">+91</span>
-                  <Input
-                    id="phone"
-                    type="tel"
-                    placeholder="98765 43210"
-                    className={`pl-13 h-13 rounded-2xl bg-slate-950/80 border-slate-700/80 text-white text-base font-medium tracking-wide placeholder:text-slate-500 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/25 transition-all ${phoneError ? "border-rose-500 focus:ring-rose-500/30" : ""}`}
-                    value={phone}
-                    onChange={handlePhoneChange}
-                    autoFocus
-                  />
-                </div>
-                {phoneError && <p className="text-rose-400 text-xs font-semibold mt-1">{phoneError}</p>}
-              </div>
-              
-              <button 
-                type="submit" 
-                className={`w-full h-13 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white rounded-2xl font-bold text-sm transition-all duration-200 flex items-center justify-center gap-3 disabled:opacity-50 disabled:pointer-events-none cursor-pointer shadow-xl shadow-indigo-600/30 px-6 active:scale-[0.99]${isSwooshingSend ? ' is-swooshing' : ''}`}
-                disabled={phone.length < 10 || isSending || isSwooshingSend}
-              >
-                {isSending ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <>
-                    <div className="w-8 h-8 bg-white/10 rounded-xl flex items-center justify-center shrink-0">
-                      <ArrowRight className="w-4 h-4 text-white" />
-                    </div>
-                    <span className="btn-label font-bold">Send Verification Code</span>
-                  </>
-                )}
-              </button>
-            </form>
-          ) : (
-            <form onSubmit={handleVerifyOtp} className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <Label className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-                    Enter Verification Code
-                  </Label>
-                  <button
-                    type="button"
-                    onClick={() => setStep('phone')}
-                    className="text-xs font-bold text-indigo-400 hover:text-indigo-300 transition-colors"
-                  >
-                    Edit Number
-                  </button>
-                </div>
-
-                <p className="text-xs text-slate-300 leading-relaxed">
-                  Sent a 6-digit OTP to <span className="font-bold text-white">+91 {phone}</span>
-                </p>
-
-                <div className="flex items-center gap-2.5 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 backdrop-blur-md px-3.5 py-2.5 text-xs font-medium text-emerald-300">
-                  <FaWhatsapp className="h-4 w-4 text-emerald-400 shrink-0" aria-hidden="true" />
-                  <span>Check WhatsApp. Your OTP is sent through WhatsApp.</span>
-                </div>
-                <div className="grid grid-cols-6 gap-2 sm:gap-3 pt-1">
-                  {otp.map((digit, i) => (
-                    <Input
-                      key={i}
-                      id={`otp-${i}`}
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={1}
-                      autoComplete={i === 0 ? 'one-time-code' : 'off'}
-                      value={digit}
-                      onChange={(e) => handleOtpChange(i, e.target.value)}
-                      onKeyDown={(e) => handleKeyDown(i, e)}
-                      onPaste={(e) => handlePaste(i, e)}
-                      aria-label={`Verification code digit ${i + 1}`}
-                      className={`h-12 sm:h-14 min-w-0 w-full text-center text-lg sm:text-xl font-bold rounded-2xl bg-slate-950/80 border-slate-700/80 text-white focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/30 transition-all ${otpError ? "border-rose-500 focus:ring-rose-500/30" : ""}`}
-                      autoFocus={i === 0}
-                    />
-                  ))}
-                </div>
-                {otpError && <p className="text-rose-400 text-xs font-semibold mt-1">{otpError}</p>}
-              </div>
-              
-              <div className="space-y-4">
-                <button 
-                  type="submit" 
-                  className={`w-full h-13 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white rounded-2xl font-bold text-sm transition-all duration-200 flex items-center justify-center gap-3 disabled:opacity-50 disabled:pointer-events-none cursor-pointer shadow-xl shadow-indigo-600/30 px-6 active:scale-[0.99]${isSwooshingVerify ? ' is-swooshing' : ''}`}
-                  disabled={otp.join('').length < 6 || isVerifying || isSwooshingVerify}
-                >
-                  {isVerifying ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                  ) : (
-                    <>
-                      <div className="w-8 h-8 bg-white/10 rounded-xl flex items-center justify-center shrink-0">
-                        <ArrowRight className="w-4 h-4 text-white" />
-                      </div>
-                      <span className="btn-label font-bold">Verify & Continue</span>
-                    </>
-                  )}
-                </button>
-                
-                <div className="text-center">
-                  <button
-                    type="button"
-                    onClick={handleSendOtp}
-                    disabled={cooldown > 0}
-                    className="text-xs font-semibold text-indigo-400 hover:text-indigo-300 disabled:text-slate-400 transition-colors"
-                  >
-                    {cooldown > 0 ? `Resend code in 00:${cooldown.toString().padStart(2, '0')}` : 'Resend Code'}
-                  </button>
-                </div>
-              </div>
-            </form>
-          )}
-        </div>
+    <div className="flex flex-col flex-1 justify-center w-full max-w-md mx-auto min-w-0 py-2">
+      <div className="mb-5 space-y-1.5">
+        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-sky-600">
+          WhatsApp secure entry
+        </p>
+        <h1 className="font-serif text-[1.55rem] font-bold text-slate-900 tracking-tight leading-tight">
+          {step === 'phone' ? 'Verify your number' : 'Enter your code'}
+        </h1>
+        <p className="text-sm text-slate-500 leading-relaxed">
+          {step === 'phone'
+            ? 'We send a one-time code on WhatsApp — no passwords to remember.'
+            : `6-digit OTP sent to +91 ${phone}`}
+        </p>
       </div>
+
+      {step === 'phone' ? (
+        <form onSubmit={handleSendOtp} className="space-y-5">
+          <div className="space-y-2">
+            <div className="flex items-end justify-between gap-2">
+              <Label htmlFor="phone" className="text-[11px] font-bold text-slate-500 uppercase tracking-[0.12em]">
+                Mobile Number
+              </Label>
+              <span className="text-[10px] font-semibold text-slate-400">India · +91</span>
+            </div>
+            <div className="relative flex items-center">
+              <span className="absolute left-4 text-slate-400 font-semibold text-sm select-none">+91</span>
+              <Input
+                id="phone"
+                type="tel"
+                inputMode="numeric"
+                autoComplete="tel-national"
+                maxLength={10}
+                placeholder="10-digit number"
+                className={`pl-13 ${fieldClass}${phoneError ? ' border-rose-400 focus:ring-rose-200' : ''}`}
+                value={phone}
+                onChange={handlePhoneChange}
+                autoFocus
+              />
+            </div>
+            {phoneError && <p className="text-rose-500 text-xs font-semibold">{phoneError}</p>}
+          </div>
+
+          <button
+            type="submit"
+            className={primaryBtn}
+            disabled={phone.length !== 10 || isSending || isSwooshingSend}
+          >
+            {isSwooshingSend || isSending ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" /> Sending…
+              </>
+            ) : (
+              <>
+                <span>Send Verification Code</span>
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/15">
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </span>
+              </>
+            )}
+          </button>
+
+          <p className="text-center text-[11px] text-slate-400 leading-relaxed px-1">
+            Already have an account?{' '}
+            <a href="/login" className="font-semibold text-sky-600 hover:text-sky-700">
+              Sign in
+            </a>
+          </p>
+        </form>
+      ) : (
+        <form onSubmit={handleVerifyOtp} className="space-y-5 animate-in fade-in slide-in-from-right-2 duration-300">
+          <div className="flex items-center gap-2.5 rounded-2xl border border-emerald-200 bg-emerald-50 px-3.5 py-3 text-xs font-medium text-emerald-800">
+            <FaWhatsapp className="h-4 w-4 text-emerald-600 shrink-0" aria-hidden="true" />
+            <span>Open WhatsApp — your code is waiting.</span>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex justify-between items-center gap-3">
+              <Label className="text-[11px] font-bold text-slate-500 uppercase tracking-[0.12em]">
+                Verification Code
+              </Label>
+              <button
+                type="button"
+                onClick={() => setStep('phone')}
+                className="text-xs font-bold text-sky-600 hover:text-sky-700 min-h-10"
+              >
+                Edit Number
+              </button>
+            </div>
+
+            <div className="grid grid-cols-6 gap-1.5 sm:gap-2">
+              {otp.map((digit, i) => (
+                <Input
+                  key={i}
+                  id={`otp-${i}`}
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={1}
+                  autoComplete={i === 0 ? 'one-time-code' : 'off'}
+                  value={digit}
+                  onChange={(e) => handleOtpChange(i, e.target.value)}
+                  onKeyDown={(e) => handleKeyDown(i, e)}
+                  onPaste={(e) => handlePaste(i, e)}
+                  aria-label={`Verification code digit ${i + 1}`}
+                  className={`${otpClass}${otpError ? ' border-rose-400' : ''}`}
+                  autoFocus={i === 0}
+                />
+              ))}
+            </div>
+            {otpError && <p className="text-rose-500 text-xs font-semibold">{otpError}</p>}
+          </div>
+
+          <button
+            type="submit"
+            className={primaryBtn}
+            disabled={otp.join('').length < 6 || isVerifying || isSwooshingVerify}
+          >
+            {isVerifying || isSwooshingVerify ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" /> Verifying…
+              </>
+            ) : (
+              <>
+                <span>Verify & Continue</span>
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/15">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                </span>
+              </>
+            )}
+          </button>
+
+          <div className="text-center">
+            <button
+              type="button"
+              onClick={handleSendOtp}
+              disabled={cooldown > 0}
+              className="text-xs font-bold text-sky-600 hover:text-sky-700 disabled:text-slate-400 disabled:pointer-events-none tabular-nums min-h-10"
+            >
+              {cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend Code'}
+            </button>
+          </div>
+        </form>
+      )}
     </div>
   );
 }

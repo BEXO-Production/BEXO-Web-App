@@ -196,6 +196,40 @@ const normalizeResearch = (entries: unknown) =>
     };
   });
 
+const SKILL_CATEGORIES = new Set(["technical", "tools", "soft", "languages"]);
+
+export const MAX_SKILLS = 40;
+
+export function normalizeSkills(entries: unknown) {
+  const seen = new Set<string>();
+  const out: { id: string; name: string; category: string }[] = [];
+  const list = Array.isArray(entries)
+    ? entries
+    : entries && typeof entries === "object"
+      ? [entries]
+      : [];
+
+  for (const raw of list) {
+    if (out.length >= MAX_SKILLS) break;
+    let name = "";
+    let category = "technical";
+    if (typeof raw === "string") {
+      name = raw.trim();
+    } else if (raw && typeof raw === "object") {
+      const entry = raw as AnyRecord;
+      name = pickString(entry, ["name", "title", "skill", "label"]);
+      const cat = asString(entry.category, "technical").toLowerCase();
+      category = SKILL_CATEGORIES.has(cat) ? cat : "technical";
+    }
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ id: String(out.length + 1), name, category });
+  }
+  return out;
+}
+
 export type BuildPublicProfileInput = {
   profile: AnyRecord;
   user: AnyRecord;
@@ -207,6 +241,7 @@ export type BuildPublicProfileInput = {
   certificateEntries?: unknown;
   achievementEntries?: unknown;
   researchEntries?: unknown;
+  skillEntries?: unknown;
   contactData?: AnyRecord;
 };
 
@@ -228,6 +263,7 @@ export function buildPublicProfile(input: BuildPublicProfileInput) {
   const certificateEntries = normalizeCertificates(input.certificateEntries);
   const achievementEntries = normalizeAchievements(input.achievementEntries);
   const researchEntries = normalizeResearch(input.researchEntries);
+  const skillEntries = normalizeSkills(input.skillEntries);
 
   const contactData = {
     email: contactEmail,
@@ -275,6 +311,7 @@ export function buildPublicProfile(input: BuildPublicProfileInput) {
     certificateEntries,
     achievementEntries,
     researchEntries,
+    skillEntries,
     contactData,
     // Nested shape for templates that still read sections.*
     sections: {
@@ -285,6 +322,7 @@ export function buildPublicProfile(input: BuildPublicProfileInput) {
       certificates: { reviewed: true, entries: certificateEntries },
       achievements: { reviewed: true, entries: achievementEntries },
       research: { reviewed: true, entries: researchEntries },
+      skills: { reviewed: true, entries: skillEntries },
       contact: {
         reviewed: true,
         entries: [

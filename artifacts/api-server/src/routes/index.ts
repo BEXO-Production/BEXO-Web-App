@@ -5,6 +5,7 @@ import profileRouter from "./profile";
 import paymentsRouter from "./payments";
 import pricingRouter from "./pricing";
 import analyticsRouter from "./analytics";
+import geoRouter from "./geo";
 
 const router: IRouter = Router();
 
@@ -15,5 +16,6 @@ router.use("/profile", profileRouter);
 router.use("/payments", paymentsRouter);
 router.use("/pricing", pricingRouter);
 router.use("/analytics", analyticsRouter);
+router.use("/geo", geoRouter);
 
 export default router;
