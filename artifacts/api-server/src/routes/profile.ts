@@ -258,6 +258,20 @@ async function verifySupabaseGoogleIdentity(
   const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
   const jwtSecret = process.env.SUPABASE_JWT_SECRET;
 
+  if (!supabaseUrl || !anonKey) {
+    if (!jwtSecret) {
+      logger.error(
+        {
+          hasSupabaseUrl: !!supabaseUrl,
+          hasAnonKey: !!anonKey,
+          hasJwtSecret: !!jwtSecret,
+        },
+        "Supabase env missing — set SUPABASE_URL + SUPABASE_ANON_KEY (or VITE_*) on the API, or SUPABASE_JWT_SECRET",
+      );
+      return null;
+    }
+  }
+
   if (supabaseUrl && anonKey) {
     try {
       const controller = new AbortController();
@@ -296,6 +310,12 @@ async function verifySupabaseGoogleIdentity(
             photoUrl: user.user_metadata?.avatar_url || user.user_metadata?.picture,
           };
         }
+        logger.warn(
+          { hasId: !!user.id, hasEmail: !!user.email, provider, providers },
+          "Supabase user is not a Google-linked identity",
+        );
+      } else {
+        logger.warn({ status: resp.status }, "Supabase Auth /user returned non-OK");
       }
     } catch (err) {
       logger.warn({ err }, "Supabase Auth /user lookup failed");
@@ -344,6 +364,16 @@ router.post("/link-google", requireAuth, async (req: AuthenticatedRequest, res):
   try {
     const identity = await verifySupabaseGoogleIdentity(accessToken);
     if (!identity) {
+      const misconfigured =
+        !(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL) ||
+        !(process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY);
+      if (misconfigured && !process.env.SUPABASE_JWT_SECRET) {
+        res.status(503).json({
+          error: "Google linking is misconfigured on the server. Contact support.",
+          code: "SUPABASE_ENV_MISSING",
+        });
+        return;
+      }
       res.status(401).json({ error: "Invalid or expired Google session. Please sign in with Google again." });
       return;
     }
