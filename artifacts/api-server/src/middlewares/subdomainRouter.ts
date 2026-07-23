@@ -23,6 +23,7 @@ import {
   isPlatformApexHost,
   isReservedSubdomain,
   PLATFORM_DOMAIN,
+  pathPortfolioUrl,
   portfolioHostname,
 } from "../lib/platform";
 import { buildUnclaimedHandleHtml } from "../lib/claimUnclaimedHandleHtml";
@@ -224,7 +225,7 @@ export async function renderPortfolioForHandle(
         return;
       }
 
-      const profile = profileMatch[0];
+      let profile = profileMatch[0];
 
       // 2. Fetch associated user and subscription
       const userMatch = await db.select().from(users).where(eq(users.id, profile.userId)).limit(1);
@@ -232,7 +233,7 @@ export async function renderPortfolioForHandle(
         res.status(404).send("User not found.");
         return;
       }
-      const user = userMatch[0];
+      let user = userMatch[0];
       ownerName = user.name;
     
       const subscriptionState = await resolveSubscriptionState(user.id);
@@ -244,21 +245,31 @@ export async function renderPortfolioForHandle(
       const contactEntries = sections.find((s) => s.type === "contact")?.entries as Record<string, string> | undefined;
 
       // 4. Construct the canonical public profile (phone redacted)
-      const templateIdForUser =
+      let templateIdForUser =
         profile.templateId && profile.templateId !== "minimal"
           ? profile.templateId
           : (user.templateId ?? "minimal");
+
+      const isPremiumUser = !!(subscriptionState.isPremium || profile.isPremium);
+      // Heal admin-granted / paid users still stuck on free Minimal (subdomain needs a bundle)
+      if (isPremiumUser && (!templateIdForUser || templateIdForUser === "minimal")) {
+        const { upgradeUserToPremiumLive } = await import("../lib/adminOps");
+        const healed = await upgradeUserToPremiumLive(user.id);
+        templateIdForUser = healed.templateId;
+        user = { ...user, templateId: templateIdForUser };
+        profile = { ...profile, templateId: templateIdForUser, isPremium: true };
+      }
 
       profileData = buildPublicProfile({
         profile,
         user: {
           ...user,
-          templateId: subscriptionState.isPremium || profile.isPremium ? templateIdForUser : "minimal",
+          templateId: isPremiumUser ? templateIdForUser : "minimal",
           themeColor: user.themeColor ?? "blue",
           themeBg: user.themeBg ?? "grid",
           openToHire: user.openToHire ?? false,
         },
-        isPremium: profile.isPremium || subscriptionState.isPremium,
+        isPremium: isPremiumUser,
         aboutEntries: getEntries("about"),
         educationEntries: getEntries("education"),
         experienceEntries: getEntries("experience"),
@@ -401,11 +412,9 @@ export async function renderPortfolioForHandle(
     // No local bundle (e.g. free users forced onto "minimal"). Never proxy the
     // Netlify demo site for subdomain visits — send them to the free path URL.
     if (!previewOverride && templateId === "minimal") {
-      const webBase =
-        process.env.FRONTEND_URL ||
-        process.env.WEB_URL ||
-        "http://localhost:5173";
-      const freeUrl = `${webBase.replace(/\/$/, "")}/${encodeURIComponent(subdomain)}`;
+      // Free path portfolios are public on the apex: mybexo.cyou/{handle}
+      // (marketing Hosting rewrite + Worker proxy keep that URL working).
+      const freeUrl = pathPortfolioUrl(subdomain);
       const isPremiumUser = !!profileData?.isPremium;
       res
         .status(200)

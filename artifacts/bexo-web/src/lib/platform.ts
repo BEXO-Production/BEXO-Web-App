@@ -25,6 +25,26 @@ const ENV_DASH =
     import.meta.env?.VITE_DASH_ORIGIN?.toLowerCase().trim()) ||
   "";
 
+/** Labels that must never be treated as portfolio handles in the SPA. */
+export const RESERVED_SUBDOMAINS = new Set([
+  "www",
+  "dash",
+  "api",
+  "admin",
+  "app",
+  "mail",
+  "ftp",
+  "cdn",
+  "static",
+  "assets",
+  "staging",
+  "dev",
+  "docs",
+  "status",
+  "support",
+  "bexo",
+]);
+
 function cleanHost(value: string): string {
   return value.replace(/:\d+$/, "").toLowerCase().trim();
 }
@@ -87,6 +107,39 @@ export function resolvePlatformDomain(hostname?: string): string {
   }
 
   return ENV_PLATFORM || "atbexo.com";
+}
+
+/**
+ * Portfolio handle from hostname, or null on apex / dash / reserved hosts.
+ * Free portfolios use path URLs on dash or apex — never treat `dash` as a handle.
+ */
+export function getPortfolioSubdomain(hostname?: string): string | null {
+  const host = currentHost(hostname);
+  if (!host || isDashHost(host)) return null;
+
+  const parts = host.split(".");
+
+  if (host.endsWith("localhost")) {
+    if (parts.length > 1 && parts[0] !== "localhost" && parts[0] !== "www") {
+      const label = parts[0].toLowerCase();
+      if (RESERVED_SUBDOMAINS.has(label)) return null;
+      return label;
+    }
+    return null;
+  }
+
+  const platform = resolvePlatformDomain(host);
+  if (host === platform || host === `www.${platform}`) return null;
+
+  if (host.endsWith(`.${platform}`) && parts.length >= 3) {
+    const label = parts[0].toLowerCase();
+    if (!label || label === "www" || RESERVED_SUBDOMAINS.has(label)) return null;
+    // Reject multi-label prefixes like a.b.mybexo.cyou
+    if (host.slice(0, -(platform.length + 1)).includes(".")) return null;
+    return label;
+  }
+
+  return null;
 }
 
 /** Public marketing site origin. */
@@ -171,6 +224,22 @@ export function portfolioHostname(handle: string, hostname?: string): string {
 
 export function portfolioPublicUrl(handle: string, hostname?: string): string {
   return `https://${portfolioHostname(handle, hostname)}`;
+}
+
+/** Free-tier public URL on the platform apex path: https://mybexo.cyou/{handle} (prod: atbexo.com/{handle}). */
+export function pathPortfolioUrl(handle: string, hostname?: string): string {
+  const safe = String(handle || "")
+    .toLowerCase()
+    .trim();
+  const domain = resolvePlatformDomain(hostname);
+  const origin =
+    domain === "localhost"
+      ? typeof window !== "undefined"
+        ? window.location.origin.replace(/\/$/, "")
+        : "http://localhost:5173"
+      : `https://${domain}`;
+  if (!safe) return origin;
+  return `${origin}/${encodeURIComponent(safe)}`;
 }
 
 export function portfolioLabel(handle: string, hostname?: string): string {

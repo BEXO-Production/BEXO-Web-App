@@ -27,12 +27,15 @@ import {
 import { PLAN_LABELS } from "../lib/pricing";
 import { BrandLogo } from "../components/BrandLogo";
 
-import { portfolioHostname, portfolioPublicUrl } from "../lib/platform";
+import { pathPortfolioUrl, portfolioHostname, portfolioPublicUrl } from "../lib/platform";
 
 /** Session flag set right after payment / activation / free signup. */
 export const JUST_ACTIVATED_KEY = "bexo_just_activated";
 
-function resolveLiveSiteUrl(handle: string): { display: string; href: string } {
+function resolveLiveSiteUrl(
+  handle: string,
+  isPremium: boolean,
+): { display: string; href: string } {
   const host = typeof window !== "undefined" ? window.location.hostname : "mybexo.cyou";
   const isLocal =
     host === "localhost" ||
@@ -40,14 +43,26 @@ function resolveLiveSiteUrl(handle: string): { display: string; href: string } {
     host.endsWith(".localhost");
 
   if (isLocal) {
-    const apiPort = import.meta.env.VITE_API_PORT || "5001";
-    const href = `http://${handle}.localhost:${apiPort}/`;
-    return { display: `${handle}.localhost:${apiPort}`, href };
+    if (isPremium) {
+      const apiPort = import.meta.env.VITE_API_PORT || "5001";
+      const href = `http://${handle}.localhost:${apiPort}/`;
+      return { display: `${handle}.localhost:${apiPort}`, href };
+    }
+    const href = `${window.location.origin}/${handle}`;
+    return { display: `${window.location.host}/${handle}`, href };
   }
 
+  if (isPremium) {
+    return {
+      display: portfolioHostname(handle),
+      href: portfolioPublicUrl(handle),
+    };
+  }
+
+  const href = pathPortfolioUrl(handle);
   return {
-    display: portfolioHostname(handle),
-    href: portfolioPublicUrl(handle),
+    display: href.replace(/^https?:\/\//, ""),
+    href,
   };
 }
 
@@ -240,7 +255,10 @@ export default function WelcomeSuccess() {
       ? DEFAULT_TEMPLATE_ID
       : FREE_FALLBACK_TEMPLATE_ID;
   const templateMeta = PORTFOLIO_TEMPLATES.find((t) => t.id === templateId);
-  const live = useMemo(() => (handle ? resolveLiveSiteUrl(handle) : null), [handle]);
+  const live = useMemo(
+    () => (handle ? resolveLiveSiteUrl(handle, !!data.isPremium) : null),
+    [handle, data.isPremium],
+  );
   const previewSrc = handle
     ? getTemplatePreviewUrl(
         templateId === FREE_FALLBACK_TEMPLATE_ID ? DEFAULT_TEMPLATE_ID : templateId,

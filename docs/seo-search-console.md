@@ -1,80 +1,62 @@
 # Google Search Console — BEXO SEO setup
 
-Production domain: **https://atbexo.com**
+**Primary marketing domain:** https://mybexo.cyou  
+**App:** https://dash.mybexo.cyou  
+**Portfolios:** https://{handle}.mybexo.cyou  
 
-## 1. Submit sitemap
+(Legacy production notes for `atbexo.com` / `mybexo.com` remain valid when those hosts are cut over.)
 
-In [Google Search Console](https://search.google.com/search-console) → **Sitemaps**:
+## 1. Submit marketing sitemap
 
-1. Remove any failed rows (`sitemap-all.xml`, `sitemap-static.xml`, `sitemap-portfolios.xml`, old index-only `sitemap.xml`).
-2. Submit **only**:
+In [Google Search Console](https://search.google.com/search-console) for **mybexo.cyou** → **Sitemaps**:
 
-```text
-sitemap.xml
-```
-
-(or full URL `https://atbexo.com/sitemap.xml`)
-
-`sitemap.xml` is a **single urlset** (Google’s recommended format for small/medium sites): home, legal pages, demo, and all public portfolio + Hire Me URLs in one file. No sitemap index — Google fetches one URL.
-
-Regenerate before hosting deploys (`node scripts/generate-sitemaps.mjs` — also runs in `bexo-web` build). Portfolio URLs are loaded from `GET /api/public/sitemap-urls.json` when the generator runs.
-
-Verify:
-
-- https://atbexo.com/sitemap.xml (must start with `<urlset`, not `<sitemapindex`)
-- https://atbexo.com/robots.txt
-
-## 2. Cloudflare robots.txt (important)
-
-If **Cloudflare Managed robots.txt** (Content Signals) is enabled, it **replaces** Firebase `robots.txt` and may omit `Sitemap:` lines — fix one of:
-
-- **Dashboard → Scrape Shield / Bots** — turn off managed robots.txt and use the site file, **or**
-- **Dashboard → Rules → robots.txt** — append:
+Submit:
 
 ```text
-Sitemap: https://atbexo.com/sitemap.xml
+https://mybexo.cyou/sitemap.xml
 ```
 
-Also ensure **Bot Fight Mode** / WAF does not block Googlebot on `/sitemap.xml`.
+This urlset includes home, pricing, about, stories, guides hub, and all guide articles.
 
-The home page includes `<link rel="sitemap" href="https://atbexo.com/sitemap.xml" />` as a fallback discovery hint.
+## 2. Portfolio / dash sitemap
 
-## 3. robots.txt (Firebase)
+Dash API also exposes portfolio discovery:
 
-Static file in `artifacts/bexo-web/public/robots.txt`. `Sitemap:` is listed first, then `Allow: /`, and disallows for `/dashboard`, `/login`, `/step/`, `/api/`.
+```text
+https://dash.mybexo.cyou/sitemap.xml
+```
+
+Includes legal pages + published portfolio URLs. App routes (`/login`, `/dashboard`, `/step/`) are disallowed in `robots.txt` and marked `noindex` in the SPA.
+
+## 3. Cloudflare robots.txt
+
+If **Cloudflare Managed robots.txt** replaces the host file, append:
+
+```text
+Sitemap: https://mybexo.cyou/sitemap.xml
+```
+
+for the marketing zone, and ensure Googlebot can fetch `/sitemap.xml`.
 
 ## 4. Meta tags by page type
 
 | Page type | How SEO works |
 |-----------|----------------|
-| **Marketing home + legal** | `index.html` defaults + `usePageSeo()` (title, description, canonical, Open Graph, Twitter, JSON-LD) |
-| **Premium portfolios** (subdomain + Pro templates) | Server-rendered HTML: `injectShareMetaIntoHtml()` — dynamic title, description, OG image (photo or fallback), canonical, **Person + ProfilePage** JSON-LD |
-| **Free path portfolios** (`/handle`) | Client `applyPageSeo()` after profile load (Google renders JS) |
-| **Hire Me** (`/hire-me/:handle`) | Client SEO when profile loads |
+| **Marketing (`mybexo.cyou`)** | Static titles, descriptions, canonical, OG/Twitter, JSON-LD in HTML |
+| **Premium portfolios** (`{handle}.mybexo.cyou`) | Server `injectShareMetaIntoHtml()` — person-first title, OG, Person + ProfilePage JSON-LD |
+| **Free path portfolios** (`dash…/handle`) | Client `applyPageSeo()` after profile load |
+| **Hire Me** | Client SEO when profile loads |
 | **Login / dashboard / onboarding** | `noindex` + `robots.txt` disallow |
 
 ## 5. Open Graph images
 
-- Platform default: `https://atbexo.com/og-default.jpg`  
-- Portfolio fallback: `https://atbexo.com/og-portfolio.jpg`  
-- User photo used when URL is absolute HTTPS  
+- Marketing default: `https://mybexo.cyou/assets/og-default.jpg`
+- Portfolio fallback: platform `og-portfolio.jpg`
+- User photo when absolute HTTPS
 
-## 6. Recommended Search Console checks
+## 6. After deploy
 
-1. **URL inspection** — test `https://atbexo.com/` and one live portfolio subdomain.  
-2. **Page indexing** — confirm legal URLs and portfolios move to “Indexed”.  
-3. **Core Web Vitals** — monitor after traffic grows.  
-4. **Removals** — unclaimed handles use `noindex` on the claim page (not in sitemap).  
-
-## 7. Re-index after deploy
-
-After each production deploy, optionally request indexing for:
-
-- `https://atbexo.com/`  
-- `https://atbexo.com/sitemap.xml`  
-
-Re-run the generator (or full `bexo-web` build) after portfolio launches so new handles appear in `sitemap.xml`.
-
-## 8. OAuth verification (related)
-
-Public home + About section support OAuth branding. See [google-oauth-verification.md](./google-oauth-verification.md).
+1. Deploy marketing Firebase hosting (`mybexo` → mybexo.cyou)  
+2. Deploy dash + API so shareMeta + robots update  
+3. In GSC: request indexing for `https://mybexo.cyou/`  
+4. Validate rich results / URL inspection on a sample portfolio subdomain  

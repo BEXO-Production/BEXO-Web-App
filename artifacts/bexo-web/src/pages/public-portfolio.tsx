@@ -6,7 +6,11 @@ import { cn } from '@/lib/utils';
 import { BEXO_FOOTER_COPYRIGHT } from '../lib/brand';
 import { BrandLogo } from '../components/BrandLogo';
 import { BUNDLED_PREMIUM_TEMPLATES } from '../lib/templates';
-import { PLATFORM_DOMAIN, portfolioHostname } from '../lib/platform';
+import {
+  getPortfolioSubdomain,
+  pathPortfolioUrl,
+  portfolioHostname,
+} from '../lib/platform';
 import { UnclaimedHandleBanner } from '../components/UnclaimedHandleBanner';
 import { applyPageSeo, buildPortfolioPageJsonLd } from '../lib/seo';
 import { apiUrl } from '../lib/api';
@@ -14,30 +18,6 @@ import { apiUrl } from '../lib/api';
 interface PublicPortfolioProps {
   handleOverride?: string;
 }
-
-const getSubdomain = () => {
-  const hostname = window.location.hostname;
-  const parts = hostname.split('.');
-  
-  if (hostname.endsWith('localhost')) {
-    if (parts.length > 1 && parts[0] !== 'localhost' && parts[0] !== 'www') {
-      return parts[0];
-    }
-    return null;
-  }
-  
-  if (
-    hostname === PLATFORM_DOMAIN ||
-    hostname.endsWith(`.${PLATFORM_DOMAIN}`)
-  ) {
-    if (parts.length > 2 && parts[0] !== 'www') {
-      return parts[0];
-    }
-    return null;
-  }
-  
-  return null;
-};
 
 export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps = {}) {
   const [, params] = useRoute('/:handle');
@@ -48,7 +28,7 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
   const [pausedInfo, setPausedInfo] = useState<{ reason?: string | null; name?: string } | null>(null);
 
 
-  const currentSubdomain = getSubdomain();
+  const currentSubdomain = getPortfolioSubdomain();
   const isSubdomainAccess = !!currentSubdomain;
 
   useEffect(() => {
@@ -118,18 +98,18 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
     const origin = window.location.origin.replace(/\/$/, "");
     const canonical = profileData.isPremium
       ? `https://${portfolioHostname(handle)}`
-      : `${origin}/${encodeURIComponent(handle)}`;
+      : pathPortfolioUrl(handle);
     const photo = String(profileData.user?.photoUrl || "").trim();
     const ogImage =
       photo.startsWith("http://") || photo.startsWith("https://")
         ? photo
         : `${origin}/og-portfolio.jpg`;
-    const description =
-      headline ||
-      `${name}'s professional portfolio on BEXO — projects, experience, and contact.`;
+    const description = headline
+      ? `${headline}. Projects, experience, and Hire Me — live portfolio on BEXO.`
+      : `${name}'s professional portfolio. Projects, experience, and a Hire Me page recruiters can open in one tap.`;
 
     applyPageSeo({
-      title: `${name} — Portfolio on BEXO`,
+      title: headline ? `${name} — ${headline} | Portfolio` : `${name} | Portfolio`,
       description,
       canonical,
       ogImage,
@@ -263,14 +243,14 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
             <span className="font-bold text-slate-700 block">Where is this portfolio?</span>
             You can view this portfolio at Bexo's free directory path:
             <a 
-              href={`${window.location.protocol}//${window.location.host.replace(new RegExp(`^${handle}\\.`), '')}/${handle}`}
+              href={pathPortfolioUrl(handle || '')}
               className="text-indigo-600 hover:underline block font-mono mt-1 text-[11px] truncate"
             >
-              {window.location.host.replace(new RegExp(`^${handle}\\.`), '')}/{handle}
+              {pathPortfolioUrl(handle || '').replace(/^https?:\/\//, '')}
             </a>
           </div>
           <a 
-            href={`${window.location.protocol}//${window.location.host.replace(new RegExp(`^${handle}\\.`), '')}/${handle}`} 
+            href={pathPortfolioUrl(handle || '')} 
             className="inline-flex w-full justify-center items-center h-11 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-colors"
           >
             Go to Portfolio

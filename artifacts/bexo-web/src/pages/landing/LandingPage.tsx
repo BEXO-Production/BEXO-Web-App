@@ -25,7 +25,6 @@ import {
   BEXO_FOOTER_COPYRIGHT,
   BEXO_OAUTH_APP_NAME,
 } from "@/lib/brand";
-import { buildMarketingJsonLd } from "@/lib/seo";
 import { usePageSeo } from "@/hooks/use-page-seo";
 import { PLATFORM_DOMAIN } from "@/lib/platform";
 import { BrandLogo } from "@/components/BrandLogo";
@@ -238,17 +237,14 @@ export default function LandingPage({
   const [previewTemplate, setPreviewTemplate] = useState<PortfolioTemplate | null>(null);
 
   usePageSeo({
-    title: `${BEXO_OAUTH_APP_NAME} — Professional portfolios for students`,
-    description: `BEXO From Ace Digital helps students and professionals publish placement-ready portfolios on ${PLATFORM_DOMAIN}. This home page is public — sign-in is only required to edit your portfolio.`,
+    title: "BEXO workspace — continue to your portfolio",
+    description: `Sign in to create or edit your BEXO portfolio. Discover the product at mybexo.cyou — live sites publish on yourname.${PLATFORM_DOMAIN}.`,
+    noindex: true,
     canonical:
       typeof window !== "undefined"
         ? `${window.location.origin.replace(/\/$/, "")}/`
-        : `https://${PLATFORM_DOMAIN}/`,
-    ogImage:
-      typeof window !== "undefined"
-        ? `${window.location.origin.replace(/\/$/, "")}/og-default.jpg`
-        : `https://${PLATFORM_DOMAIN}/og-default.jpg`,
-    jsonLd: buildMarketingJsonLd(),
+        : `https://dash.mybexo.cyou/`,
+    ogImage: "https://mybexo.cyou/assets/og-default.jpg",
   });
 
   return (

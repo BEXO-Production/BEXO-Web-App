@@ -104,3 +104,26 @@ export function marketingOrigin(): string {
     (PLATFORM_DOMAIN === "mybexo.cyou" ? "https://mybexo.cyou" : "https://mybexo.com")
   ).replace(/\/$/, "");
 }
+
+/**
+ * Apex origin for free path portfolios.
+ * Dev: https://mybexo.cyou/{handle}
+ * Prod: https://atbexo.com/{handle}
+ * Never dash.* — that host is the app only.
+ */
+export function pathPortfolioOrigin(): string {
+  return (
+    process.env.PATH_PORTFOLIO_ORIGIN ||
+    process.env.PORTFOLIO_PATH_ORIGIN ||
+    `https://${PLATFORM_DOMAIN}`
+  ).replace(/\/$/, "");
+}
+
+/** Public free-tier portfolio URL on the apex path (never dash.*). */
+export function pathPortfolioUrl(handle: string): string {
+  const safe = String(handle || "")
+    .toLowerCase()
+    .trim();
+  if (!safe) return pathPortfolioOrigin();
+  return `${pathPortfolioOrigin()}/${encodeURIComponent(safe)}`;
+}

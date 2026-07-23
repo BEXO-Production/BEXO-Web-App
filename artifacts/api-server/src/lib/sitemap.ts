@@ -1,6 +1,12 @@
 import { and, eq, isNotNull } from "drizzle-orm";
 import { db, profiles, users } from "@workspace/db";
-import { appOrigin, portfolioPublicUrl, PLATFORM_DOMAIN } from "./platform";
+import {
+  appOrigin,
+  pathPortfolioOrigin,
+  pathPortfolioUrl,
+  PLATFORM_DOMAIN,
+  portfolioPublicUrl,
+} from "./platform";
 
 export type SitemapEntry = {
   loc: string;
@@ -69,7 +75,7 @@ export async function getPortfolioSitemapEntries(): Promise<SitemapEntry[]> {
     .innerJoin(users, eq(profiles.userId, users.id))
     .where(and(isNotNull(profiles.handle), isNotNull(users.onboardingCompletedAt)));
 
-  const origin = appOrigin().replace(/\/$/, "");
+  const origin = pathPortfolioOrigin().replace(/\/$/, "");
   const entries: SitemapEntry[] = [];
 
   for (const row of rows) {
@@ -80,7 +86,7 @@ export async function getPortfolioSitemapEntries(): Promise<SitemapEntry[]> {
 
     const lastmod = formatLastmod(row.completedAt);
     const premium = !!row.isPremium;
-    const portfolioUrl = premium ? portfolioPublicUrl(handle) : `${origin}/${encodeURIComponent(handle)}`;
+    const portfolioUrl = premium ? portfolioPublicUrl(handle) : pathPortfolioUrl(handle);
 
     entries.push({
       loc: portfolioUrl,

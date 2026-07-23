@@ -1,4 +1,4 @@
-import { appOrigin, PLATFORM_DOMAIN, portfolioPublicUrl } from "./platform";
+import { appOrigin, PLATFORM_DOMAIN, pathPortfolioUrl, portfolioPublicUrl } from "./platform";
 
 type ShareProfileLike = {
   isPremium?: boolean;
@@ -40,10 +40,14 @@ export function resolvePortfolioShareMeta(profile: unknown) {
     String(data.profile?.careerGoal || "").trim() ||
     String(data.profile?.bio || "").trim();
 
-  const title = `${name} — Portfolio on BEXO`;
+  const title = headline
+    ? `${name} — ${truncate(headline, 48)} | Portfolio`
+    : `${name} | Portfolio`;
+
   const description = truncate(
-    headline ||
-      `${name}'s professional portfolio on BEXO. Resume, projects, and Hire Me — built for placements.`,
+    headline
+      ? `${headline}. Projects, experience, and Hire Me — live portfolio on BEXO.`
+      : `${name}'s professional portfolio. Projects, experience, and a Hire Me page recruiters can open in one tap.`,
   );
 
   const photo = String(data.user?.photoUrl || "").trim();
@@ -53,7 +57,7 @@ export function resolvePortfolioShareMeta(profile: unknown) {
   const url = handle
     ? data.isPremium
       ? portfolioPublicUrl(handle)
-      : `${origin}/${encodeURIComponent(handle)}`
+      : pathPortfolioUrl(handle)
     : `https://${PLATFORM_DOMAIN}/`;
 
   return { title, description, image, url, siteName: "BEXO", name, headline };

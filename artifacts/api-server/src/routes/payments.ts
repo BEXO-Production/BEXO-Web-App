@@ -2239,9 +2239,10 @@ router.post("/webhook", async (req: any, res: any) => {
     const eventId = (req.body?.id as string | undefined) || "";
     const paymentEntity = req.body?.payload?.payment?.entity;
     const subscriptionEntity = req.body?.payload?.subscription?.entity;
+    const paymentLinkEntity = req.body?.payload?.payment_link?.entity;
 
     const claimed = await claimWebhookEvent({
-      eventId: eventId || `${event || "unknown"}:${paymentEntity?.id || subscriptionEntity?.id || Date.now()}`,
+      eventId: eventId || `${event || "unknown"}:${paymentEntity?.id || subscriptionEntity?.id || paymentLinkEntity?.id || Date.now()}`,
       eventType: event || "unknown",
       payload: req.body,
     });
@@ -2251,6 +2252,87 @@ router.post("/webhook", async (req: any, res: any) => {
 
     let webhookFailed: string | null = null;
     try {
+    // ---- Admin collect Payment Links / note-tagged charges ----
+    {
+      const notes = (paymentLinkEntity?.notes || paymentEntity?.notes || {}) as Record<string, unknown>;
+      const bexoPaymentId =
+        (typeof notes.bexo_payment_id === "string" && notes.bexo_payment_id) ||
+        (typeof notes.bexoPaymentId === "string" && notes.bexoPaymentId) ||
+        null;
+      const isAdminCollectEvent =
+        event === "payment_link.paid" ||
+        (event === "payment.captured" &&
+          (notes.kind === "admin_collect" || !!bexoPaymentId) &&
+          !paymentEntity?.order_id);
+
+      if (isAdminCollectEvent && bexoPaymentId) {
+        const rzpPaymentId = (paymentEntity?.id as string | undefined) || null;
+        const [row] = await db.select().from(payments).where(eq(payments.id, bexoPaymentId)).limit(1);
+        if (row && row.status !== "success" && row.status !== "refunded") {
+          await db
+            .update(payments)
+            .set({
+              status: "success",
+              razorpayPaymentId: rzpPaymentId || row.razorpayPaymentId,
+            })
+            .where(eq(payments.id, row.id));
+          await generateAndStoreInvoice(row.id);
+          await recordLedgerEvent({
+            userId: row.userId,
+            paymentId: row.id,
+            eventType: "admin_collect_paid",
+            amountPaise: row.amount,
+            plan: row.plan,
+            razorpayPaymentId: rzpPaymentId || undefined,
+            idempotencyKey: `admin_collect_paid:${row.id}:${rzpPaymentId || "link"}`,
+            metadata: {
+              via: "webhook",
+              event,
+              paymentLinkId: paymentLinkEntity?.id || null,
+            },
+          });
+          await sendBillingReceipts(
+            row.userId,
+            row.plan || "identity",
+            row.amount / 100,
+            rzpPaymentId || row.id,
+          ).catch((err) => logger.warn({ err, paymentId: row.id }, "Collect receipt email failed"));
+        }
+        await markWebhookProcessed(claimed.rowId, "processed");
+        return res.json({ received: true });
+      }
+
+      // Also settle admin_collect rows tagged on a captured payment that has an order_id
+      if (event === "payment.captured" && bexoPaymentId && notes.kind === "admin_collect") {
+        const rzpPaymentId = (paymentEntity?.id as string | undefined) || null;
+        const [row] = await db.select().from(payments).where(eq(payments.id, bexoPaymentId)).limit(1);
+        if (row && row.status !== "success" && row.status !== "refunded") {
+          await db
+            .update(payments)
+            .set({
+              status: "success",
+              razorpayPaymentId: rzpPaymentId || row.razorpayPaymentId,
+              razorpayOrderId: (paymentEntity?.order_id as string) || row.razorpayOrderId,
+            })
+            .where(eq(payments.id, row.id));
+          await generateAndStoreInvoice(row.id);
+          await recordLedgerEvent({
+            userId: row.userId,
+            paymentId: row.id,
+            eventType: "admin_collect_paid",
+            amountPaise: row.amount,
+            plan: row.plan,
+            razorpayPaymentId: rzpPaymentId || undefined,
+            razorpayOrderId: (paymentEntity?.order_id as string) || undefined,
+            idempotencyKey: `admin_collect_paid:${row.id}:${rzpPaymentId || "cap"}`,
+            metadata: { via: "webhook", event },
+          });
+        }
+        await markWebhookProcessed(claimed.rowId, "processed");
+        return res.json({ received: true });
+      }
+    }
+
     // ---- One-time order payments (Student+, fallback orders) ----
     if (event === "payment.captured" && paymentEntity?.order_id) {
       const orderId = paymentEntity.order_id as string;

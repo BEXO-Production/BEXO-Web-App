@@ -29,41 +29,16 @@ import WelcomeSuccess from './pages/welcome';
 import LandingPage from './pages/landing/LandingPage';
 import { TermsPage, PrivacyPage, RefundPage, CookiesPage } from './pages/legal';
 import { useToast } from './hooks/use-toast';
-import { isCombinedMarketingHost, resolvePlatformDomain } from './lib/platform';
+import {
+  getPortfolioSubdomain,
+  isCombinedMarketingHost,
+} from './lib/platform';
 
 const queryClient = new QueryClient();
 
-const getSubdomain = () => {
-  const hostname = window.location.hostname;
-  const parts = hostname.split('.');
-  
-  if (hostname.endsWith('localhost')) {
-    if (parts.length > 1 && parts[0] !== 'localhost' && parts[0] !== 'www') {
-      return parts[0];
-    }
-    return null;
-  }
-
-  const platform = resolvePlatformDomain(hostname);
-  
-  if (
-    hostname === platform ||
-    hostname.endsWith(`.${platform}`)
-  ) {
-    if (parts.length > 2 && parts[0] !== 'www') {
-      return parts[0];
-    }
-    // mybexo.cyou / atbexo.com are two labels — subdomain is first of three+
-    // already handled; two-label apex has no portfolio subdomain
-    return null;
-  }
-  
-  return null;
-};
-
 function Router() {
   const { data, isLoading } = useOnboarding();
-  const subdomain = getSubdomain();
+  const subdomain = getPortfolioSubdomain();
   const { toast } = useToast();
   const [sessionLoading, setSessionLoading] = useState(true);
   const [hasGoogleSession, setHasGoogleSession] = useState(false);

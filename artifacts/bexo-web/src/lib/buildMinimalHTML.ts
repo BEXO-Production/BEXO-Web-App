@@ -306,13 +306,20 @@ export function buildMinimalPortfolioHTML(data: OnboardingData, themeColor: stri
     ? `<div class="contact-bar anim">${contactParts.join('')}</div>`
     : '';
 
-  const shareTitle = `${name || handleStr} — Portfolio on BEXO`;
+  const displayName = name || handleStr || "Student";
+  const shareTitle = headline
+    ? `${displayName} — ${String(headline).slice(0, 48)} | Portfolio`
+    : `${displayName} | Portfolio`;
   const aboutBlurb = aboutEntries
     .map((a: any) => a.description || '')
     .filter(Boolean)
     .join(' ')
     .slice(0, 160);
-  const shareDesc = esc(headline || bio || aboutBlurb || `${name}'s professional portfolio on BEXO`);
+  const shareDesc = esc(
+    headline
+      ? `${headline}. Projects, experience, and Hire Me — live portfolio on BEXO.`
+      : bio || aboutBlurb || `${displayName}'s professional portfolio. Projects, experience, and Hire Me.`,
+  );
   const shareImage = photoUrl?.startsWith('http')
     ? esc(photoUrl)
     : `${resolveMarketingOrigin()}/og-portfolio.jpg`;

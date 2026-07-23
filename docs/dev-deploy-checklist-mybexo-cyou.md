@@ -4,9 +4,9 @@ Split the development stack into three hosts + Cloudflare Worker.
 
 | Host | Serves | Backend |
 |------|--------|---------|
-| `mybexo.cyou` / `www` | **Marketing** (static BEXO Website) | Firebase `mybexo` → `https://mybexo.web.app` |
+| `mybexo.cyou` / `www` | **Marketing** (static BEXO Website) + **free path portfolios** `/{handle}` | Firebase `mybexo` → `https://mybexo.web.app` (rewrite → `free-portfolio.html`; Worker proxies to dash when orange-clouded) |
 | `dash.mybexo.cyou` | **App** (onboarding + dashboard SPA) | Firebase `bexo-development` → `https://bexo-development.web.app` (+ `/api/**` → Cloud Run) |
-| `{handle}.mybexo.cyou` | **Portfolio** (templates + routing engine) | Cloud Run `bexo-api` via Worker `X-Forwarded-Host` |
+| `{handle}.mybexo.cyou` | **Portfolio** (Pro templates + routing engine) | Cloud Run `bexo-api` via Worker `X-Forwarded-Host` |
 
 GCP project: `bexo-development` · Supabase: BEXO-DB (`qovrjyfhtaytaiwjbiqu`)
 

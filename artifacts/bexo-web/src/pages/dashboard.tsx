@@ -68,7 +68,7 @@ import {
   MARKETING_DEMO_HANDLE,
   PORTFOLIO_TEMPLATES,
 } from '../lib/templates';
-import { PLATFORM_DOMAIN, portfolioHostname, portfolioPublicUrl } from '../lib/platform';
+import { PLATFORM_DOMAIN, portfolioHostname, portfolioPublicUrl, pathPortfolioUrl } from '../lib/platform';
 import { apiUrl } from '../lib/api';
 import { track } from '../lib/track';
 import { computeCanBuy, normalizeClientPlanId, PLAN_LABELS } from '../lib/pricing';
@@ -598,7 +598,9 @@ export default function Dashboard() {
     ? isLocalHost
       ? `http://${handleString}.localhost:${localApiPort}/`
       : livePortfolioHref
-    : `${window.location.protocol}//${window.location.host}/${handleString}`;
+    : isLocalHost
+      ? `${window.location.protocol}//${window.location.host}/${handleString}`
+      : pathPortfolioUrl(handleString);
   const [copied, setCopied] = useState(false);
 
   // Premium accounts never keep Minimal — migrate picker selection to a Pro layout.
@@ -4797,7 +4799,7 @@ export default function Dashboard() {
 
                         {/* Open portfolio link */}
                         <a
-                          href={data.isPremium ? correctVisitUrl : `/${handleString}`}
+                          href={data.isPremium ? correctVisitUrl : pathPortfolioUrl(handleString)}
                           target="_blank"
                           rel="noreferrer"
                           className="flex items-center justify-center gap-1.5 w-full py-2.5 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-755 text-xs font-bold hover:bg-indigo-100 transition-colors mt-1"

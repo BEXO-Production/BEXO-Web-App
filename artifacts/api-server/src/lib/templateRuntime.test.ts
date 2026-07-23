@@ -104,14 +104,16 @@ test("injects Open Graph tags for portfolio sharing", () => {
   const result = injectPortfolioBootstrap(
     html,
     {
+      isPremium: true,
       profile: { handle: "kavin", headline: "CS student · Full-stack" },
       user: { name: "Kavin Balaji", photoUrl: "https://cdn.example/photo.jpg" },
     },
     "/",
   );
 
-  assert.match(result, /<title>Kavin Balaji — Portfolio on BEXO<\/title>/);
-  assert.match(result, /property="og:title" content="Kavin Balaji — Portfolio on BEXO"/);
+  assert.match(result, /<title>Kavin Balaji — CS student · Full-stack \| Portfolio<\/title>/);
+  assert.match(result, /property="og:title" content="Kavin Balaji — CS student · Full-stack \| Portfolio"/);
+  assert.match(result, /property="og:description" content="CS student · Full-stack\. Projects, experience, and Hire Me — live portfolio on BEXO\."/);
   assert.match(result, /property="og:image" content="https:\/\/cdn\.example\/photo\.jpg"/);
   assert.match(result, /property="og:url" content="https:\/\/kavin\.mybexo\.cyou"/);
   assert.match(result, /name="twitter:card" content="summary_large_image"/);

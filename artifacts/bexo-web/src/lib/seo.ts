@@ -144,7 +144,9 @@ export function buildPortfolioPageJsonLd(input: {
         "@type": "ProfilePage",
         "@id": `${input.url}#webpage`,
         url: input.url,
-        name: `${input.name} — Portfolio on BEXO`,
+        name: input.headline
+          ? `${input.name} — ${input.headline}`
+          : `${input.name} | Portfolio`,
         isPartOf: {
           "@type": "WebSite",
           name: "BEXO",

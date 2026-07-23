@@ -80,9 +80,15 @@ export const assets = pgTable("assets", {
 
 // 5. Templates Table
 export const templates = pgTable("templates", {
-  id: text("id").primaryKey(), // 'minimal' | 'academic' | 'creative'
+  id: text("id").primaryKey(), // 'minimal' | 'cura-futuri' | ...
   name: text("name").notNull(),
   description: text("description"),
+  category: text("category").notNull().default("general"),
+  premium: boolean("premium").notNull().default(false),
+  isActive: boolean("is_active").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  engine: text("engine").notNull().default("bundle"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
 
 // 6. Theme Variants Table
@@ -150,7 +156,7 @@ export const payments = pgTable("payments", {
   razorpayPaymentId: text("razorpay_payment_id").unique(),
   razorpaySubscriptionId: text("razorpay_subscription_id"),
   plan: text("plan"), // 'annual' | 'lifetime' | null (legacy rows)
-  kind: text("kind").notNull().default("order"), // 'order' | 'subscription' | 'subscription_bootstrap' | 'addon_increase'
+  kind: text("kind").notNull().default("order"), // 'order' | 'subscription' | 'subscription_bootstrap' | 'addon_increase' | 'admin_collect' | 'admin_collect_next'
   amount: integer("amount").notNull(), // in paise
   // pending | awaiting_mandate | success | failed | abandoned | refunded
   status: text("status").notNull(),
@@ -320,6 +326,10 @@ export const pricingCoupons = pgTable("pricing_coupons", {
   percentOff: real("percent_off"),
   inrOff: integer("inr_off"),
   planPrices: jsonb("plan_prices"),
+  /** Null = all plans; otherwise string[] of plan ids */
+  allowedPlans: jsonb("allowed_plans"),
+  /** Only redeemable if user has never had a successful payment */
+  firstCustomerOnly: boolean("first_customer_only").notNull().default(false),
   validFrom: timestamp("valid_from", { withTimezone: true }),
   validUntil: timestamp("valid_until", { withTimezone: true }),
   maxUses: integer("max_uses"),
@@ -385,3 +395,95 @@ export const portfolioStatsDaily = pgTable("portfolio_stats_daily", {
 }, (table) => ({
   dayUniq: unique("portfolio_stats_daily_uniq").on(table.profileId, table.day),
 }));
+
+/** Staff console accounts (BEXO Admin at bexo.acedigital.cc). */
+export const staffUsers = pgTable("staff_users", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  email: text("email").unique().notNull(),
+  name: text("name"),
+  phone: text("phone"),
+  passwordHash: text("password_hash"),
+  role: text("role").notNull().default("support"), // super_admin | support | billing | ops
+  isActive: boolean("is_active").notNull().default(true),
+  linkedUserId: uuid("linked_user_id").references(() => users.id, { onDelete: "set null" }),
+  invitedBy: uuid("invited_by"),
+  lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
+export const staffInvites = pgTable("staff_invites", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  email: text("email").notNull(),
+  name: text("name"),
+  phone: text("phone"),
+  role: text("role").notNull().default("support"),
+  tokenHash: text("token_hash").unique().notNull(),
+  invitedBy: uuid("invited_by").references(() => staffUsers.id, { onDelete: "set null" }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});
+
+export const adminAuditLog = pgTable("admin_audit_log", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  actorStaffId: uuid("actor_staff_id").references(() => staffUsers.id, { onDelete: "set null" }),
+  action: text("action").notNull(),
+  targetType: text("target_type"),
+  targetId: text("target_id"),
+  meta: jsonb("meta").notNull().default({}),
+  ip: text("ip"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});
+
+export const supportNotes = pgTable("support_notes", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  targetType: text("target_type").notNull(), // user | portfolio | contact_submission
+  targetId: text("target_id").notNull(),
+  authorStaffId: uuid("author_staff_id").references(() => staffUsers.id, { onDelete: "set null" }),
+  body: text("body").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+/** Staff-created support tickets (phone/email complaints). Not portfolio contact leads. */
+export const supportTickets = pgTable("support_tickets", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  ticketNumber: text("ticket_number").unique().notNull(),
+  userId: uuid("user_id")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull(),
+  createdByStaffId: uuid("created_by_staff_id").references(() => staffUsers.id, {
+    onDelete: "set null",
+  }),
+  assigneeStaffId: uuid("assignee_staff_id").references(() => staffUsers.id, {
+    onDelete: "set null",
+  }),
+  channel: text("channel").notNull().default("phone"), // phone | email | other
+  subject: text("subject").notNull(),
+  description: text("description").notNull(),
+  status: text("status").notNull().default("open"), // open | in_progress | resolved | closed
+  priority: text("priority").notNull().default("normal"), // low | normal | high
+  requesterEmail: text("requester_email"),
+  requesterPhone: text("requester_phone"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  closedAt: timestamp("closed_at", { withTimezone: true }),
+});
+
+export const supportTicketEvents = pgTable("support_ticket_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  ticketId: uuid("ticket_id")
+    .references(() => supportTickets.id, { onDelete: "cascade" })
+    .notNull(),
+  actorStaffId: uuid("actor_staff_id").references(() => staffUsers.id, {
+    onDelete: "set null",
+  }),
+  eventType: text("event_type").notNull(), // created | status_change | note | reply | assignment
+  visibility: text("visibility").notNull().default("internal"), // internal | customer
+  body: text("body"),
+  fromStatus: text("from_status"),
+  toStatus: text("to_status"),
+  meta: jsonb("meta").notNull().default({}),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});

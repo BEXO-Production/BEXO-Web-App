@@ -1,5 +1,12 @@
 import { and, asc, eq, sql } from "drizzle-orm";
-import { billingSettings, couponRedemptions, db, pricingCoupons, pricingPlans } from "@workspace/db";
+import {
+  billingSettings,
+  couponRedemptions,
+  db,
+  payments,
+  pricingCoupons,
+  pricingPlans,
+} from "@workspace/db";
 import { normalizePlanId, type PaidPlan } from "./subscriptions";
 import { logger } from "./logger";
 
@@ -265,6 +272,10 @@ function couponIsValid(row: CouponRow, now = new Date()): boolean {
 }
 
 function discountFromCoupon(row: CouponRow, plan: PurchasableId, base: number): number {
+  if (row.allowedPlans && Array.isArray(row.allowedPlans)) {
+    const allowed = (row.allowedPlans as unknown[]).map(String);
+    if (allowed.length > 0 && !allowed.includes(plan)) return 0;
+  }
   if (row.discountType === "percent" && row.percentOff != null) {
     return Math.round(base * (Number(row.percentOff) / 100));
   }
@@ -279,6 +290,20 @@ function discountFromCoupon(row: CouponRow, plan: PurchasableId, base: number): 
     }
   }
   return 0;
+}
+
+export async function userHasPriorPaidPurchase(userId: string): Promise<boolean> {
+  try {
+    const [row] = await db
+      .select({ id: payments.id })
+      .from(payments)
+      .where(and(eq(payments.userId, userId), eq(payments.status, "success")))
+      .limit(1);
+    return !!row;
+  } catch (error) {
+    logger.warn({ error, userId }, "Prior purchase lookup failed");
+    return false;
+  }
 }
 
 export async function findActiveCoupon(code?: string | null): Promise<CouponRow | null> {
@@ -403,12 +428,40 @@ export async function validateCouponForPlan(
     return { valid: false, message: "This coupon is invalid or expired." };
   }
 
+  if (couponRow.allowedPlans && Array.isArray(couponRow.allowedPlans)) {
+    const allowed = (couponRow.allowedPlans as unknown[]).map(String);
+    if (allowed.length > 0 && !allowed.includes(plan)) {
+      return { valid: false, message: "This coupon does not apply to the selected plan." };
+    }
+  }
+
+  if (couponRow.firstCustomerOnly) {
+    if (!userId) {
+      return {
+        valid: false,
+        message: "Sign in to use this first-customer coupon.",
+      };
+    }
+    if (await userHasPriorPaidPurchase(userId)) {
+      return {
+        valid: false,
+        message: "This coupon is for first-time customers only.",
+      };
+    }
+  }
+
   if (userId && (await hasUserRedeemedCoupon(userId, couponRow.id))) {
     return { valid: false, message: "You have already used this coupon on this account." };
   }
 
   const quote = await buildCheckoutQuote(plan, normalized);
   const pricing = quote.first;
+
+  // When appliesOnce is false, treat discount as ongoing (message only — Razorpay plans still bill list)
+  if (!couponRow.appliesOnce && quote.discountApplies === "first_invoice") {
+    quote.message =
+      "Coupon discount applies while the code remains valid. Standard renewal pricing still applies if Autopay uses the Razorpay plan amount.";
+  }
 
   const locksPlanPrice =
     couponRow.discountType === "plan_prices" &&

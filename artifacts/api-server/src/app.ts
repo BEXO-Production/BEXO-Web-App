@@ -49,8 +49,13 @@ const allowedOrigins = [
   "https://mybexo.cyou",
   "https://www.mybexo.cyou",
   "https://bexo-development.web.app",
+  "https://bexo-admin.web.app",
+  "https://bexo-admin.firebaseapp.com",
+  "https://bexo.acedigital.cc",
   "http://localhost:5173",
   "http://127.0.0.1:5173",
+  "http://localhost:5174",
+  "http://127.0.0.1:5174",
   "http://localhost:4173",
 ].filter(Boolean) as string[];
 
@@ -59,7 +64,18 @@ app.use(
     origin(origin, cb) {
       if (!origin) return cb(null, true); // same-origin / curl / server-to-server
       if (process.env.NODE_ENV !== "production") return cb(null, true);
-      if (allowedOrigins.some((o) => origin === o || origin.endsWith(".atbexo.com") || origin.endsWith(".mybexo.com") || origin.endsWith(".mybexo.cyou"))) {
+      if (
+        allowedOrigins.some(
+          (o) =>
+            origin === o ||
+            origin.endsWith(".atbexo.com") ||
+            origin.endsWith(".mybexo.com") ||
+            origin.endsWith(".mybexo.cyou") ||
+            origin.endsWith(".acedigital.cc"),
+        ) ||
+        origin === "https://bexo-admin.web.app" ||
+        origin === "https://bexo-admin.firebaseapp.com"
+      ) {
         return cb(null, true);
       }
       return cb(null, false);

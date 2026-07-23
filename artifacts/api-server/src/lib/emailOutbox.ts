@@ -13,6 +13,10 @@ import {
   getRecoveryEmail,
   getRenewalReminderEmail,
   getPaymentFailedEmail,
+  getPlanPriceChangeEmail,
+  getSupportTicketCreatedEmail,
+  getSupportTicketUpdatedEmail,
+  getSupportTicketReplyEmail,
 } from "./templates";
 import { generateInvoicePDF } from "./invoice";
 import { uploadToR2 } from "./r2";
@@ -107,6 +111,19 @@ async function renderEmail(row: typeof emailDeliveries.$inferSelect) {
         attachments: undefined,
         replyTo: undefined,
       };
+    case "plan_price_change":
+      return {
+        html: getPlanPriceChangeEmail(
+          name,
+          payload.planLabel || payload.plan || "your plan",
+          Number(payload.oldPriceInr || 0),
+          Number(payload.newPriceInr || 0),
+          payload.billingUrl || `${origin}/billing`,
+          payload.effectiveLabel || "",
+        ),
+        attachments: undefined,
+        replyTo: undefined,
+      };
     case "activation":
       return {
         html: getActivationEmail(name, payload.code || payload.transactionId || ""),
@@ -175,6 +192,40 @@ async function renderEmail(row: typeof emailDeliveries.$inferSelect) {
         attachments: undefined,
         // When the lead hits Reply, their mail goes to the portfolio owner's contact email.
         replyTo: payload.replyTo || undefined,
+      };
+    case "support_ticket_created":
+      return {
+        html: getSupportTicketCreatedEmail(
+          name,
+          payload.ticketNumber || "",
+          payload.subject || "Support request",
+          payload.description || "",
+        ),
+        attachments: undefined,
+        replyTo: "support@acedigital.cc",
+      };
+    case "support_ticket_updated":
+      return {
+        html: getSupportTicketUpdatedEmail(
+          name,
+          payload.ticketNumber || "",
+          payload.statusLabel || payload.status || "updated",
+          payload.subject || "Support request",
+          payload.note || "",
+        ),
+        attachments: undefined,
+        replyTo: "support@acedigital.cc",
+      };
+    case "support_ticket_reply":
+      return {
+        html: getSupportTicketReplyEmail(
+          name,
+          payload.ticketNumber || "",
+          payload.subject || "Support request",
+          payload.body || "",
+        ),
+        attachments: undefined,
+        replyTo: "support@acedigital.cc",
       };
     default:
       return {

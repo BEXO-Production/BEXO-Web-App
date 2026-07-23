@@ -518,3 +518,114 @@ export const getLeadReplyEmail = (
     footnote: "Sent securely through BEXO. Replies go directly to the portfolio owner.",
   });
 };
+
+export const getSupportTicketCreatedEmail = (
+  userName: string,
+  ticketNumber: string,
+  subject: string,
+  description: string,
+) => {
+  const safeDesc = escapeHtml(description).replace(/\n/g, "<br/>");
+  return wrapHtml({
+    title: `Support ticket ${ticketNumber}`,
+    preheader: `We opened ticket ${ticketNumber} for your request.`,
+    eyebrow: "Support request received",
+    headline: "We've logged your support request.",
+    accent: "blue",
+    bodyHtml: `
+      ${greeting(userName)}
+      ${bodyParagraph("Thanks for reaching out. Our team has created a support ticket for your request and will follow up shortly.")}
+      ${highlightCard("Ticket ID", escapeHtml(ticketNumber), "#EEF2FF")}
+      ${bodyParagraph(`<strong style="color:${INK};">Subject:</strong> ${escapeHtml(subject)}`)}
+      ${highlightCard("Summary", safeDesc, "#F8FAFC")}
+      ${bodyParagraph("Please keep this ticket ID handy if you call or email us again about the same issue.")}
+    `,
+    footnote: "Need to add details? Reply to this email or write to support@acedigital.cc with your ticket ID.",
+  });
+};
+
+export const getSupportTicketUpdatedEmail = (
+  userName: string,
+  ticketNumber: string,
+  statusLabel: string,
+  subject: string,
+  note?: string,
+) => {
+  const noteHtml = note
+    ? highlightCard("Update", escapeHtml(note).replace(/\n/g, "<br/>"), "#F8FAFC")
+    : "";
+  return wrapHtml({
+    title: `Ticket ${ticketNumber} · ${statusLabel}`,
+    preheader: `Ticket ${ticketNumber} is now ${statusLabel}.`,
+    eyebrow: "Ticket update",
+    headline: `Your ticket is now ${statusLabel}.`,
+    accent: statusLabel.toLowerCase().includes("resolv") ? "emerald" : "amber",
+    bodyHtml: `
+      ${greeting(userName)}
+      ${bodyParagraph(`There's an update on support ticket <strong style="color:${INK};">${escapeHtml(ticketNumber)}</strong> (${escapeHtml(subject)}).`)}
+      ${highlightCard("Status", escapeHtml(statusLabel), "#FEF3C7")}
+      ${noteHtml}
+      ${bodyParagraph("If you still need help, reply to this email and include your ticket ID.")}
+    `,
+    footnote: "BEXO Support · Ace Digital",
+  });
+};
+
+export const getSupportTicketReplyEmail = (
+  userName: string,
+  ticketNumber: string,
+  subject: string,
+  replyBody: string,
+) => {
+  const safeReply = escapeHtml(replyBody).replace(/\n/g, "<br/>");
+  return wrapHtml({
+    title: `Reply on ticket ${ticketNumber}`,
+    preheader: `BEXO Support replied on ticket ${ticketNumber}.`,
+    eyebrow: "Support reply",
+    headline: "Our team sent you a reply.",
+    accent: "violet",
+    bodyHtml: `
+      ${greeting(userName)}
+      ${bodyParagraph(`Here's a message from BEXO Support about ticket <strong style="color:${INK};">${escapeHtml(ticketNumber)}</strong> (${escapeHtml(subject)}).`)}
+      ${highlightCard("Message", safeReply, "#F5F3FF")}
+      ${bodyParagraph("You can reply to this email to continue the conversation. Please keep your ticket ID in the subject or body.")}
+    `,
+    footnote: "BEXO Support · Ace Digital",
+  });
+};
+
+export const getPlanPriceChangeEmail = (
+  userName: string,
+  planLabel: string,
+  oldPriceInr: number,
+  newPriceInr: number,
+  billingUrl: string,
+  effectiveLabel: string,
+) => {
+  const oldFmt = `₹${Number(oldPriceInr).toFixed(0)}`;
+  const newFmt = `₹${Number(newPriceInr).toFixed(0)}`;
+  return wrapHtml({
+    title: `${planLabel} pricing update`,
+    preheader: `From your next billing cycle, ${planLabel} will be ${newFmt} (ex GST).`,
+    eyebrow: "Pricing update",
+    headline: `Your ${planLabel} price is changing.`,
+    accent: "amber",
+    ctaLabel: "View billing",
+    ctaUrl: billingUrl,
+    bodyHtml: `
+      ${greeting(userName)}
+      ${bodyParagraph(
+        `We're updating the list price for <strong style="color:${INK};">${escapeHtml(planLabel)}</strong>.`,
+      )}
+      ${bodyParagraph(
+        `Current price: <strong>${oldFmt}</strong> (ex GST). New price: <strong>${newFmt}</strong> (ex GST). GST is added at checkout as usual.`,
+      )}
+      ${bodyParagraph(
+        effectiveLabel
+          ? `This applies from your <strong>next billing cycle</strong> (${escapeHtml(effectiveLabel)}). Your current period stays at the old rate.`
+          : "This applies from your <strong>next billing cycle</strong>. Your current period stays at the old rate.",
+      )}
+      ${bodyParagraph("No action is required unless you want to change or cancel your plan before renewal.")}
+    `,
+  });
+};
