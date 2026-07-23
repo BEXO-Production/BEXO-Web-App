@@ -1906,13 +1906,39 @@ router.get(
   "/audit",
   staffGuard(["super_admin", "ops"]),
   async (req: StaffRequest, res: Response) => {
-    const limit = Math.min(Number(req.query.limit) || 50, 200);
-    const rows = await db
-      .select()
-      .from(adminAuditLog)
-      .orderBy(desc(adminAuditLog.createdAt))
-      .limit(limit);
-    res.json({ entries: rows });
+    try {
+      const limit = Math.min(Number(req.query.limit) || 100, 500);
+      const q = String(req.query.q || "").trim().toLowerCase();
+      const rows = await db
+        .select({
+          id: adminAuditLog.id,
+          action: adminAuditLog.action,
+          targetType: adminAuditLog.targetType,
+          targetId: adminAuditLog.targetId,
+          meta: adminAuditLog.meta,
+          ip: adminAuditLog.ip,
+          createdAt: adminAuditLog.createdAt,
+          actorStaffId: adminAuditLog.actorStaffId,
+          actorEmail: staffUsers.email,
+          actorName: staffUsers.name,
+          actorRole: staffUsers.role,
+        })
+        .from(adminAuditLog)
+        .leftJoin(staffUsers, eq(adminAuditLog.actorStaffId, staffUsers.id))
+        .orderBy(desc(adminAuditLog.createdAt))
+        .limit(limit);
+
+      const entries = q
+        ? rows.filter((r) => {
+            const hay = `${r.action} ${r.targetType} ${r.targetId} ${r.actorEmail} ${r.actorName} ${r.ip} ${JSON.stringify(r.meta)}`.toLowerCase();
+            return hay.includes(q);
+          })
+        : rows;
+
+      res.json({ entries, total: entries.length });
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
   },
 );
 
@@ -2161,5 +2187,25 @@ router.get(
 registerAdminSupport(router);
 registerAdminExtras(router);
 registerAdminActivation(router);
+
+router.post(
+  "/users/purge-incomplete",
+  staffGuard(["super_admin"]),
+  async (req: StaffRequest, res: Response) => {
+    try {
+      const immediate = req.body?.immediate !== false;
+      const { purgeIncompleteAndTestUsersOnce, purgeAbandonedPhoneOnlyUsers } = await import(
+        "../lib/userRetention"
+      );
+      const result = immediate
+        ? await purgeIncompleteAndTestUsersOnce()
+        : await purgeAbandonedPhoneOnlyUsers({ olderThanDays: 7, limit: 500 });
+      await audit(req, "users.purge_incomplete", "users", undefined, result as unknown as Record<string, unknown>);
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  },
+);
 
 export default router;

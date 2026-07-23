@@ -5,6 +5,7 @@ import { randomUUID } from "crypto";
 import { db, users, profiles } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
+import { OTP_MAX_TTL_SECONDS } from "../lib/userRetention";
 
 const router = Router();
 
@@ -118,6 +119,10 @@ const store = new RedisOrMemoryStore();
 
 const phonePattern = /^\d{10,15}$/;
 const otpPattern = /^\d{6}$/;
+/** Wrong OTP attempts before lockout. */
+const OTP_VERIFY_MAX_ATTEMPTS = 3;
+/** Lock + fail-counter window after hitting the attempt limit. */
+const OTP_VERIFY_LOCK_SECONDS = 8 * 60 * 60; // 8 hours
 
 function isDatabaseUnavailable(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
@@ -165,7 +170,10 @@ router.post("/phone/otp", async (req, res): Promise<void> => {
   let otp = existingOtp;
   if (!otp) {
     otp = Math.floor(100000 + Math.random() * 900000).toString();
-    await store.set(`otp:${phone}`, otp, "EX", 300);
+    // OTP lives only in Redis — never persist unverified phones to Postgres.
+    // Cap TTL at 30 minutes per retention policy (default 5 minutes).
+    const ttl = Math.min(300, OTP_MAX_TTL_SECONDS);
+    await store.set(`otp:${phone}`, otp, "EX", ttl);
   }
 
   const authKey = process.env.MSG91_AUTH_KEY;
@@ -291,7 +299,9 @@ router.post("/phone/otp/verify", async (req, res): Promise<void> => {
     const isVerifyLocked = await store.get(verifyLockKey);
     if (isVerifyLocked) {
       res.status(429).json({
-        error: "Too many failed verification attempts. Please try again after 15 minutes.",
+        error: "Too many failed verification attempts. Please try again after 8 hours.",
+        code: "OTP_VERIFY_LOCKED",
+        retryAfterSeconds: OTP_VERIFY_LOCK_SECONDS,
       });
       return;
     }
@@ -313,14 +323,17 @@ router.post("/phone/otp/verify", async (req, res): Promise<void> => {
     const isDevelopmentBypass = process.env.NODE_ENV !== "production" && otp === "111111";
 
     if (!isDevelopmentBypass && otp !== cachedOtp) {
-      const failCount = await store.incr(verifyFailKey, 900);
-      if (failCount >= 5) {
-        await store.set(verifyLockKey, "true", "EX", 900);
+      const failCount = await store.incr(verifyFailKey, OTP_VERIFY_LOCK_SECONDS);
+      if (failCount >= OTP_VERIFY_MAX_ATTEMPTS) {
+        await store.set(verifyLockKey, "true", "EX", OTP_VERIFY_LOCK_SECONDS);
         res.status(429).json({
-          error: "Too many failed verification attempts. Please try again after 15 minutes.",
+          error: "Too many failed verification attempts. Please try again after 8 hours.",
+          code: "OTP_VERIFY_LOCKED",
+          retryAfterSeconds: OTP_VERIFY_LOCK_SECONDS,
         });
         return;
       }
+      const remaining = OTP_VERIFY_MAX_ATTEMPTS - failCount;
       const isProduction = process.env.NODE_ENV === "production";
       logger.warn(
         {
@@ -328,10 +341,18 @@ router.post("/phone/otp/verify", async (req, res): Promise<void> => {
           submittedOtpSuffix: isProduction ? undefined : otp.slice(-2),
           cachedOtpExists: !!cachedOtp,
           failCount,
+          remaining,
         },
         "OTP verification mismatch",
       );
-      res.status(400).json({ error: "This code is invalid or has expired. Request a new code and try again." });
+      res.status(400).json({
+        error:
+          remaining === 1
+            ? "Invalid or expired code. 1 attempt left before an 8-hour lock."
+            : `Invalid or expired code. ${remaining} attempts left.`,
+        code: "OTP_INVALID",
+        attemptsRemaining: remaining,
+      });
       return;
     }
 

@@ -6,6 +6,7 @@ import { expireGraceWindows } from "./siteAccess";
 import { rollupPortfolioStats } from "./analytics";
 import { expireStaleAwaitingMandates } from "./billingEngine";
 import { appOrigin } from "./platform";
+import { purgeAbandonedPhoneOnlyUsers } from "./userRetention";
 
 async function enqueueDunningEmail(userId: string, graceUntil: Date, dayBucket: 0 | 7 | 14) {
   const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
@@ -57,6 +58,8 @@ export async function runDailyBillingAndAnalyticsJob(hooks: DailyJobHooks = {}) 
     refundPayment: hooks.refundPayment || (async () => null),
   });
 
+  const phoneOnlyPurge = await purgeAbandonedPhoneOnlyUsers({ olderThanDays: 7, limit: 200 });
+
   const graceUsers = await db
     .select()
     .from(users)
@@ -76,6 +79,9 @@ export async function runDailyBillingAndAnalyticsJob(hooks: DailyJobHooks = {}) 
     }
   }
 
-  logger.info({ expired, rolled, dunning, mandateSweep }, "Daily billing/analytics job completed");
-  return { ok: true as const, expired, rolled, dunning, mandateSweep };
+  logger.info(
+    { expired, rolled, dunning, mandateSweep, phoneOnlyPurge },
+    "Daily billing/analytics job completed",
+  );
+  return { ok: true as const, expired, rolled, dunning, mandateSweep, phoneOnlyPurge };
 }

@@ -33,8 +33,9 @@ export async function enqueueSiteLiveEmail(userId: string, email: string, userNa
 }
 
 /**
- * Schedule recovery emails for users who started onboarding but have been
- * inactive for 24h+ and have not completed onboarding.
+ * Schedule recovery emails for users who linked email/Google, started
+ * onboarding, then went inactive 24h+ without completing. Phone-only
+ * provisional accounts are never emailed (they auto-delete after 7 days).
  */
 export async function scheduleRecoveryEmails() {
   try {
