@@ -1,5 +1,5 @@
 import { and, eq, sql } from "drizzle-orm";
-import { db, payments, profiles, subscriptions, users } from "@workspace/db";
+import { db, emailDeliveries, payments, profiles, subscriptions, users } from "@workspace/db";
 import { enqueueEmail, processEmailOutbox } from "./emailOutbox";
 import { invalidatePricingCache } from "./pricingCatalog";
 import { appOrigin, portfolioPublicUrl } from "./platform";
@@ -121,12 +121,13 @@ export async function finalizePremiumTrial(opts: {
   const planLabel = opts.planLabel || opts.plan;
   const expiresLabel = formatTrialExpiryLabel(opts.expiresAt);
   const expiresDay = opts.expiresAt.toISOString().slice(0, 10);
+  const dedupeKey = `premium_trial_started:${opts.userId}:${expiresDay}`;
 
   const queued = await enqueueEmail({
     eventType: "premium_trial_started",
     recipient: email,
     subject: `Your BEXO ${planLabel} free trial has started — set up Autopay`,
-    dedupeKey: `premium_trial_started:${opts.userId}:${expiresDay}`,
+    dedupeKey,
     userId: opts.userId,
     relatedId: opts.plan,
     payload: {
@@ -140,17 +141,34 @@ export async function finalizePremiumTrial(opts: {
     },
   });
 
+  let emailed = !!queued;
+  if (!queued) {
+    const [existing] = await db
+      .select({ id: emailDeliveries.id, status: emailDeliveries.status })
+      .from(emailDeliveries)
+      .where(eq(emailDeliveries.dedupeKey, dedupeKey))
+      .limit(1);
+    emailed = !!existing;
+  }
+
   // Flush quickly so staff see delivery status soon after grant.
   await processEmailOutbox(5).catch((err) =>
     logger.warn({ err, userId: opts.userId }, "Trial email outbox flush failed"),
   );
 
   logger.info(
-    { userId: opts.userId, email, plan: opts.plan, expiresAt: opts.expiresAt.toISOString(), queued: !!queued },
+    {
+      userId: opts.userId,
+      email,
+      plan: opts.plan,
+      expiresAt: opts.expiresAt.toISOString(),
+      queued: !!queued,
+      emailed,
+    },
     "Premium trial notification processed",
   );
 
-  return { emailed: !!queued, email };
+  return { emailed, email };
 }
 
 export async function notifyPlanPriceChange(opts: {
