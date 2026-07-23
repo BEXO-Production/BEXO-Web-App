@@ -253,14 +253,12 @@ export async function renderPortfolioForHandle(
           ? profile.templateId
           : (user.templateId ?? "minimal");
 
-      const isPremiumUser = !!(subscriptionState.isPremium || profile.isPremium);
-      // Heal admin-granted / paid users still stuck on free Minimal (subdomain needs a bundle)
+      const isPremiumUser = !!subscriptionState.isPremium;
+      // Read-only render: never write on public GET. Paid users stuck on
+      // Minimal still get a Pro shell for this response; activation/admin
+      // paths are responsible for persisting templateId.
       if (isPremiumUser && (!templateIdForUser || templateIdForUser === "minimal")) {
-        const { upgradeUserToPremiumLive } = await import("../lib/adminOps");
-        const healed = await upgradeUserToPremiumLive(user.id);
-        templateIdForUser = healed.templateId;
-        user = { ...user, templateId: templateIdForUser };
-        profile = { ...profile, templateId: templateIdForUser, isPremium: true };
+        templateIdForUser = "cura-futuri";
       }
 
       profileData = buildPublicProfile({

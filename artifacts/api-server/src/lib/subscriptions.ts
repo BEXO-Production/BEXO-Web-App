@@ -1,5 +1,6 @@
-import { addonSubscriptions, db, subscriptions, users } from "@workspace/db";
+import { addonSubscriptions, db, profiles, subscriptions, users } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
+import { invalidatePortfolioRenderCache } from "./portfolioRenderCache";
 
 export const FREE_STORAGE_BYTES = 10 * 1024 * 1024;
 export const STORAGE_BLOCK_BYTES = 50 * 1024 * 1024; // storage add-on block size
@@ -241,8 +242,23 @@ export async function resolveSubscriptionState(userId: string): Promise<Subscrip
       .set({
         storageQuotaBytes: quota,
         cancelAtPeriodEnd: false,
+        templateId: "minimal",
+        siteStatus: "paused",
+        pauseReason: "subscription_ended",
       })
       .where(eq(users.id, userId));
+    const [expiredProfile] = await db
+      .select({ handle: profiles.handle })
+      .from(profiles)
+      .where(eq(profiles.userId, userId))
+      .limit(1);
+    await db
+      .update(profiles)
+      .set({ isPremium: false, templateId: "minimal" })
+      .where(eq(profiles.userId, userId));
+    if (expiredProfile?.handle) {
+      invalidatePortfolioRenderCache(String(expiredProfile.handle));
+    }
 
     return {
       subscription: { ...subscription, status: "expired" },
@@ -366,6 +382,17 @@ export async function activatePaidPlan(
       pauseReason: null,
     })
     .where(eq(users.id, userId));
+
+  // Promote profile + premium template + invalidate render cache.
+  try {
+    const { upgradeUserToPremiumLive } = await import("./adminOps");
+    await upgradeUserToPremiumLive(userId, { preferKeepTemplate: true });
+  } catch {
+    await db
+      .update(profiles)
+      .set({ isPremium: true })
+      .where(eq(profiles.userId, userId));
+  }
 
   return {
     plan: purchasedPlan,

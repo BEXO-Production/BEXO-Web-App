@@ -122,10 +122,10 @@ export const FALLBACK_PLAN_CATALOG = [
     storageBytes: FREE_STORAGE_BYTES,
     isPurchasable: true,
     isHighlighted: false,
-    features: ["Basic template", "10MB storage", "3 updates per month", "Path-based link (no subdomain)"],
+    features: ["Basic template", "10MB storage", "1 update per month", "Path-based link (no subdomain)"],
     billingPeriod: "free" as const,
     parsesPerMonth: 0,
-    updatesPerMonth: 3,
+    updatesPerMonth: 1,
     sortOrder: 0,
     pricing: null,
   },
@@ -232,7 +232,7 @@ export const FALLBACK_PLAN_CATALOG = [
   },
 ];
 
-export const STORAGE_ADDON_BLOCK_INR = 59; // ₹59 per +50MB block
+export const STORAGE_ADDON_BLOCK_INR = 25; // ₹25 per +50MB block
 
 export interface StorageBundleCalculation {
   usedBytes: number;

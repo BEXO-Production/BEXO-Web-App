@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, users, payments, subscriptions, addonSubscriptions, activationKeys } from "@workspace/db";
+import { db, users, payments, subscriptions, addonSubscriptions, activationKeys, profiles } from "@workspace/db";
 import { and, desc, eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import Razorpay from "razorpay";
@@ -2150,6 +2150,15 @@ router.post("/free-activate", requireAuth, async (req: any, res: any) => {
   if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
   try {
+    const current = await resolveSubscriptionState(userId);
+    if (current.isPremium) {
+      return res.status(409).json({
+        error: "You already have an active paid plan. Free activate cannot downgrade it.",
+        plan: current.plan,
+        isPremium: true,
+      });
+    }
+
     const existing = await db.select().from(subscriptions).where(eq(subscriptions.userId, userId)).limit(1);
 
     if (existing.length > 0) {
@@ -2169,8 +2178,25 @@ router.post("/free-activate", requireAuth, async (req: any, res: any) => {
     // Free plan gets 10MB storage limit; clear stacked bonuses
     await db
       .update(users)
-      .set({ storageQuotaBytes: FREE_STORAGE_BYTES, storageBonusBytes: 0 })
+      .set({
+        storageQuotaBytes: FREE_STORAGE_BYTES,
+        storageBonusBytes: 0,
+        templateId: "minimal",
+      })
       .where(eq(users.id, userId));
+    const [profile] = await db
+      .select({ handle: profiles.handle })
+      .from(profiles)
+      .where(eq(profiles.userId, userId))
+      .limit(1);
+    await db
+      .update(profiles)
+      .set({ isPremium: false, templateId: "minimal" })
+      .where(eq(profiles.userId, userId));
+    if (profile?.handle) {
+      const { invalidatePortfolioRenderCache } = await import("../lib/portfolioRenderCache");
+      invalidatePortfolioRenderCache(String(profile.handle));
+    }
     await markOnboardingComplete(userId).catch((err) =>
       logger.warn({ err, userId }, "markOnboardingComplete failed after free activate"),
     );

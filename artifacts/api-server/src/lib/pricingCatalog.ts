@@ -62,11 +62,11 @@ const FALLBACK_PLANS: PricingPlanRow[] = [
     isPurchasable: true,
     sortOrder: 0,
     isHighlighted: false,
-    features: ["Basic template", "10MB storage", "3 updates per month", "Path-based link (no subdomain)"],
+    features: ["Basic template", "10MB storage", "1 update per month", "Path-based link (no subdomain)"],
     billingPeriod: "free",
     razorpayPlanId: null,
     parsesPerMonth: 0,
-    updatesPerMonth: 3,
+    updatesPerMonth: 1,
   },
   {
     id: "identity",
