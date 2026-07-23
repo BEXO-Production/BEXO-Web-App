@@ -32,7 +32,7 @@ gcloud run deploy "$SERVICE" \
   --max-instances=20 \
   --timeout=300 \
   --concurrency=80 \
-  --update-env-vars="PLATFORM_DOMAIN=mybexo.cyou,FRONTEND_URL=https://dash.mybexo.cyou,WEB_URL=https://dash.mybexo.cyou,MARKETING_URL=https://mybexo.cyou"
+  --update-env-vars="PLATFORM_DOMAIN=mybexo.cyou,FRONTEND_URL=https://dash.mybexo.cyou,WEB_URL=https://dash.mybexo.cyou,MARKETING_URL=https://mybexo.cyou,ALLOW_INMEMORY_OTP=1"
 
 SERVICE_URL="$(gcloud run services describe "$SERVICE" --project="$PROJECT" --region="$REGION" --format='value(status.url)')"
 echo "Cloud Run URL: $SERVICE_URL"
