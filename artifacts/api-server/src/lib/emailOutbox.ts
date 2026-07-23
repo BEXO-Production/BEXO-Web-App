@@ -1,7 +1,7 @@
 import { and, eq, lte, or, sql } from "drizzle-orm";
 import { db, emailDeliveries, leadReplies } from "@workspace/db";
 import { logger } from "./logger";
-import { sendEmail } from "./mailer";
+import { isSmtpConfigured, sendEmail } from "./mailer";
 import {
   getActivationEmail,
   getBillingReceiptEmail,
@@ -241,16 +241,41 @@ async function renderEmail(row: typeof emailDeliveries.$inferSelect) {
         replyTo: "support@acedigital.cc",
       };
     default:
-      return {
-        html: `<p>${row.subject}</p><pre>${JSON.stringify(payload, null, 2)}</pre>`,
-        attachments: undefined,
-        replyTo: undefined,
-      };
+      throw new Error(`No HTML template registered for email eventType=${row.eventType}`);
   }
 }
 
 export async function processEmailOutbox(limit = 20) {
   const now = new Date();
+  const staleBefore = new Date(Date.now() - 5 * 60_000);
+
+  // Reclaim rows stuck in `processing` after a crash/deploy mid-send.
+  await db.execute(sql`
+    UPDATE email_deliveries
+    SET
+      status = 'failed',
+      last_error = COALESCE(last_error, 'Reclaimed stale processing claim'),
+      next_retry_at = ${now},
+      updated_at = NOW()
+    WHERE status = 'processing'
+      AND updated_at < ${staleBefore}
+  `);
+
+  // If SMTP came online after earlier skips, re-queue recent skipped rows.
+  if (isSmtpConfigured()) {
+    await db.execute(sql`
+      UPDATE email_deliveries
+      SET
+        status = 'pending',
+        next_retry_at = ${now},
+        last_error = 'Re-queued after SMTP became available',
+        updated_at = NOW()
+      WHERE status = 'skipped'
+        AND updated_at > NOW() - INTERVAL '7 days'
+        AND attempts < ${MAX_ATTEMPTS}
+    `);
+  }
+
   // Claim rows atomically across Cloud Run replicas (SKIP LOCKED).
   const claimed = await db.execute(sql`
     UPDATE email_deliveries
@@ -320,11 +345,14 @@ export async function processEmailOutbox(limit = 20) {
             .where(eq(leadReplies.id, row.relatedId));
         }
       } else if (result.skipped) {
+        // Keep retryable so fixing SMTP does not permanently lose the event.
+        const delayMinutes = Math.min(30, 2 ** Math.min(row.attempts, 4));
         await db
           .update(emailDeliveries)
           .set({
-            status: "skipped",
+            status: "failed",
             lastError: result.error || "SMTP not configured",
+            nextRetryAt: new Date(Date.now() + delayMinutes * 60_000),
             updatedAt: new Date(),
           })
           .where(eq(emailDeliveries.id, row.id));
@@ -333,7 +361,7 @@ export async function processEmailOutbox(limit = 20) {
           await db
             .update(leadReplies)
             .set({
-              status: "skipped",
+              status: "failed",
               emailDeliveryId: row.id,
               lastError: result.error || "SMTP not configured",
             })
@@ -373,6 +401,17 @@ export async function processEmailOutbox(limit = 20) {
           updatedAt: new Date(),
         })
         .where(eq(emailDeliveries.id, row.id));
+
+      if (row.eventType === "lead_reply" && row.relatedId) {
+        await db
+          .update(leadReplies)
+          .set({
+            status: "failed",
+            emailDeliveryId: row.id,
+            lastError: error?.message || "Outbox processing error",
+          })
+          .where(eq(leadReplies.id, row.relatedId));
+      }
     }
   }
 }

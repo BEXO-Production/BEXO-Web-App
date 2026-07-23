@@ -38,7 +38,6 @@ import { generateAndStoreInvoice, backfillMissingInvoices } from "../lib/invoice
 import { getPlanLimits, getUpdatesUsage, getParsesUsage } from "../lib/entitlements";
 import {
   claimWebhookEvent,
-  expireStaleAwaitingMandates,
   isMandateReadyStatus,
   markWebhookProcessed,
   recordLedgerEvent,
@@ -46,12 +45,10 @@ import {
 import {
   clearPaymentGrace,
   enterPaymentGrace,
-  expireGraceWindows,
   resolveSiteAccess,
   setCancelAtPeriodEnd,
 } from "../lib/siteAccess";
 import { enqueueEmail } from "../lib/emailOutbox";
-import { rollupPortfolioStats } from "../lib/analytics";
 import {
   ensureBillingProfileForCheckout,
   getBillingProfile,
@@ -2779,11 +2776,8 @@ router.post("/jobs/daily", async (req: any, res: any) => {
   }
 
   try {
-    const expired = await expireGraceWindows(500);
-    const rolled = await rollupPortfolioStats(3);
-
-    const mandateSweep = await expireStaleAwaitingMandates({
-      limit: 100,
+    const { runDailyBillingAndAnalyticsJob } = await import("../lib/dailyJobs");
+    const result = await runDailyBillingAndAnalyticsJob({
       cancelSubscription: async (subscriptionId) => {
         if (!razorpay || subscriptionId.startsWith("mock_")) return;
         await razorpay.subscriptions.cancel(subscriptionId, false);
@@ -2797,28 +2791,7 @@ router.post("/jobs/daily", async (req: any, res: any) => {
         return refund?.id ? { id: refund.id as string } : null;
       },
     });
-
-    // Day 7 / 14 dunning for users still in grace
-    const graceUsers = await db
-      .select()
-      .from(users)
-      .where(eq(users.siteStatus, "grace"))
-      .limit(500);
-    const now = Date.now();
-    let dunning = 0;
-    for (const u of graceUsers) {
-      if (!u.paymentFailedAt || !u.graceUntil) continue;
-      const daysSince = Math.floor((now - u.paymentFailedAt.getTime()) / (24 * 60 * 60 * 1000));
-      if (daysSince >= 14) {
-        await enqueueDunningEmail(u.id, u.graceUntil, 14);
-        dunning += 1;
-      } else if (daysSince >= 7) {
-        await enqueueDunningEmail(u.id, u.graceUntil, 7);
-        dunning += 1;
-      }
-    }
-
-    res.json({ ok: true, expired, rolled, dunning, mandateSweep });
+    res.json(result);
   } catch (error) {
     logger.error({ error }, "Daily billing/analytics job failed");
     res.status(500).json({ error: "Job failed" });

@@ -29,9 +29,9 @@ import {
 import { buildUnclaimedHandleHtml } from "../lib/claimUnclaimedHandleHtml";
 import {
   getPortfolioRenderCache,
+  getPortfolioRenderCacheAsync,
   setPortfolioRenderCache,
 } from "../lib/portfolioRenderCache";
-import { agentDebugLog } from "../lib/agentDebugLog";
 
 type CachedPortfolio = {
   profileData: ReturnType<typeof buildPublicProfile>;
@@ -39,13 +39,20 @@ type CachedPortfolio = {
   userName: string | null;
 };
 
-// Map template IDs to their deployed URLs (or localhost for dev)
-const TEMPLATE_URLS: Record<string, string> = {
-  minimal: "https://resilient-hummingbird-87fc89.netlify.app",
-  "cura-futuri": "http://localhost:5174", // TODO: Update with production URL
-  "sierra-montana": "http://localhost:5500", // TODO: Update with production URL
-  "nico-palmer": "http://localhost:5175", // fallback when bundle missing; production uses template-bundles
+/**
+ * Dev-only optional upstreams for template authors iterating outside
+ * template-bundles/. Production MUST never hit these — bundles ship in the
+ * API image and are served via getTemplateBundleRoot().
+ */
+const DEV_TEMPLATE_UPSTREAMS: Record<string, string> = {
+  "cura-futuri": process.env.DEV_TEMPLATE_CURA_URL || "",
+  "sierra-montana": process.env.DEV_TEMPLATE_SIERRA_URL || "",
+  "nico-palmer": process.env.DEV_TEMPLATE_NICO_URL || "",
 };
+
+function isProductionRuntime(): boolean {
+  return process.env.NODE_ENV === "production" || process.env.K_SERVICE != null;
+}
 
 /** Serve AI marketing demo assets (portrait / project stills). */
 export const marketingDemoStatic = express.static(MARKETING_DEMO_ASSETS_DIR, {
@@ -195,22 +202,18 @@ export async function renderPortfolioForHandle(
 
     // 1. Look up + assemble profile (short TTL cache absorbs concurrent viewers)
     const cacheKey = subdomain;
-    let cached = getPortfolioRenderCache<CachedPortfolio>(cacheKey);
+    let cached =
+      getPortfolioRenderCache<CachedPortfolio>(cacheKey) ||
+      (await getPortfolioRenderCacheAsync<CachedPortfolio>(cacheKey));
     let profileData: ReturnType<typeof buildPublicProfile>;
     let siteAccess: Awaited<ReturnType<typeof resolveSiteAccess>>;
     let ownerName: string | null | undefined;
 
     if (cached) {
-      // #region agent log
-      agentDebugLog("L", "subdomainRouter:cache-hit", "portfolio render cache hit", { subdomain });
-      // #endregion
       profileData = cached.profileData;
       siteAccess = cached.siteAccess;
       ownerName = cached.userName;
     } else {
-      // #region agent log
-      agentDebugLog("L", "subdomainRouter:cache-miss", "portfolio render cache miss", { subdomain });
-      // #endregion
       const profileMatch = await db.select()
         .from(profiles)
         .where(or(eq(profiles.handle, subdomain), eq(profiles.subdomain, subdomain)))
@@ -349,16 +352,16 @@ export async function renderPortfolioForHandle(
     
     const templateId = previewOverride || profileData.user.templateId;
     const localBundleRoot = getTemplateBundleRoot(templateId);
-    const targetUrl = TEMPLATE_URLS[templateId] || TEMPLATE_URLS["minimal"];
-
-    // 7. Proxy / serve the request
     const path = options.requestPath || req.path;
-    const fullTargetUrl = `${targetUrl}${req.originalUrl}`;
-    
+    const devUpstream =
+      !isProductionRuntime() && DEV_TEMPLATE_UPSTREAMS[templateId]
+        ? DEV_TEMPLATE_UPSTREAMS[templateId]
+        : "";
+
     logger.info(
       localBundleRoot
         ? `Serving bundled template ${templateId} for ${subdomain}`
-        : `Proxying subdomain ${subdomain} to template ${templateId} (${fullTargetUrl})`,
+        : `No local bundle for ${templateId} on ${subdomain}`,
     );
 
     // Premium templates ship inside the API image. No standalone template
@@ -409,11 +412,8 @@ export async function renderPortfolioForHandle(
       return;
     }
 
-    // No local bundle (e.g. free users forced onto "minimal"). Never proxy the
-    // Netlify demo site for subdomain visits — send them to the free path URL.
+    // Free users forced onto "minimal" — redirect to path portfolio URL.
     if (!previewOverride && templateId === "minimal") {
-      // Free path portfolios are public on the apex: mybexo.cyou/{handle}
-      // (marketing Hosting rewrite + Worker proxy keep that URL working).
       const freeUrl = pathPortfolioUrl(subdomain);
       const isPremiumUser = !!profileData?.isPremium;
       res
@@ -436,46 +436,64 @@ export async function renderPortfolioForHandle(
 </div></body></html>`);
       return;
     }
-    
-    try {
-      const proxyRes = await fetch(fullTargetUrl, {
-        method: req.method,
-        headers: {
-          ...req.headers,
-          host: new URL(targetUrl).host,
-        } as any,
-      });
 
-      // Node fetch auto-decompresses upstream responses.
-      proxyRes.headers.forEach((value, key) => {
-        if (key.toLowerCase() === "content-encoding" || key.toLowerCase() === "content-length") {
+    // Dev-only: optional live-reload upstream for template authors.
+    if (devUpstream) {
+      const fullTargetUrl = `${devUpstream.replace(/\/$/, "")}${req.originalUrl}`;
+      try {
+        const proxyRes = await fetch(fullTargetUrl, {
+          method: req.method,
+          headers: {
+            ...req.headers,
+            host: new URL(devUpstream).host,
+          } as any,
+        });
+        proxyRes.headers.forEach((value, key) => {
+          if (key.toLowerCase() === "content-encoding" || key.toLowerCase() === "content-length") {
+            return;
+          }
+          res.setHeader(key, value);
+        });
+        res.status(proxyRes.status);
+        const contentType = proxyRes.headers.get("content-type") || "";
+        if (contentType.includes("text/html")) {
+          const html = await proxyRes.text();
+          res
+            .type("html")
+            .send(injectPortfolioBootstrap(html, profileData, basePath));
           return;
         }
-        res.setHeader(key, value);
-      });
-      res.status(proxyRes.status);
-
-      // Deep links can also return an SPA shell. Inject based on response
-      // content type rather than only for "/", preventing demo fallback data.
-      const contentType = proxyRes.headers.get("content-type") || "";
-      if (contentType.includes("text/html")) {
-        const html = await proxyRes.text();
-        res
-          .type("html")
-          .send(injectPortfolioBootstrap(html, profileData, basePath));
+        if (proxyRes.body) {
+          // @ts-ignore Node's Readable.fromWeb expects the compatible web stream.
+          Readable.fromWeb(proxyRes.body as any).pipe(res);
+        } else {
+          res.end();
+        }
         return;
+      } catch (err) {
+        logger.error({ err, subdomain, templateId }, "Error proxying dev template upstream");
       }
-
-      if (proxyRes.body) {
-        // @ts-ignore Node's Readable.fromWeb expects the compatible web stream.
-        Readable.fromWeb(proxyRes.body as any).pipe(res);
-      } else {
-        res.end();
-      }
-    } catch (err) {
-      logger.error({ err, subdomain, templateId }, "Error proxying template");
-      res.status(502).send("Error fetching template.");
     }
+
+    // Production (and any env without a bundle): never proxy to localhost/Netlify.
+    logger.error(
+      { subdomain, templateId },
+      "Template bundle missing — refuse to proxy external hosts",
+    );
+    res
+      .status(503)
+      .type("html")
+      .send(`<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Template unavailable · BEXO</title>
+<style>
+  body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:system-ui,sans-serif;background:#f8fafc;color:#0f172a}
+  .card{max-width:28rem;padding:2rem;border-radius:1.25rem;background:#fff;border:1px solid #e2e8f0;text-align:center}
+  p{color:#64748b;line-height:1.5;font-size:.9rem}
+</style></head><body><div class="card">
+<h1 style="margin:0 0 .5rem;font-size:1.25rem">Portfolio template unavailable</h1>
+<p>We're refreshing this layout. Please try again in a moment.</p>
+</div></body></html>`);
 
   } catch (err) {
     logger.error({ err, subdomain }, "Error processing subdomain routing");

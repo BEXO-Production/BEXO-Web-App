@@ -1518,7 +1518,7 @@ export default function Dashboard() {
       } else {
         toast({
           title: 'Premium Template',
-          description: `${tpl.name} is a Pro template. Its live preview is coming soon — upgrade to unlock premium layouts.`,
+          description: `${tpl.name} is a Pro layout. Preview it with the demo, then upgrade to publish it on your portfolio.`,
         });
       }
       return;

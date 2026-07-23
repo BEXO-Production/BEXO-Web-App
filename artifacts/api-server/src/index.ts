@@ -33,6 +33,7 @@ import { checkDatabaseConnection } from "@workspace/db";
 import { verifyMailer } from "./lib/mailer";
 import { startEmailOutboxWorker, processEmailOutbox } from "./lib/emailOutbox";
 import { scheduleLifecycleEmails } from "./lib/lifecycleEmails";
+import { runDailyBillingAndAnalyticsJob } from "./lib/dailyJobs";
 
 const rawPort = process.env["PORT"];
 
@@ -88,6 +89,15 @@ setInterval(() => {
 }, 60 * 60 * 1000);
 scheduleLifecycleEmails().catch(() => undefined);
 processEmailOutbox().catch(() => undefined);
+
+// Daily billing/dunning/analytics — also exposable via POST /api/payments/jobs/daily.
+const DAY_MS = 24 * 60 * 60 * 1000;
+const runDaily = () =>
+  runDailyBillingAndAnalyticsJob().catch((err) =>
+    logger.error({ err }, "In-process daily billing job failed"),
+  );
+void runDaily();
+setInterval(runDaily, DAY_MS);
 
 app.listen(port, (err) => {
   if (err) {

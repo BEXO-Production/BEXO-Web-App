@@ -147,7 +147,8 @@ export async function scheduleCartRecoveryEmails() {
 }
 
 /**
- * Renewal reminder: active annual plans expiring within 14 days.
+ * Renewal reminder: active paid plans with a real expiry within 14 days
+ * (growth yearly, monthly identity/essential, and legacy annual).
  */
 export async function scheduleRenewalReminderEmails() {
   try {
@@ -157,6 +158,7 @@ export async function scheduleRenewalReminderEmails() {
     const due = await db
       .select({
         userId: subscriptions.userId,
+        plan: subscriptions.plan,
         expiresAt: subscriptions.expiresAt,
         email: users.email,
         name: users.name,
@@ -166,7 +168,7 @@ export async function scheduleRenewalReminderEmails() {
       .where(
         and(
           eq(subscriptions.status, "active"),
-          eq(subscriptions.plan, "annual"),
+          sql`${subscriptions.plan} IN ('growth', 'identity', 'essential', 'annual')`,
           sql`${subscriptions.expiresAt} IS NOT NULL`,
           gte(subscriptions.expiresAt, now),
           lte(subscriptions.expiresAt, windowEnd),
@@ -183,10 +185,16 @@ export async function scheduleRenewalReminderEmails() {
         year: "numeric",
       });
       const expiryKey = row.expiresAt.toISOString().slice(0, 10);
+      const planLabel =
+        row.plan === "growth" || row.plan === "annual"
+          ? "Yearly"
+          : row.plan === "essential"
+            ? "Essential"
+            : "Identity";
       await enqueueEmail({
         eventType: "renewal_reminder",
         recipient: row.email,
-        subject: "Renew your Bexo Yearly plan",
+        subject: `Renew your Bexo ${planLabel} plan`,
         dedupeKey: `renewal_reminder:${row.userId}:${expiryKey}`,
         userId: row.userId,
         relatedId: expiryKey,
@@ -194,6 +202,7 @@ export async function scheduleRenewalReminderEmails() {
           userName: row.name || "there",
           renewUrl: `${APP_ORIGIN}/billing`,
           expiresLabel,
+          planLabel,
         },
       });
     }
