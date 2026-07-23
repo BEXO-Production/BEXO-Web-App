@@ -629,3 +629,47 @@ export const getPlanPriceChangeEmail = (
     `,
   });
 };
+
+export const getPremiumTrialStartedEmail = (
+  userName: string,
+  planLabel: string,
+  expiresLabel: string,
+  billingUrl: string,
+  siteUrl?: string,
+) => {
+  const siteLine = siteUrl
+    ? bodyParagraph(
+        `Your portfolio is live at <a href="${escapeHtml(siteUrl)}" style="color:${INK};font-weight:600;">${escapeHtml(siteUrl.replace(/^https?:\/\//, ""))}</a> with a premium template.`,
+      )
+    : bodyParagraph("Your premium template and Pro features are unlocked in the dashboard.");
+
+  return wrapHtml({
+    title: "Your BEXO premium free trial has started",
+    preheader: `${planLabel} free trial is active for 30 days — set up Autopay to keep it after ${expiresLabel || "the trial ends"}.`,
+    eyebrow: "Premium free trial",
+    headline: "Your 30-day premium trial is live.",
+    accent: "emerald",
+    ctaLabel: "Set up Autopay",
+    ctaUrl: billingUrl,
+    bodyHtml: `
+      ${greeting(userName)}
+      ${bodyParagraph(
+        `We've started your <strong style="color:${INK};">free trial</strong> of BEXO <strong style="color:${INK};">${escapeHtml(planLabel)}</strong>. You have full premium access for the next <strong>30 days</strong>.`,
+      )}
+      ${highlightCard(
+        "Trial ends",
+        expiresLabel
+          ? escapeHtml(expiresLabel)
+          : "30 days from today",
+        "#ECFDF5",
+      )}
+      ${siteLine}
+      ${bodyParagraph(
+        "<strong>Important:</strong> To keep your subdomain, premium template, and Pro features after the trial, set up <strong>Autopay</strong> in Billing before the end date. Without Autopay, the trial ends automatically and the site returns to the free plan.",
+      )}
+      ${featurePills(["30 days free", "Premium templates", "Live subdomain", "Autopay to continue"])}
+      ${bodyParagraph("It takes about a minute — open Billing, choose your plan, and enable Autopay with Razorpay.")}
+    `,
+    footnote: "BEXO · Ace Digital · Questions? Reply to this email or write to support@acedigital.cc",
+  });
+};

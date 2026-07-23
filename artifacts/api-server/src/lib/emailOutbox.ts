@@ -14,6 +14,7 @@ import {
   getRenewalReminderEmail,
   getPaymentFailedEmail,
   getPlanPriceChangeEmail,
+  getPremiumTrialStartedEmail,
   getSupportTicketCreatedEmail,
   getSupportTicketUpdatedEmail,
   getSupportTicketReplyEmail,
@@ -123,6 +124,18 @@ async function renderEmail(row: typeof emailDeliveries.$inferSelect) {
         ),
         attachments: undefined,
         replyTo: undefined,
+      };
+    case "premium_trial_started":
+      return {
+        html: getPremiumTrialStartedEmail(
+          name,
+          payload.planLabel || payload.plan || "Premium",
+          payload.expiresLabel || "",
+          payload.billingUrl || `${origin}/billing`,
+          payload.siteUrl || "",
+        ),
+        attachments: undefined,
+        replyTo: "support@acedigital.cc",
       };
     case "activation":
       return {
