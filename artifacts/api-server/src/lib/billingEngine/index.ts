@@ -7,9 +7,10 @@
  * - Webhook event idempotency
  * - Reconciliation + stale awaiting_mandate cleanup (daily job)
  */
-import { db, billingLedger, payments, razorpayWebhookEvents, subscriptions } from "@workspace/db";
+import { db, billingLedger, payments, razorpayWebhookEvents, subscriptions, users } from "@workspace/db";
 import { and, asc, eq, lt } from "drizzle-orm";
 import { logger } from "../logger";
+import { sendRefundEmail } from "../billing";
 
 export type BillingEventType =
   | "first_invoice_captured"
@@ -90,8 +91,9 @@ export async function claimWebhookEvent(input: {
   payload: unknown;
 }): Promise<{ claim: "process" | "duplicate"; rowId?: string }> {
   if (!input.eventId) {
-    // Some test payloads omit id — process but do not store.
-    return { claim: "process" };
+    // Empty event id cannot be idempotent — reject rather than process blindly.
+    logger.warn({ eventType: input.eventType }, "webhook missing event.id — refusing claim");
+    return { claim: "duplicate" };
   }
   try {
     const [row] = await db
@@ -105,11 +107,45 @@ export async function claimWebhookEvent(input: {
       .onConflictDoNothing()
       .returning({ id: razorpayWebhookEvents.id });
 
-    if (!row) return { claim: "duplicate" };
-    return { claim: "process", rowId: row.id };
+    if (row) return { claim: "process", rowId: row.id };
+
+    // Previously failed events must be reclaimable so Razorpay retries are not
+    // permanently dropped after the first handler error.
+    const [existing] = await db
+      .select({
+        id: razorpayWebhookEvents.id,
+        processingStatus: razorpayWebhookEvents.processingStatus,
+      })
+      .from(razorpayWebhookEvents)
+      .where(eq(razorpayWebhookEvents.eventId, input.eventId))
+      .limit(1);
+
+    if (existing?.processingStatus === "failed") {
+      const [reclaimed] = await db
+        .update(razorpayWebhookEvents)
+        .set({
+          processingStatus: "received",
+          error: null,
+          payload: (input.payload || {}) as Record<string, unknown>,
+          eventType: input.eventType,
+          processedAt: null,
+        })
+        .where(
+          and(
+            eq(razorpayWebhookEvents.id, existing.id),
+            eq(razorpayWebhookEvents.processingStatus, "failed"),
+          ),
+        )
+        .returning({ id: razorpayWebhookEvents.id });
+      if (reclaimed) {
+        return { claim: "process", rowId: reclaimed.id };
+      }
+    }
+
+    return { claim: "duplicate" };
   } catch (error) {
-    logger.error({ error, eventId: input.eventId }, "webhook claim failed — treating as process");
-    return { claim: "process" };
+    logger.error({ error, eventId: input.eventId }, "webhook claim failed — refusing process to avoid doubles");
+    return { claim: "duplicate" };
   }
 }
 
@@ -203,6 +239,24 @@ export async function expireStaleAwaitingMandates(opts: {
         idempotencyKey: `expire_awaiting:${row.id}`,
         metadata: { reason: "awaiting_mandate_ttl" },
       });
+      if (refundId) {
+        try {
+          const [user] = await db.select().from(users).where(eq(users.id, row.userId)).limit(1);
+          if (user?.email) {
+            await sendRefundEmail({
+              email: user.email,
+              userName: user.name || "there",
+              plan: row.plan || "plan",
+              amountInr: row.amount / 100,
+              refundId,
+              userId: row.userId,
+              reason: "awaiting_mandate_ttl",
+            });
+          }
+        } catch (mailErr) {
+          logger.warn({ mailErr, paymentId: row.id }, "TTL refund email failed (non-fatal)");
+        }
+      }
       expired += 1;
     } catch (error) {
       errors += 1;

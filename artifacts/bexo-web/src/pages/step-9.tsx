@@ -402,9 +402,9 @@ export default function Step9Plan() {
   };
 
   const validateCode = () => {
-    const pattern = /^BEXO-[A-Z0-9-]+$/i;
-    if (!pattern.test(code)) {
-      setCodeError('Invalid code format. Code should start with BEXO-');
+    const pattern = /^[A-Z0-9]{2,12}-[A-Z0-9-]{6,}$/i;
+    if (!pattern.test(code.trim())) {
+      setCodeError('Invalid code format. Example: PSG-7F2K-91XQ-AB3D');
       return false;
     }
     setCodeError('');
@@ -436,7 +436,12 @@ export default function Step9Plan() {
           expiresAt: result.expiresAt,
         });
       } else {
-        throw new Error(result.error || "Failed to activate code");
+        const msg =
+          result.code === 'EMAIL_BOUND_MISMATCH'
+            ? result.error ||
+              'This code is linked to another email. Sign in with that email to activate.'
+            : result.error || 'Failed to activate code';
+        throw new Error(msg);
       }
     } catch (err: any) {
       toast({ title: 'Activation Failed', description: err.message, variant: 'destructive' });
@@ -1071,7 +1076,7 @@ export default function Step9Plan() {
           </div>
           <div className="space-y-2">
             <Input 
-              placeholder="BEXO-XXXX-XXXX" 
+              placeholder="PSG-XXXX-XXXX-XXXX" 
               className={`h-14 text-center font-mono text-lg tracking-widest uppercase ${codeError ? "border-red-500 focus-visible:ring-red-500" : ""}`}
               value={code}
               onChange={(e) => {

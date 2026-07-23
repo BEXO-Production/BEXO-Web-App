@@ -4,6 +4,7 @@ import { logger } from "./logger";
 import { isSmtpConfigured, sendEmail } from "./mailer";
 import {
   getActivationEmail,
+  getActivationCodeIssuedEmail,
   getBillingReceiptEmail,
   getCartRecoveryEmail,
   getContactNotificationEmail,
@@ -15,6 +16,8 @@ import {
   getPaymentFailedEmail,
   getPlanPriceChangeEmail,
   getPremiumTrialStartedEmail,
+  getSubscriptionCancelledEmail,
+  getPaymentRefundedEmail,
   getSupportTicketCreatedEmail,
   getSupportTicketUpdatedEmail,
   getSupportTicketReplyEmail,
@@ -137,9 +140,47 @@ async function renderEmail(row: typeof emailDeliveries.$inferSelect) {
         attachments: undefined,
         replyTo: "support@acedigital.cc",
       };
+    case "subscription_cancelled":
+      return {
+        html: getSubscriptionCancelledEmail(
+          name,
+          payload.planLabel || payload.plan || "your plan",
+          payload.expiresLabel || "",
+          payload.billingUrl || `${origin}/billing`,
+          payload.kind || "subscription",
+        ),
+        attachments: undefined,
+        replyTo: undefined,
+      };
+    case "payment_refunded":
+      return {
+        html: getPaymentRefundedEmail(
+          name,
+          payload.planLabel || payload.plan || "your plan",
+          Number(payload.amount || 0),
+          payload.refundId || "",
+          payload.billingUrl || `${origin}/billing`,
+          !!payload.isPartial,
+        ),
+        attachments: undefined,
+        replyTo: undefined,
+      };
     case "activation":
       return {
         html: getActivationEmail(name, payload.code || payload.transactionId || ""),
+        attachments: undefined,
+        replyTo: undefined,
+      };
+    case "activation_code_issued":
+      return {
+        html: getActivationCodeIssuedEmail({
+          userName: name,
+          code: payload.code || "",
+          planLabel: payload.planLabel || payload.plan || "Essential",
+          features: Array.isArray(payload.features) ? payload.features.map(String) : [],
+          organizationName: payload.organizationName || "",
+          redeemUrl: payload.redeemUrl || `${origin}/billing`,
+        }),
         attachments: undefined,
         replyTo: undefined,
       };

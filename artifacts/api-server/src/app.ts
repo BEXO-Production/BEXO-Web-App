@@ -119,6 +119,8 @@ const checkHandleLimiter = createRateLimiter({
   },
 });
 app.use("/api/auth", authLimiter);
+app.use("/api/admin/auth/login", authLimiter);
+app.use("/api/admin/auth/accept-invite", authLimiter);
 app.use("/api/profile/check-handle", checkHandleLimiter);
 app.use("/api/profile/suggest-handle", checkHandleLimiter);
 

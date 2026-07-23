@@ -68,13 +68,14 @@ if (!process.env.JWT_SECRET || process.env.JWT_SECRET === "super_secret_jwt_key"
 }
 
 if (!process.env.REDIS_URL) {
-  // Multi-instance OTP limits need Redis in true production. Development Cloud Run
-  // (mybexo.cyou) may run without it; set REDIS_URL when you scale beyond one instance.
+  // Multi-instance OTP limits need Redis in true production. ALLOW_INMEMORY_OTP=1 is a
+  // single-instance emergency escape hatch only.
+  const allowInMemoryOtp =
+    process.env.ALLOW_INMEMORY_OTP === "1" || process.env.ALLOW_INMEMORY_OTP === "true";
   const requireRedis =
     process.env.REQUIRE_REDIS === "1" ||
     process.env.REQUIRE_REDIS === "true" ||
-    (process.env.NODE_ENV === "production" &&
-      (process.env.PLATFORM_DOMAIN || "").includes("atbexo.com"));
+    (process.env.NODE_ENV === "production" && !allowInMemoryOtp);
   if (requireRedis) {
     logger.fatal("REDIS_URL is required in production for OTP rate limits across Cloud Run instances");
     process.exit(1);
@@ -90,14 +91,44 @@ setInterval(() => {
 scheduleLifecycleEmails().catch(() => undefined);
 processEmailOutbox().catch(() => undefined);
 
-// Daily billing/dunning/analytics — also exposable via POST /api/payments/jobs/daily.
+// Daily billing/dunning/analytics — always pass Razorpay hooks so mandate TTL
+// refunds/cancels are real. Set DISABLE_INPROCESS_DAILY_JOB=1 when Cloud Scheduler
+// hits POST /api/payments/jobs/daily to avoid multi-instance duplicate sweeps.
 const DAY_MS = 24 * 60 * 60 * 1000;
+const buildDailyHooks = async () => {
+  const keyId = process.env.RAZORPAY_KEY_ID;
+  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+  const razorpay =
+    keyId && keySecret && !keyId.includes("your_")
+      ? new (await import("razorpay")).default({ key_id: keyId, key_secret: keySecret })
+      : null;
+  return {
+    cancelSubscription: async (subscriptionId: string) => {
+      if (!razorpay || subscriptionId.startsWith("mock_")) return;
+      await razorpay.subscriptions.cancel(subscriptionId, false);
+    },
+    refundPayment: async (paymentId: string, amountPaise: number) => {
+      if (!razorpay || paymentId.startsWith("mock_")) return null;
+      const refund: any = await razorpay.payments.refund(paymentId, {
+        amount: amountPaise,
+        notes: { reason: "awaiting_mandate_ttl" },
+      } as any);
+      return refund?.id ? { id: refund.id as string } : null;
+    },
+  };
+};
+
 const runDaily = () =>
-  runDailyBillingAndAnalyticsJob().catch((err) =>
-    logger.error({ err }, "In-process daily billing job failed"),
-  );
-void runDaily();
-setInterval(runDaily, DAY_MS);
+  buildDailyHooks()
+    .then((hooks) => runDailyBillingAndAnalyticsJob(hooks))
+    .catch((err) => logger.error({ err }, "In-process daily billing job failed"));
+
+if (process.env.DISABLE_INPROCESS_DAILY_JOB === "1" || process.env.DISABLE_INPROCESS_DAILY_JOB === "true") {
+  logger.info("DISABLE_INPROCESS_DAILY_JOB set — use POST /api/payments/jobs/daily via external cron");
+} else {
+  void runDaily();
+  setInterval(runDaily, DAY_MS);
+}
 
 app.listen(port, (err) => {
   if (err) {

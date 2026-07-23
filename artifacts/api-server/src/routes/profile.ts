@@ -1,5 +1,6 @@
 import { Router } from "express";
 import crypto from "crypto";
+import jwt from "jsonwebtoken";
 import { requireAuth, optionalAuth, AuthenticatedRequest } from "../middlewares/auth";
 import {
   db,
@@ -14,7 +15,6 @@ import {
 } from "@workspace/db";
 import { eq, and, desc, gt, sql, inArray } from "drizzle-orm";
 import { logger } from "../lib/logger";
-import { agentDebugLog } from "../lib/agentDebugLog";
 import { MARKETING_DEMO_HANDLE, getMarketingDemoProfile, isMarketingDemoHandle } from "../lib/marketingDemoProfile";
 import { invalidatePortfolioRenderCache } from "../lib/portfolioRenderCache";
 import multer from "multer";
@@ -247,6 +247,180 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<voi
   }
 });
 
+/**
+ * Verify a Supabase Auth access token and return the Google identity.
+ * Prefers Auth API user lookup; falls back to JWT verify with SUPABASE_JWT_SECRET.
+ */
+async function verifySupabaseGoogleIdentity(
+  accessToken: string,
+): Promise<{ oauthId: string; email: string; name?: string; photoUrl?: string } | null> {
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  const jwtSecret = process.env.SUPABASE_JWT_SECRET;
+
+  if (supabaseUrl && anonKey) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      let resp: Response;
+      try {
+        resp = await fetch(`${supabaseUrl.replace(/\/$/, "")}/auth/v1/user`, {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            apikey: anonKey,
+          },
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
+      if (resp.ok) {
+        const user = (await resp.json()) as {
+          id?: string;
+          email?: string;
+          user_metadata?: { full_name?: string; name?: string; avatar_url?: string; picture?: string };
+          app_metadata?: { provider?: string; providers?: string[] };
+          identities?: Array<{ provider?: string }>;
+        };
+        const providers = [
+          ...(user.app_metadata?.providers || []),
+          ...(user.identities || []).map((i) => i.provider).filter(Boolean) as string[],
+        ];
+        const provider = user.app_metadata?.provider;
+        const isGoogle = provider === "google" || providers.includes("google");
+        if (user.id && user.email && isGoogle) {
+          return {
+            oauthId: user.id,
+            email: user.email.trim().toLowerCase(),
+            name: user.user_metadata?.full_name || user.user_metadata?.name,
+            photoUrl: user.user_metadata?.avatar_url || user.user_metadata?.picture,
+          };
+        }
+      }
+    } catch (err) {
+      logger.warn({ err }, "Supabase Auth /user lookup failed");
+    }
+  }
+
+  if (jwtSecret) {
+    try {
+      const decoded = jwt.verify(accessToken, jwtSecret) as {
+        sub?: string;
+        email?: string;
+        user_metadata?: { full_name?: string; name?: string; avatar_url?: string };
+        app_metadata?: { provider?: string };
+      };
+      if (decoded.sub && decoded.email) {
+        return {
+          oauthId: decoded.sub,
+          email: decoded.email.trim().toLowerCase(),
+          name: decoded.user_metadata?.full_name || decoded.user_metadata?.name,
+          photoUrl: decoded.user_metadata?.avatar_url,
+        };
+      }
+    } catch {
+      // invalid token
+    }
+  }
+
+  return null;
+}
+
+// POST /profile/link-google — bind Google OAuth identity from Supabase session to BEXO user
+router.post("/link-google", requireAuth, async (req: AuthenticatedRequest, res): Promise<void> => {
+  const userId = req.user!.id;
+  const accessToken =
+    typeof req.body?.accessToken === "string"
+      ? req.body.accessToken.trim()
+      : typeof req.body?.access_token === "string"
+        ? req.body.access_token.trim()
+        : "";
+
+  if (!accessToken) {
+    res.status(400).json({ error: "Missing Supabase accessToken." });
+    return;
+  }
+
+  try {
+    const identity = await verifySupabaseGoogleIdentity(accessToken);
+    if (!identity) {
+      res.status(401).json({ error: "Invalid or expired Google session. Please sign in with Google again." });
+      return;
+    }
+
+    const { oauthId, email, name, photoUrl } = identity;
+
+    const [emailOwner] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, email))
+      .limit(1);
+    if (emailOwner && emailOwner.id !== userId) {
+      res.status(409).json({
+        error: "This Google email is already linked to another BEXO account.",
+        code: "EMAIL_TAKEN",
+      });
+      return;
+    }
+
+    const [oauthOwner] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.oauthProvider, "google"), eq(users.oauthId, oauthId)))
+      .limit(1);
+    if (oauthOwner && oauthOwner.id !== userId) {
+      res.status(409).json({
+        error: "This Google account is already linked to another BEXO account.",
+        code: "OAUTH_TAKEN",
+      });
+      return;
+    }
+
+    const [current] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+    if (!current) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    const userUpdates: Partial<typeof users.$inferInsert> = {
+      email,
+      oauthProvider: "google",
+      oauthId,
+    };
+    if (!current.name && name) userUpdates.name = name;
+    if (!current.photoUrl && photoUrl) userUpdates.photoUrl = photoUrl;
+
+    await db.update(users).set(userUpdates).where(eq(users.id, userId));
+    await markOnboardingActivity(userId);
+    if (!current.email) {
+      await enqueueWelcomeEmail(userId, email, name || current.name || "there");
+    }
+
+    logger.info({ userId, email }, "Linked Google OAuth to user");
+    res.json({
+      success: true,
+      user: {
+        id: userId,
+        email,
+        oauthProvider: "google",
+        oauthId,
+        name: userUpdates.name ?? current.name,
+        photoUrl: userUpdates.photoUrl ?? current.photoUrl,
+      },
+    });
+  } catch (err: any) {
+    if (err?.code === "23505") {
+      res.status(409).json({
+        error: "This Google email or account is already linked to another BEXO account.",
+        code: "EMAIL_TAKEN",
+      });
+      return;
+    }
+    logger.error({ err, userId }, "Error linking Google account");
+    res.status(500).json({ error: "Could not link Google account. Please try again." });
+  }
+});
+
 // PATCH /profile
 router.patch("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<void> => {
   const userId = req.user!.id;
@@ -320,14 +494,6 @@ router.patch("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<v
     if (handle !== undefined && handle !== profile.handle) {
       const normalizedHandle =
         typeof handle === "string" ? handle.toLowerCase().trim() : "";
-      // #region agent log
-      agentDebugLog("E", "profile.ts:update:handle-claim", "attempting handle claim", {
-        userId,
-        rawHandle: handle,
-        normalized: normalizedHandle,
-        currentHandle: profile.handle,
-      });
-      // #endregion
       if (!normalizedHandle || !/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/.test(normalizedHandle) || normalizedHandle.length > 40) {
         res.status(400).json({ error: "Handle must be 1–40 characters: letters, numbers, dots, or hyphens." });
         return;
@@ -471,9 +637,6 @@ router.get("/check-handle", optionalAuth, async (req: AuthenticatedRequest, res)
       normalized === "admin" ||
       normalized === "support"
     ) {
-      // #region agent log
-      agentDebugLog("E", "profile.ts:check-handle:reserved", "handle reserved", { normalized });
-      // #endregion
       res.json({ available: false, reason: "reserved" });
       return;
     }
@@ -483,15 +646,6 @@ router.get("/check-handle", optionalAuth, async (req: AuthenticatedRequest, res)
       .where(eq(profiles.handle, normalized))
       .limit(1);
     const taken = existing.length > 0 && (!req.user || existing[0].userId !== req.user.id);
-    // #region agent log
-    agentDebugLog("E", "profile.ts:check-handle:result", "handle availability", {
-      normalized,
-      rawHandle: handle,
-      caseMismatch: handle !== normalized,
-      available: !taken,
-      hasUser: !!req.user,
-    });
-    // #endregion
     res.json({ available: !taken });
   } catch (err) {
     logger.error({ err, handle }, "Error checking handle availability");
@@ -510,13 +664,6 @@ router.get("/suggest-handle", optionalAuth, async (req: AuthenticatedRequest, re
   }
 
   try {
-    // #region agent log
-    agentDebugLog("A", "profile.ts:suggest-handle:entry", "suggest-handle entered", {
-      hasUser: !!req.user,
-      userId: req.user?.id ?? null,
-      firstNameLen: firstName.length,
-    });
-    // #endregion
 
     // Generate candidates
     const candidates: string[] = [];
@@ -547,14 +694,6 @@ router.get("/suggest-handle", optionalAuth, async (req: AuthenticatedRequest, re
           .where(inArray(profiles.handle, uniqueCandidates))
       : [];
 
-    // #region agent log
-    agentDebugLog("B", "profile.ts:suggest-handle:scoped-scan", "checked candidates only", {
-      profileMatchCount: matches.length,
-      candidateCount: uniqueCandidates.length,
-      hasUser: !!req.user,
-    });
-    // #endregion
-
     const selfId = req.user?.id;
     const takenHandles = new Set(
       matches
@@ -572,21 +711,8 @@ router.get("/suggest-handle", optionalAuth, async (req: AuthenticatedRequest, re
       }
     }
 
-    // #region agent log
-    agentDebugLog("A", "profile.ts:suggest-handle:ok", "suggest-handle succeeded", {
-      hasUser: !!req.user,
-      suggestedHandle,
-    });
-    // #endregion
-
     res.json({ suggestedHandle });
   } catch (err) {
-    // #region agent log
-    agentDebugLog("A", "profile.ts:suggest-handle:catch", "suggest-handle threw", {
-      hasUser: !!req.user,
-      errMessage: err instanceof Error ? err.message : String(err),
-    });
-    // #endregion
     logger.error({ err, firstName, lastName }, "Error suggesting handle");
     res.status(500).json({ error: "Internal server error" });
   }
@@ -1367,6 +1493,12 @@ router.get("/public/:handle", async (req, res): Promise<void> => {
     const user = userList[0];
     if (!user) {
       res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    // Incomplete onboarding must not be publicly crawlable / shareable.
+    if (!user.onboardingCompletedAt) {
+      res.status(404).json({ error: "Portfolio not found" });
       return;
     }
 

@@ -64,6 +64,9 @@ export function getStaticSitemapEntries(origin = appOrigin()): SitemapEntry[] {
 }
 
 export async function getPortfolioSitemapEntries(): Promise<SitemapEntry[]> {
+  // Cap per response to protect memory at 5L+ scale. Full crawl should use
+  // sitemap index shards later; this keeps /sitemap.xml from OOMing.
+  const SITEMAP_PORTFOLIO_LIMIT = Number(process.env.SITEMAP_PORTFOLIO_LIMIT || 50000);
   const rows = await db
     .select({
       handle: profiles.handle,
@@ -73,7 +76,8 @@ export async function getPortfolioSitemapEntries(): Promise<SitemapEntry[]> {
     })
     .from(profiles)
     .innerJoin(users, eq(profiles.userId, users.id))
-    .where(and(isNotNull(profiles.handle), isNotNull(users.onboardingCompletedAt)));
+    .where(and(isNotNull(profiles.handle), isNotNull(users.onboardingCompletedAt)))
+    .limit(Math.min(Math.max(SITEMAP_PORTFOLIO_LIMIT, 1000), 50000));
 
   const origin = pathPortfolioOrigin().replace(/\/$/, "");
   const entries: SitemapEntry[] = [];

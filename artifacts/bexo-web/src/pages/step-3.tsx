@@ -208,9 +208,6 @@ export default function Step3Info() {
       try {
         const res = await fetch(`/api/profile/check-handle?handle=${encodeURIComponent(handle.trim())}`, { headers });
         if (!res.ok) {
-          // #region agent log
-          fetch('http://127.0.0.1:7832/ingest/75f7dbfa-a2dc-49fd-b6f9-b1432ff24dc1',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d16a15'},body:JSON.stringify({sessionId:'d16a15',runId:'post-fix',hypothesisId:'H',location:'step-3.tsx:check-handle:!ok',message:'check-handle non-OK — NOT treating as available',data:{status:res.status,handle:handle.trim()},timestamp:Date.now()})}).catch(()=>{});
-          // #endregion
           setHandleAvailability('idle');
           setHandleError('Could not verify handle right now. Try again.');
           return;
@@ -224,9 +221,6 @@ export default function Step3Info() {
           setHandleError(result.reason === 'reserved' ? 'That handle is reserved' : 'Handle is already taken');
         }
       } catch (err) {
-        // #region agent log
-        fetch('http://127.0.0.1:7832/ingest/75f7dbfa-a2dc-49fd-b6f9-b1432ff24dc1',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d16a15'},body:JSON.stringify({sessionId:'d16a15',runId:'post-fix',hypothesisId:'H',location:'step-3.tsx:check-handle:catch',message:'network error — NOT treating as available',data:{handle:handle.trim()},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         console.error(err);
         setHandleAvailability('idle');
         setHandleError('Could not verify handle right now. Try again.');

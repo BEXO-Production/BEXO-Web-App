@@ -238,6 +238,16 @@ export async function renderPortfolioForHandle(
       }
       let user = userMatch[0];
       ownerName = user.name;
+
+      // Incomplete onboarding: handle claimed but not published — treat as unclaimed publicly.
+      if (!user.onboardingCompletedAt) {
+        res
+          .status(404)
+          .type("html")
+          .set("Cache-Control", "public, max-age=60")
+          .send(buildUnclaimedHandleHtml(subdomain));
+        return;
+      }
     
       const subscriptionState = await resolveSubscriptionState(user.id);
       siteAccess = await resolveSiteAccess(user.id);

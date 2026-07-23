@@ -5,7 +5,6 @@ import { randomUUID } from "crypto";
 import { db, users, profiles } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
-import { agentDebugLog } from "../lib/agentDebugLog";
 
 const router = Router();
 
@@ -147,22 +146,12 @@ router.post("/phone/otp", async (req, res): Promise<void> => {
   const lockKey = `otp_limit:lock:${phone}`;
   const isLocked = await store.get(lockKey);
   if (isLocked) {
-    // #region agent log
-    agentDebugLog("D", "auth.ts:otp:locked", "OTP locked out", { phoneSuffix: phone.slice(-4) });
-    // #endregion
     res.status(429).json({ error: "Too many OTP requests. Please try again after 15 minutes." });
     return;
   }
 
   const countKey = `otp_limit:count:${phone}`;
   const currentCount = await store.incr(countKey, 900);
-  // #region agent log
-  agentDebugLog("D", "auth.ts:otp:count", "OTP rate count after atomic incr", {
-    phoneSuffix: phone.slice(-4),
-    currentCount,
-    redisConfigured: !!process.env.REDIS_URL,
-  });
-  // #endregion
 
   if (currentCount > 5) {
     await store.set(lockKey, "true", "EX", 900);
@@ -187,10 +176,19 @@ router.post("/phone/otp", async (req, res): Promise<void> => {
   const isConfigured = !!(authKey && authKey !== "your_msg91_auth_key" &&
                        integratedNumber && integratedNumber !== "your_whatsapp_number_with_country_code" &&
                        templateName && templateName !== "your_approved_template_name");
+  const isProduction = process.env.NODE_ENV === "production";
 
   logger.info({ phone, isConfigured, isReused: !!existingOtp }, "Generated OTP for phone");
 
-  let deliveryOk = !isConfigured; // mock path is intentionally local-only
+  // Production must fail closed when MSG91 is not configured (never mock-success).
+  if (!isConfigured && isProduction) {
+    res.status(503).json({
+      error: "SMS/WhatsApp delivery is temporarily unavailable. Please try again later.",
+    });
+    return;
+  }
+
+  let deliveryOk = !isConfigured; // mock path is intentionally local/dev-only
   if (isConfigured) {
     try {
       const payload = {
@@ -253,32 +251,13 @@ router.post("/phone/otp", async (req, res): Promise<void> => {
       deliveryOk = true;
       logger.info({ respData }, "Successfully sent OTP via MSG91 WhatsApp");
     } catch (err) {
-      // #region agent log
-      agentDebugLog("C", "auth.ts:otp:msg91-fail", "MSG91 send failed — will not fake success", {
-        phoneSuffix: phone.slice(-4),
-        errMessage: err instanceof Error ? err.message : String(err),
-      });
-      // #endregion
       logger.error({ err }, "Failed to send OTP via MSG91 WhatsApp API");
       deliveryOk = false;
     }
   } else {
-    // #region agent log
-    agentDebugLog("C", "auth.ts:otp:mock", "OTP mock path — success returned without WhatsApp", {
-      phoneSuffix: phone.slice(-4),
-      isConfigured: false,
-    });
-    // #endregion
-    logger.info(`[MSG91 OTP MOCK] Auth key not set. Code for ${phone} is ${otp}`);
+    // Never log plaintext OTP in production (unreachable here); in non-prod log only last 2 digits.
+    logger.info(`[MSG91 OTP MOCK] Auth key not set. Code for ${phone} ends in **${otp.slice(-2)}`);
   }
-
-  // #region agent log
-  agentDebugLog("C", "auth.ts:otp:response", "OTP endpoint finishing", {
-    phoneSuffix: phone.slice(-4),
-    isConfigured,
-    deliveryOk,
-  });
-  // #endregion
 
   if (!deliveryOk) {
     res.status(502).json({
@@ -307,41 +286,58 @@ router.post("/phone/otp/verify", async (req, res): Promise<void> => {
   }
 
   try {
+    const verifyLockKey = `otp_lock:${phone}`;
+    const verifyFailKey = `otp_fail:${phone}`;
+    const isVerifyLocked = await store.get(verifyLockKey);
+    if (isVerifyLocked) {
+      res.status(429).json({
+        error: "Too many failed verification attempts. Please try again after 15 minutes.",
+      });
+      return;
+    }
+
     // 1. Idempotency: only replay the cached session for the SAME OTP
     // (absorbs double-submit). Wrong OTP must never mint a JWT.
     const recentSessionJson = await store.get(`verified_session:${phone}:${otp}`);
     if (recentSessionJson) {
       try {
         const recentSession = JSON.parse(recentSessionJson);
-        // #region agent log
-        agentDebugLog("J", "auth.ts:verify:idempotent", "returning OTP-bound cached session", {
-          phoneSuffix: phone.slice(-4),
-          userId: recentSession.user?.id ?? null,
-        });
-        // #endregion
         logger.info({ phone, userId: recentSession.user?.id }, "Returning cached session for duplicate verification request");
         res.json(recentSession);
         return;
       } catch {}
     }
 
-    // #region agent log
-    const leakedProbe = await store.get(`verified_session:${phone}`);
-    agentDebugLog("J", "auth.ts:verify:otp-check", "verify path (no phone-only session cache)", {
-      phoneSuffix: phone.slice(-4),
-      legacyPhoneOnlyCachePresent: !!leakedProbe,
-    });
-    // #endregion
-
     // 2. Verify OTP code against cached OTP
     const cachedOtp = await store.get(`otp:${phone}`);
     const isDevelopmentBypass = process.env.NODE_ENV !== "production" && otp === "111111";
 
     if (!isDevelopmentBypass && otp !== cachedOtp) {
-      logger.warn({ phone, submittedOtp: otp, cachedOtpExists: !!cachedOtp }, "OTP verification mismatch");
+      const failCount = await store.incr(verifyFailKey, 900);
+      if (failCount >= 5) {
+        await store.set(verifyLockKey, "true", "EX", 900);
+        res.status(429).json({
+          error: "Too many failed verification attempts. Please try again after 15 minutes.",
+        });
+        return;
+      }
+      const isProduction = process.env.NODE_ENV === "production";
+      logger.warn(
+        {
+          phone,
+          submittedOtpSuffix: isProduction ? undefined : otp.slice(-2),
+          cachedOtpExists: !!cachedOtp,
+          failCount,
+        },
+        "OTP verification mismatch",
+      );
       res.status(400).json({ error: "This code is invalid or has expired. Request a new code and try again." });
       return;
     }
+
+    // Successful verify — clear fail counter / lock
+    await store.del(verifyFailKey);
+    await store.del(verifyLockKey);
 
     // Find or create user
     let user = (await db.select().from(users).where(eq(users.phone, phone)).limit(1))[0];

@@ -1,5 +1,81 @@
 import { logger } from "./logger";
 import { enqueueEmail } from "./emailOutbox";
+import { appOrigin } from "./platform";
+
+/** User cancelled Autopay / subscription at period end. */
+export async function sendCancellationEmail(opts: {
+  email: string;
+  userName: string;
+  plan: string;
+  expiresAt?: string | Date | null;
+  userId?: string;
+  kind?: "subscription" | "addon";
+}) {
+  if (!opts.email) return false;
+  const expiresLabel = opts.expiresAt
+    ? new Date(opts.expiresAt).toLocaleDateString("en-IN", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      })
+    : "";
+  const kind = opts.kind || "subscription";
+  const dedupeKey = `subscription_cancelled:${opts.userId || opts.email}:${kind}:${expiresLabel || "na"}`;
+  const queued = await enqueueEmail({
+    eventType: "subscription_cancelled",
+    recipient: opts.email,
+    subject:
+      kind === "addon"
+        ? "Storage add-on auto-renew cancelled"
+        : "Your BEXO auto-renew has been cancelled",
+    dedupeKey,
+    userId: opts.userId,
+    payload: {
+      userName: opts.userName || "there",
+      plan: opts.plan,
+      planLabel: opts.plan,
+      expiresLabel,
+      kind,
+      billingUrl: `${appOrigin()}/billing`,
+    },
+  });
+  return Boolean(queued);
+}
+
+/** Refund confirmation after admin refund, TTL abandon, or mandate abandon. */
+export async function sendRefundEmail(opts: {
+  email: string;
+  userName: string;
+  plan: string;
+  amountInr: number;
+  refundId: string;
+  userId?: string;
+  reason?: string;
+  isPartial?: boolean;
+}) {
+  if (!opts.email || !opts.refundId) return false;
+  const queued = await enqueueEmail({
+    eventType: "payment_refunded",
+    recipient: opts.email,
+    subject: opts.isPartial
+      ? "Partial refund processed — BEXO"
+      : "Refund processed — BEXO",
+    dedupeKey: `payment_refunded:${opts.refundId}:${opts.email}`,
+    userId: opts.userId,
+    relatedId: opts.refundId,
+    payload: {
+      userName: opts.userName || "there",
+      plan: opts.plan,
+      planLabel: opts.plan,
+      amount: opts.amountInr,
+      refundId: opts.refundId,
+      reason: opts.reason || "",
+      isPartial: !!opts.isPartial,
+      billingUrl: `${appOrigin()}/billing`,
+    },
+  });
+  return Boolean(queued);
+}
 
 export const sendBillingEmail = async (
   email: string,

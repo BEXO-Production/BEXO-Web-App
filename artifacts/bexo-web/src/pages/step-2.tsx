@@ -4,9 +4,10 @@ import { Button } from '../design-system/primitives';
 import { Loader2 } from 'lucide-react';
 import { FcGoogle } from 'react-icons/fc';
 import { supabase } from '../lib/supabase';
+import { apiUrl } from '../lib/api';
 
 export default function Step2Auth() {
-  const { nextStep } = useOnboarding();
+  const { nextStep, updateData, refreshProfile } = useOnboarding();
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [sessionUser, setSessionUser] = useState<any | null>(null);
@@ -69,6 +70,52 @@ export default function Step2Auth() {
     }
   };
 
+  const linkGoogleAndContinue = async () => {
+    setIsLoading(true);
+    setErrorMsg(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('Google session expired. Please sign in again.');
+      }
+
+      const bexoToken = localStorage.getItem('token');
+      if (!bexoToken) {
+        throw new Error('Please verify your phone first, then link Google.');
+      }
+
+      const res = await fetch(apiUrl('/api/profile/link-google'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${bexoToken}`,
+        },
+        body: JSON.stringify({ accessToken: session.access_token }),
+      });
+
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(body?.error || 'Could not link Google account.');
+      }
+
+      if (body?.user?.email) {
+        updateData({
+          email: body.user.email,
+          oauthProvider: body.user.oauthProvider || 'google',
+          ...(body.user.name ? { name: body.user.name } : {}),
+          ...(body.user.photoUrl ? { photoUrl: body.user.photoUrl } : {}),
+        });
+      }
+      await refreshProfile?.().catch(() => undefined);
+
+      nextStep(2);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to link Google account.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full justify-center max-w-md w-full mx-auto py-1">
       <div className="mb-7 md:mb-10 text-left">
@@ -109,9 +156,14 @@ export default function Step2Auth() {
             <Button 
               type="button" 
               className="w-full min-h-12 h-13 bg-gradient-to-r from-sky-500 via-blue-500 to-indigo-500 hover:brightness-110 text-white font-bold text-sm transition-all duration-200 flex items-center justify-center gap-3 cursor-pointer shadow-[0_12px_28px_-10px_rgba(56,189,248,0.55)] px-6 rounded-2xl"
-              onClick={() => nextStep(2)}
+              onClick={linkGoogleAndContinue}
+              disabled={isLoading}
             >
-              Continue as {sessionUser.user_metadata?.full_name?.split(' ')[0] || 'User'}
+              {isLoading ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <>Continue as {sessionUser.user_metadata?.full_name?.split(' ')[0] || 'User'}</>
+              )}
             </Button>
             <button 
               type="button" 

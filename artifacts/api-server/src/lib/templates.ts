@@ -347,6 +347,57 @@ export const getActivationEmail = (userName: string, code: string) => {
   });
 };
 
+/** Issued by Admin — student receives code before redeem. */
+export const getActivationCodeIssuedEmail = (opts: {
+  userName: string;
+  code: string;
+  planLabel: string;
+  features: string[];
+  organizationName?: string;
+  redeemUrl: string;
+}) => {
+  const orgLine = opts.organizationName
+    ? bodyParagraph(
+        `This seat was issued for <strong>${escapeHtml(opts.organizationName)}</strong>.`,
+      )
+    : "";
+  const featureList = (opts.features || [])
+    .slice(0, 6)
+    .map(
+      (f) =>
+        `<li style="margin:0 0 8px;font-family:'Segoe UI', Inter, Arial, sans-serif;font-size:14px;color:#334155;">${escapeHtml(f)}</li>`,
+    )
+    .join("");
+
+  return wrapHtml({
+    title: `Your BEXO ${opts.planLabel} activation code`,
+    preheader: `Redeem ${opts.code} to unlock ${opts.planLabel}.`,
+    eyebrow: "Campus / partner activation",
+    headline: `Unlock ${opts.planLabel} with your code.`,
+    accent: "violet",
+    ctaLabel: "Redeem in BEXO",
+    ctaUrl: opts.redeemUrl,
+    footnote: "This code is single-use. If it was emailed to you, only that account email can redeem it.",
+    bodyHtml: `
+      ${greeting(opts.userName)}
+      ${orgLine}
+      ${bodyParagraph("Use the activation code below inside BEXO (Billing or onboarding). It unlocks the plan and features listed.")}
+      ${highlightCard(
+        "Your activation code",
+        `<span style="font-family:ui-monospace, monospace;letter-spacing:0.14em;font-size:18px;">${escapeHtml(opts.code)}</span>`,
+        "#F3E8FF",
+      )}
+      ${highlightCard("Plan", escapeHtml(opts.planLabel), "#EEF2FF")}
+      ${
+        featureList
+          ? `<p style="margin:24px 0 8px;font-family:'Segoe UI', Inter, Arial, sans-serif;font-size:13px;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:0.06em;">What this unlocks</p><ul style="margin:0;padding-left:18px;">${featureList}</ul>`
+          : ""
+      }
+      ${bodyParagraph("Sign in with the same email this message was sent to (for email-linked codes), paste the code, and publish.")}
+    `,
+  });
+};
+
 export const getRecoveryEmail = (userName: string, resumeUrl: string) => {
   return wrapHtml({
     title: "Continue your BEXO portfolio",
@@ -626,6 +677,79 @@ export const getPlanPriceChangeEmail = (
           : "This applies from your <strong>next billing cycle</strong>. Your current period stays at the old rate.",
       )}
       ${bodyParagraph("No action is required unless you want to change or cancel your plan before renewal.")}
+    `,
+  });
+};
+
+export const getSubscriptionCancelledEmail = (
+  userName: string,
+  planLabel: string,
+  expiresLabel: string,
+  billingUrl: string,
+  kind: string = "subscription",
+) => {
+  const isAddon = kind === "addon";
+  return wrapHtml({
+    title: isAddon ? "Storage add-on cancelled" : "Auto-renew cancelled",
+    preheader: expiresLabel
+      ? `Access continues until ${expiresLabel}.`
+      : "Your auto-renew has been turned off.",
+    eyebrow: "Cancellation confirmed",
+    headline: isAddon
+      ? "Storage auto-renew is off."
+      : "Auto-renew is cancelled.",
+    accent: "amber",
+    ctaLabel: "Manage billing",
+    ctaUrl: billingUrl,
+    footnote: `Questions? <a href="mailto:billing@atbexo.com">billing@atbexo.com</a>`,
+    bodyHtml: `
+      ${greeting(userName)}
+      ${bodyParagraph(
+        isAddon
+          ? `We've cancelled auto-renew for your <strong style="color:${INK};">storage add-on</strong>. You keep the extra space until the paid period ends.`
+          : `We've cancelled auto-renew for your <strong style="color:${INK};">${escapeHtml(planLabel || "BEXO plan")}</strong>. You keep full access until the end of the current paid period.`,
+      )}
+      ${
+        expiresLabel
+          ? highlightCard("Access until", escapeHtml(expiresLabel), "#FEF3C7")
+          : ""
+      }
+      ${bodyParagraph(
+        "No further charges will be made for this subscription. You can restart Autopay anytime from Billing before access ends.",
+      )}
+    `,
+  });
+};
+
+export const getPaymentRefundedEmail = (
+  userName: string,
+  planLabel: string,
+  amount: number,
+  refundId: string,
+  billingUrl: string,
+  isPartial: boolean = false,
+) => {
+  const amountLabel = `₹${Number(amount || 0).toLocaleString("en-IN")}`;
+  return wrapHtml({
+    title: isPartial ? "Partial refund processed" : "Refund processed",
+    preheader: `${amountLabel} refund for ${planLabel || "your plan"}.`,
+    eyebrow: "Refund confirmed",
+    headline: isPartial ? "A partial refund is on the way." : "Your refund is on the way.",
+    accent: "emerald",
+    ctaLabel: "View billing",
+    ctaUrl: billingUrl,
+    footnote: `Billing questions? <a href="mailto:billing@atbexo.com">billing@atbexo.com</a>`,
+    bodyHtml: `
+      ${greeting(userName)}
+      ${bodyParagraph(
+        isPartial
+          ? `We've processed a partial refund of <strong style="color:${INK};">${escapeHtml(amountLabel)}</strong> for <strong style="color:${INK};">${escapeHtml(planLabel || "your plan")}</strong>.`
+          : `We've processed a full refund of <strong style="color:${INK};">${escapeHtml(amountLabel)}</strong> for <strong style="color:${INK};">${escapeHtml(planLabel || "your plan")}</strong>.`,
+      )}
+      ${highlightCard("Refund reference", `<span style="font-family:ui-monospace, monospace;">${escapeHtml(refundId)}</span>`, "#ECFDF5")}
+      ${bodyParagraph(
+        "Banks usually credit refunds within 5–7 business days. If your plan access changed, check Billing for the latest status.",
+      )}
     `,
   });
 };

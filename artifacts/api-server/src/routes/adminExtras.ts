@@ -563,8 +563,24 @@ export function registerAdminExtras(router: IRouter) {
         await razorpay.subscriptions.cancel(row.razorpaySubscriptionId, false);
         await db
           .update(subscriptions)
-          .set({ status: "cancelled" })
+          .set({ status: "cancelled", razorpaySubscriptionId: null })
           .where(eq(subscriptions.id, id));
+        try {
+          const [u] = await db.select().from(users).where(eq(users.id, row.userId)).limit(1);
+          if (u?.email) {
+            const { sendCancellationEmail } = await import("../lib/billing");
+            await sendCancellationEmail({
+              email: u.email,
+              userName: u.name || "there",
+              plan: row.plan || "plan",
+              expiresAt: row.expiresAt,
+              userId: row.userId,
+              kind: "subscription",
+            });
+          }
+        } catch (mailErr) {
+          logger.warn({ mailErr, userId: row.userId }, "Admin autopay cancel email failed");
+        }
         await audit(req, "autopay.cancel", "subscription", id, {
           razorpaySubscriptionId: row.razorpaySubscriptionId,
         });

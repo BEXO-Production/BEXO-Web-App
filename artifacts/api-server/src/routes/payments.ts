@@ -4,7 +4,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import Razorpay from "razorpay";
 import crypto from "crypto";
-import { sendBillingEmail, sendBillingWhatsApp } from "../lib/billing";
+import { sendBillingEmail, sendBillingWhatsApp, sendCancellationEmail, sendRefundEmail } from "../lib/billing";
 import { markOnboardingComplete } from "../lib/lifecycleEmails";
 import { requireAuth } from "../middlewares/auth";
 import {
@@ -882,8 +882,7 @@ router.post("/verify", requireAuth, async (req: any, res: any) => {
   if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
   const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
-  const plan = parsePlanParam(req.body?.plan);
-  if (!razorpay_order_id || !razorpay_payment_id || !plan) {
+  if (!razorpay_order_id || !razorpay_payment_id) {
     return res.status(400).json({ error: "Missing payment verification details." });
   }
 
@@ -896,6 +895,19 @@ router.post("/verify", requireAuth, async (req: any, res: any) => {
 
     if (!payment) {
       return res.status(404).json({ error: "Payment order was not found for this account." });
+    }
+
+    // NEVER trust client-supplied plan — activate only what was quoted on the order row.
+    const plan = normalizePlanId(payment.plan) as PaidPlan | null;
+    const clientPlan = parsePlanParam(req.body?.plan);
+    if (!plan) {
+      return res.status(400).json({ error: "Payment order has no valid plan." });
+    }
+    if (clientPlan && clientPlan !== plan) {
+      return res.status(400).json({
+        error: "Plan mismatch with the original order. Refresh and try again.",
+        code: "PLAN_MISMATCH",
+      });
     }
 
     if (payment.status === "success" || payment.status === "awaiting_mandate") {
@@ -994,8 +1006,9 @@ router.post("/verify", requireAuth, async (req: any, res: any) => {
 
     // Mark success before activating so retries are idempotent.
     // HARD MANDATE bootstrap: hold as awaiting_mandate — activate only after confirm-autopay.
+    // Conditional update prevents double-activate races under parallel /verify calls.
     const isBootstrap = payment.kind === "subscription_bootstrap" && SUBSCRIPTION_PLANS.includes(plan);
-    await db
+    const [claimedPayment] = await db
       .update(payments)
       .set({
         razorpayPaymentId: razorpay_payment_id,
@@ -1003,7 +1016,27 @@ router.post("/verify", requireAuth, async (req: any, res: any) => {
         plan,
         kind: payment.kind || "order",
       })
-      .where(eq(payments.id, payment.id));
+      .where(and(eq(payments.id, payment.id), eq(payments.status, payment.status)))
+      .returning({ id: payments.id });
+
+    if (!claimedPayment) {
+      const state = await resolveSubscriptionState(userId);
+      return res.json({
+        success: true,
+        message: "Payment already verified.",
+        plan: state.plan,
+        isPremium: state.isPremium,
+        activated: state.isPremium,
+        expiresAt: state.expiresAt,
+        storageQuotaBytes: state.storageQuotaBytes,
+        storageBonusBytes: state.storageBonusBytes,
+        stacked: false,
+        renewalMode: state.renewalMode,
+        autopay: !!state.subscription?.razorpaySubscriptionId,
+        bootstrap: payment.kind === "subscription_bootstrap",
+        needsMandateSetup: false,
+      });
+    }
 
     const previousRzpId = current.subscription?.razorpaySubscriptionId || null;
     const expiresAt = await getRenewalExpiry(userId, plan);
@@ -1353,6 +1386,24 @@ router.post("/abandon-autopay-setup", requireAuth, async (req: any, res: any) =>
         idempotencyKey: `abandon:${payment.id}`,
         metadata: { hardMandate: true },
       });
+      if (refundId) {
+        try {
+          const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+          if (user?.email) {
+            await sendRefundEmail({
+              email: user.email,
+              userName: user.name || "there",
+              plan: payment.plan || "plan",
+              amountInr: payment.amount / 100,
+              refundId,
+              userId,
+              reason: "autopay_mandate_abandoned",
+            });
+          }
+        } catch (mailErr) {
+          logger.warn({ mailErr, userId }, "Abandon refund email failed (non-fatal)");
+        }
+      }
     }
 
     const refreshed = await resolveSubscriptionState(userId);
@@ -1984,6 +2035,31 @@ router.post("/subscription/cancel", requireAuth, async (req: any, res: any) => {
     // Keep razorpaySubscriptionId until webhook clears it so status can show
     // "cancelling" vs already-cleared; UI uses cancelAtPeriodEnd primarily.
 
+    try {
+      const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+      if (user?.email) {
+        await sendCancellationEmail({
+          email: user.email,
+          userName: user.name || "there",
+          plan: state.plan || "plan",
+          expiresAt: state.expiresAt,
+          userId,
+          kind: "subscription",
+        });
+      }
+      await recordLedgerEvent({
+        userId,
+        eventType: "subscription_cancelled",
+        amountPaise: 0,
+        plan: state.plan,
+        razorpaySubscriptionId: subId || null,
+        idempotencyKey: `subscription_cancelled:${userId}:${subId || "local"}:${(state.expiresAt || "").toString().slice(0, 10)}`,
+        metadata: { cancelAtPeriodEnd: true, source: "user" },
+      });
+    } catch (mailErr) {
+      logger.warn({ mailErr, userId }, "Cancellation email/ledger failed (non-fatal)");
+    }
+
     res.json({
       success: true,
       cancelAtPeriodEnd: true,
@@ -2069,6 +2145,23 @@ router.post("/addon/cancel", requireAuth, async (req: any, res: any) => {
     const quota = await recomputeUserQuota(userId);
     const state = await resolveSubscriptionState(userId);
     const refreshed = await getStorageAddonControl(userId);
+
+    try {
+      const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+      if (user?.email) {
+        await sendCancellationEmail({
+          email: user.email,
+          userName: user.name || "there",
+          plan: "storage_addon",
+          expiresAt: addonRow.currentEnd,
+          userId,
+          kind: "addon",
+        });
+      }
+    } catch (mailErr) {
+      logger.warn({ mailErr, userId }, "Addon cancellation email failed (non-fatal)");
+    }
+
     res.json({
       success: true,
       message: addonRow.currentEnd
@@ -2094,52 +2187,38 @@ router.post("/activation", requireAuth, async (req: any, res: any) => {
   if (!code) return res.status(400).json({ error: "Activation code is required." });
 
   try {
-    const [redeemedKey] = await db
-      .update(activationKeys)
-      .set({
-        status: "redeemed",
-        redeemedBy: userId,
-        redeemedAt: new Date(),
-      })
-      .where(and(eq(activationKeys.code, code), eq(activationKeys.status, "unused")))
-      .returning();
+    const { redeemActivationCode } = await import("../lib/activationEngine");
+    const result = await redeemActivationCode({ userId, code });
 
-    if (!redeemedKey) {
-      const [existingKey] = await db.select().from(activationKeys).where(eq(activationKeys.code, code)).limit(1);
-      if (!existingKey) {
-        return res.status(400).json({ error: "Invalid activation code. Please check and try again." });
-      }
-      return res.status(400).json({ error: "This activation code has already been used or is no longer active." });
-    }
-
-    const expiresAt = await getRenewalExpiry(userId, "growth");
-    const activated = await activatePaidPlan(userId, "growth", expiresAt);
-
-    await db.insert(payments).values({
-      userId,
-      razorpayOrderId: `activation_${redeemedKey.id}`,
-      razorpayPaymentId: code,
-      amount: 0,
-      status: "success",
-    });
-
-    await sendBillingReceipts(userId, "activation_code", 0, code);
     await markOnboardingComplete(userId).catch((err) =>
       logger.warn({ err, userId }, "markOnboardingComplete failed after activation"),
     );
 
+    try {
+      await sendBillingReceipts(userId, "activation_code", 0, code);
+    } catch {
+      /* optional */
+    }
+
     res.json({
       success: true,
       message: "Account activated successfully",
-      plan: activated.plan,
+      plan: result.plan,
       isPremium: true,
-      expiresAt: activated.expiresAt,
-      storageQuotaBytes: activated.storageQuotaBytes,
-      storageBonusBytes: activated.storageBonusBytes,
-      stacked: activated.stacked,
-      renewalMode: activated.renewalMode,
+      expiresAt: result.expiresAt,
+      storageQuotaBytes: result.storageQuotaBytes,
+      organizationId: result.organizationId,
+      code: result.code,
+      renewalMode: "purchase",
     });
-  } catch (error) {
+  } catch (error: any) {
+    const status = Number(error?.status) || 500;
+    if (status < 500) {
+      return res.status(status).json({
+        error: error?.message || "Unable to redeem activation code",
+        code: error?.code,
+      });
+    }
     logger.error({ error, userId }, "Failed to process activation code");
     res.status(500).json({ error: "Unable to redeem activation code right now." });
   }
@@ -2695,6 +2774,21 @@ router.post("/webhook", async (req: any, res: any) => {
           .set({ status: "cancelled", updatedAt: new Date() })
           .where(eq(addonSubscriptions.id, addonRow.id));
         await recomputeUserQuota(addonRow.userId);
+        try {
+          const [u] = await db.select().from(users).where(eq(users.id, addonRow.userId)).limit(1);
+          if (u?.email) {
+            await sendCancellationEmail({
+              email: u.email,
+              userName: u.name || "there",
+              plan: "storage_addon",
+              expiresAt: addonRow.currentEnd,
+              userId: addonRow.userId,
+              kind: "addon",
+            });
+          }
+        } catch (mailErr) {
+          logger.warn({ mailErr, userId: addonRow.userId }, "Webhook addon cancel email failed");
+        }
         logger.info({ userId: addonRow.userId, subscriptionId, event }, "Storage add-on autopay ended");
         return res.json({ received: true });
       }
@@ -2702,11 +2796,41 @@ router.post("/webhook", async (req: any, res: any) => {
       const userId = await findUserIdForSubscription(subscriptionId, subscriptionEntity.notes);
       if (userId) {
         // Access continues until expiresAt; clearing the link marks autopay as off.
+        const [subRow] = await db
+          .select()
+          .from(subscriptions)
+          .where(and(eq(subscriptions.userId, userId), eq(subscriptions.razorpaySubscriptionId, subscriptionId)))
+          .limit(1);
         await db
           .update(subscriptions)
           .set({ razorpaySubscriptionId: null })
           .where(and(eq(subscriptions.userId, userId), eq(subscriptions.razorpaySubscriptionId, subscriptionId)));
         await setCancelAtPeriodEnd(userId, true);
+
+        try {
+          const [u] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+          if (u?.email && event === "subscription.cancelled") {
+            await sendCancellationEmail({
+              email: u.email,
+              userName: u.name || "there",
+              plan: subRow?.plan || "plan",
+              expiresAt: subRow?.expiresAt || null,
+              userId,
+              kind: "subscription",
+            });
+          }
+          await recordLedgerEvent({
+            userId,
+            eventType: "subscription_cancelled",
+            amountPaise: 0,
+            plan: subRow?.plan,
+            razorpaySubscriptionId: subscriptionId,
+            idempotencyKey: `subscription_cancelled:webhook:${subscriptionId}:${event}`,
+            metadata: { source: "webhook", event },
+          });
+        } catch (mailErr) {
+          logger.warn({ mailErr, userId }, "Webhook cancel email/ledger failed");
+        }
 
         // Halted with unpaid invoices → enter 15-day payment grace (still live until grace ends).
         if (event === "subscription.halted") {

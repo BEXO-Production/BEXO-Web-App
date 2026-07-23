@@ -112,13 +112,62 @@ export const portfolios = pgTable("portfolios", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });
 
-// 8. Activation Keys Table
+// 8. Organizations (colleges / distribution partners)
+export const organizations = pgTable("organizations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: text("name").notNull(),
+  slug: text("slug").unique().notNull(), // code prefix: PSG, NGP
+  emailDomains: jsonb("email_domains").notNull().default([]), // ["psgtech.ac.in"]
+  notes: text("notes"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
+// 8b. Activation batches (Excel upload / generate N)
+export const activationBatches = pgTable("activation_batches", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, {
+    onDelete: "set null",
+  }),
+  label: text("label").notNull(),
+  defaultPlan: text("default_plan").notNull().default("essential"),
+  bindingMode: text("binding_mode").notNull().default("email_linked"), // general | email_linked
+  status: text("status").notNull().default("pending"), // pending | processing | completed | failed
+  totalRows: integer("total_rows").notNull().default(0),
+  createdCount: integer("created_count").notNull().default(0),
+  emailedCount: integer("emailed_count").notNull().default(0),
+  failedCount: integer("failed_count").notNull().default(0),
+  redeemedCount: integer("redeemed_count").notNull().default(0),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  createdByStaffId: uuid("created_by_staff_id"), // staff_users.id (no FK — defined later)
+  errorSummary: text("error_summary"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+});
+
+// 8c. Activation Keys Table
 export const activationKeys = pgTable("activation_keys", {
   id: uuid("id").defaultRandom().primaryKey(),
   code: text("code").unique().notNull(),
-  status: text("status").default("unused"), // 'unused' | 'redeemed' | 'expired' | 'revoked'
+  status: text("status").default("unused"), // unused | redeemed | expired | revoked
+  plan: text("plan").notNull().default("essential"), // identity | essential | growth | studentplus
+  organizationId: uuid("organization_id").references(() => organizations.id, {
+    onDelete: "set null",
+  }),
+  batchId: uuid("batch_id").references(() => activationBatches.id, {
+    onDelete: "set null",
+  }),
+  boundEmail: text("bound_email"), // null = general; set = email-linked
+  recipientName: text("recipient_name"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
   redeemedBy: uuid("redeemed_by").references(() => users.id),
   redeemedAt: timestamp("redeemed_at", { withTimezone: true }),
+  emailDeliveryId: uuid("email_delivery_id"),
+  emailedAt: timestamp("emailed_at", { withTimezone: true }),
+  createdByStaffId: uuid("created_by_staff_id"), // staff_users.id
+  notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });
 
@@ -126,10 +175,10 @@ export const activationKeys = pgTable("activation_keys", {
 export const subscriptions = pgTable("subscriptions", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: uuid("user_id").references(() => users.id).unique().notNull(),
-  plan: text("plan").notNull(), // 'annual' | 'lifetime'
-  status: text("status").notNull(), // 'active' | 'expired'
+  plan: text("plan").notNull(), // identity | essential | growth | studentplus | free (+ legacy)
+  status: text("status").notNull(), // active | expired | free
   expiresAt: timestamp("expires_at", { withTimezone: true }),
-  razorpaySubscriptionId: text("razorpay_subscription_id").unique(), // set for autopay (annual) subscriptions
+  razorpaySubscriptionId: text("razorpay_subscription_id").unique(),
   razorpayPlanId: text("razorpay_plan_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });

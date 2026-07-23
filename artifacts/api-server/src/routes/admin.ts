@@ -48,6 +48,7 @@ import { logger } from "../lib/logger";
 import Razorpay from "razorpay";
 import { registerAdminExtras } from "./adminExtras";
 import { registerAdminSupport } from "./adminSupport";
+import { registerAdminActivation } from "./adminActivation";
 
 const router: IRouter = Router();
 
@@ -114,7 +115,6 @@ function publicUrlsForHandle(handle: string | null | undefined, isPremium: boole
   };
 }
 
-
 // ——— Auth ———
 
 router.post("/auth/login", async (req, res: Response) => {
@@ -139,8 +139,23 @@ router.post("/auth/login", async (req, res: Response) => {
       return;
     }
 
-    // First login bootstrap: if no password yet, accept STAFF_BOOTSTRAP_PASSWORD
+    // First login bootstrap: null passwordHash — never persist shared bootstrap as permanent hash.
+    let mustChangePassword = false;
     if (!staff.passwordHash) {
+      const isProd = process.env.NODE_ENV === "production";
+      const bootstrapAllowed = process.env.ALLOW_STAFF_BOOTSTRAP === "1";
+      if (isProd && !bootstrapAllowed) {
+        logger.warn(
+          { email, staffId: staff.id },
+          "Staff login refused: passwordHash null in production (set ALLOW_STAFF_BOOTSTRAP=1 only for emergency bootstrap)",
+        );
+        res.status(401).json({
+          error:
+            "Password not set. Accept an invite to set your password, or contact a super_admin.",
+        });
+        return;
+      }
+
       const bootstrap = process.env.STAFF_BOOTSTRAP_PASSWORD || "";
       if (!bootstrap || password !== bootstrap) {
         res.status(401).json({
@@ -148,10 +163,12 @@ router.post("/auth/login", async (req, res: Response) => {
         });
         return;
       }
-      const passwordHash = hashPassword(password);
+
+      // Temporary session only — force password change via POST /me/password (hash stays null).
+      mustChangePassword = true;
       await db
         .update(staffUsers)
-        .set({ passwordHash, lastLoginAt: new Date(), updatedAt: new Date() })
+        .set({ lastLoginAt: new Date(), updatedAt: new Date() })
         .where(eq(staffUsers.id, staff.id));
     } else if (!verifyPassword(password, staff.passwordHash)) {
       res.status(401).json({ error: "Invalid credentials" });
@@ -166,6 +183,7 @@ router.post("/auth/login", async (req, res: Response) => {
     const token = signStaffToken(staff);
     res.json({
       token,
+      mustChangePassword,
       staff: {
         id: staff.id,
         email: staff.email,
@@ -190,18 +208,52 @@ router.post("/auth/accept-invite", async (req, res: Response) => {
     }
 
     const tokenHash = hashToken(token);
-    const [invite] = await db
+
+    // Peek invite email (non-claiming) so we can reject active staff before burning the token.
+    const [peek] = await db
       .select()
       .from(staffInvites)
       .where(eq(staffInvites.tokenHash, tokenHash))
       .limit(1);
 
-    if (!invite || invite.acceptedAt || invite.expiresAt < new Date()) {
+    if (!peek || peek.acceptedAt || peek.expiresAt < new Date()) {
       res.status(400).json({ error: "Invite invalid or expired" });
       return;
     }
 
-    const email = invite.email.toLowerCase();
+    const email = peek.email.toLowerCase();
+    let [existing] = await db
+      .select()
+      .from(staffUsers)
+      .where(eq(staffUsers.email, email))
+      .limit(1);
+
+    if (existing?.isActive) {
+      res.status(409).json({
+        error:
+          "An active staff account already exists for this email. Sign in instead, or ask a super_admin to deactivate and re-invite.",
+      });
+      return;
+    }
+
+    // Atomic claim — only one acceptor wins; already-used / expired → no row.
+    const [invite] = await db
+      .update(staffInvites)
+      .set({ acceptedAt: new Date() })
+      .where(
+        and(
+          eq(staffInvites.tokenHash, tokenHash),
+          sql`${staffInvites.acceptedAt} is null`,
+          sql`${staffInvites.expiresAt} > now()`,
+        ),
+      )
+      .returning();
+
+    if (!invite) {
+      res.status(400).json({ error: "Invite invalid, expired, or already used" });
+      return;
+    }
+
     const passwordHash = hashPassword(password);
     const finalName = name || invite.name || null;
     const finalPhone = phone || invite.phone || null;
@@ -212,14 +264,10 @@ router.post("/auth/accept-invite", async (req, res: Response) => {
       .where(eq(users.email, email))
       .limit(1);
 
-    let [staff] = await db
-      .select()
-      .from(staffUsers)
-      .where(eq(staffUsers.email, email))
-      .limit(1);
-
+    let staff = existing;
     if (staff) {
-      await db
+      // Deactivated account: reactivate with invite role + new password (via claimed invite only).
+      const [updated] = await db
         .update(staffUsers)
         .set({
           passwordHash,
@@ -231,7 +279,9 @@ router.post("/auth/accept-invite", async (req, res: Response) => {
           updatedAt: new Date(),
           lastLoginAt: new Date(),
         })
-        .where(eq(staffUsers.id, staff.id));
+        .where(eq(staffUsers.id, staff.id))
+        .returning();
+      staff = updated;
     } else {
       const [created] = await db
         .insert(staffUsers)
@@ -249,11 +299,6 @@ router.post("/auth/accept-invite", async (req, res: Response) => {
         .returning();
       staff = created;
     }
-
-    await db
-      .update(staffInvites)
-      .set({ acceptedAt: new Date() })
-      .where(eq(staffInvites.id, invite.id));
 
     const access = signStaffToken(staff!);
     res.json({
@@ -763,14 +808,37 @@ router.post(
         return;
       }
 
+      const [sub] = await db.select().from(subscriptions).where(eq(subscriptions.userId, userId)).limit(1);
+      const rzpSubId = sub?.razorpaySubscriptionId || null;
+
+      // Stop Autopay at Razorpay so revoked users are not charged again.
+      if (rzpSubId && !rzpSubId.startsWith("mock_")) {
+        const keyId = process.env.RAZORPAY_KEY_ID;
+        const keySecret = process.env.RAZORPAY_KEY_SECRET;
+        if (keyId && keySecret) {
+          try {
+            const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret });
+            await razorpay.subscriptions.cancel(rzpSubId, false);
+          } catch (err) {
+            logger.warn({ err, userId, rzpSubId }, "Admin revoke: Razorpay cancel failed");
+          }
+        }
+      }
+
       await db
         .update(subscriptions)
-        .set({ status: "expired" })
+        .set({ status: "expired", razorpaySubscriptionId: null })
         .where(eq(subscriptions.userId, userId));
-      await db.update(profiles).set({ isPremium: false }).where(eq(profiles.userId, userId));
+      await db
+        .update(profiles)
+        .set({ isPremium: false })
+        .where(eq(profiles.userId, userId));
+      // Align with free-tier UX: drop premium template selection.
+      await db.update(users).set({ templateId: "minimal" }).where(eq(users.id, userId));
 
       const patch: Record<string, unknown> = {
         cancelAtPeriodEnd: false,
+        templateId: "minimal",
       };
       if (pauseSite) {
         patch.siteStatus = "paused";
@@ -779,7 +847,21 @@ router.post(
       await db.update(users).set(patch).where(eq(users.id, userId));
       await recomputeUserQuota(userId);
 
-      await audit(req, "user.revoke_plan", "user", userId, { reason, pauseSite });
+      try {
+        await db.insert(billingLedger).values({
+          userId,
+          eventType: "subscription_cancelled",
+          amountPaise: 0,
+          plan: sub?.plan || null,
+          razorpaySubscriptionId: rzpSubId,
+          idempotencyKey: `admin_revoke:${userId}:${Date.now()}`,
+          metadata: { reason, pauseSite, source: "admin_revoke" },
+        });
+      } catch {
+        /* ledger dedupe / non-fatal */
+      }
+
+      await audit(req, "user.revoke_plan", "user", userId, { reason, pauseSite, cancelledRazorpay: !!rzpSubId });
       const subscriptionState = await resolveSubscriptionState(userId);
       res.json({ ok: true, subscriptionState });
     } catch (err) {
@@ -990,6 +1072,7 @@ router.post(
       const paymentId = String(req.params.paymentId);
       const reason = String(req.body?.reason || "").trim() || "admin_refund";
       const partial = req.body?.amountPaise != null ? Math.floor(Number(req.body.amountPaise)) : null;
+      const revokeEntitlement = req.body?.revokeEntitlement !== false; // default true on full refund
 
       const [row] = await db.select().from(payments).where(eq(payments.id, paymentId)).limit(1);
       if (!row) {
@@ -1016,15 +1099,49 @@ router.post(
         partial != null && partial > 0 && partial < row.amount ? partial : row.amount;
       const isPartial = amountPaise < row.amount;
 
+      // CAS claim: prevent double refund from concurrent admin tabs.
+      if (!isPartial) {
+        const [claimed] = await db
+          .update(payments)
+          .set({ status: "refunded" })
+          .where(
+            and(
+              eq(payments.id, paymentId),
+              sql`${payments.status} in ('success','awaiting_mandate')`,
+            ),
+          )
+          .returning({ id: payments.id });
+        if (!claimed) {
+          res.status(409).json({ error: "Payment already refunded or not refundable" });
+          return;
+        }
+      }
+
       const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret });
-      const refund: any = await razorpay.payments.refund(row.razorpayPaymentId, {
-        amount: amountPaise,
-        notes: { reason, adminStaffId: req.staff?.id || "" },
-      });
+      let refund: any;
+      try {
+        refund = await razorpay.payments.refund(row.razorpayPaymentId, {
+          amount: amountPaise,
+          notes: { reason, adminStaffId: req.staff?.id || "" },
+        });
+      } catch (rzpErr) {
+        // Roll back optimistic status if Razorpay refund failed on full refund claim.
+        if (!isPartial) {
+          await db
+            .update(payments)
+            .set({ status: row.status })
+            .where(eq(payments.id, paymentId));
+        }
+        throw rzpErr;
+      }
 
       const refundId = refund?.id || null;
-      if (!isPartial) {
-        await db.update(payments).set({ status: "refunded" }).where(eq(payments.id, paymentId));
+      if (!refundId) {
+        if (!isPartial) {
+          await db.update(payments).set({ status: row.status }).where(eq(payments.id, paymentId));
+        }
+        res.status(502).json({ error: "Razorpay did not return a refund id" });
+        return;
       }
 
       await db.insert(billingLedger).values({
@@ -1035,14 +1152,63 @@ router.post(
         plan: row.plan,
         razorpayPaymentId: row.razorpayPaymentId,
         razorpayRefundId: refundId,
-        idempotencyKey: `admin_refund:${paymentId}:${refundId || Date.now()}`,
+        idempotencyKey: `admin_refund:${paymentId}:${refundId}`,
         metadata: { reason, isPartial, staffId: req.staff?.id },
       });
+
+      // Full refund of a plan payment → revoke entitlement + stop Autopay.
+      let revoked = false;
+      if (!isPartial && revokeEntitlement && row.plan && row.plan !== "storage_addon") {
+        const [sub] = await db
+          .select()
+          .from(subscriptions)
+          .where(eq(subscriptions.userId, row.userId))
+          .limit(1);
+        const rzpSubId = sub?.razorpaySubscriptionId || null;
+        if (rzpSubId && !rzpSubId.startsWith("mock_")) {
+          try {
+            await razorpay.subscriptions.cancel(rzpSubId, false);
+          } catch (err) {
+            logger.warn({ err, userId: row.userId, rzpSubId }, "Admin refund: Autopay cancel failed");
+          }
+        }
+        await db
+          .update(subscriptions)
+          .set({ status: "expired", razorpaySubscriptionId: null })
+          .where(eq(subscriptions.userId, row.userId));
+        await db.update(profiles).set({ isPremium: false }).where(eq(profiles.userId, row.userId));
+        await db
+          .update(users)
+          .set({ templateId: "minimal", cancelAtPeriodEnd: false })
+          .where(eq(users.id, row.userId));
+        await recomputeUserQuota(row.userId);
+        revoked = true;
+      }
+
+      try {
+        const [u] = await db.select().from(users).where(eq(users.id, row.userId)).limit(1);
+        if (u?.email) {
+          const { sendRefundEmail } = await import("../lib/billing");
+          await sendRefundEmail({
+            email: u.email,
+            userName: u.name || "there",
+            plan: row.plan || "plan",
+            amountInr: amountPaise / 100,
+            refundId,
+            userId: row.userId,
+            reason,
+            isPartial,
+          });
+        }
+      } catch (mailErr) {
+        logger.warn({ mailErr, paymentId }, "Admin refund email failed (non-fatal)");
+      }
 
       await audit(req, isPartial ? "payment.partial_refund" : "payment.refund", "payment", paymentId, {
         amountPaise,
         refundId,
         reason,
+        revoked,
       });
 
       res.json({
@@ -1050,6 +1216,7 @@ router.post(
         refundId,
         amountPaise,
         isPartial,
+        revoked,
         status: isPartial ? row.status : "refunded",
       });
     } catch (err) {
@@ -1993,5 +2160,6 @@ router.get(
 
 registerAdminSupport(router);
 registerAdminExtras(router);
+registerAdminActivation(router);
 
 export default router;
