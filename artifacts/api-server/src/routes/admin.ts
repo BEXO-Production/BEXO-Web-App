@@ -675,6 +675,16 @@ router.post(
       }
 
       const result = await activatePaidPlan(userId, planRaw, expiresAt);
+
+      // Foolproof: lifetime plans (studentplus) normally clear expiresAt — trials must keep the 30-day clock.
+      if (isTrial && expiresAt) {
+        await db
+          .update(subscriptions)
+          .set({ expiresAt, status: "active", plan: planRaw })
+          .where(eq(subscriptions.userId, userId));
+        result.expiresAt = expiresAt;
+      }
+
       const upgraded = await upgradeUserToPremiumLive(userId, {
         preferKeepTemplate: true,
         forceRandomTemplate: false,
