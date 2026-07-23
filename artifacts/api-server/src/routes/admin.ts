@@ -36,7 +36,10 @@ import {
   loadPricingCatalog,
 } from "../lib/pricingCatalog";
 import {
+  finalizePremiumTrial,
   notifyPlanPriceChange,
+  premiumTrialExpiry,
+  PREMIUM_TRIAL_DAYS,
   toCsv,
   upgradeUserToPremiumLive,
 } from "../lib/adminOps";
@@ -632,48 +635,102 @@ router.post(
     try {
       const userId = String(req.params.userId);
       const planRaw = String(req.body?.plan || "").toLowerCase();
-      const reason = String(req.body?.reason || "").trim() || "admin_grant";
+      const isTrial = !!req.body?.trial || String(req.body?.mode || "").toLowerCase() === "trial";
+      const reason =
+        String(req.body?.reason || "").trim() ||
+        (isTrial ? "premium_free_trial_30d" : "admin_grant");
       if (!isPaidPlan(planRaw)) {
         res.status(400).json({
           error: "Invalid plan. Use identity | essential | growth | studentplus",
         });
         return;
       }
-      const [user] = await db.select({ id: users.id }).from(users).where(eq(users.id, userId)).limit(1);
+
+      const [user] = await db
+        .select({ id: users.id, email: users.email, name: users.name })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
       if (!user) {
         res.status(404).json({ error: "User not found" });
         return;
       }
 
-      const expiresAt = defaultGrantExpiry(planRaw, req.body?.expiresAt);
+      if (isTrial && !user.email) {
+        res.status(400).json({
+          error:
+            "User has no email on file. Add an email first — the trial Autopay instructions must be delivered by email.",
+        });
+        return;
+      }
+
+      // Trials are always exactly 30 days (even for studentplus / lifetime catalog plans).
+      const expiresAt = isTrial
+        ? premiumTrialExpiry()
+        : defaultGrantExpiry(planRaw, req.body?.expiresAt);
+
+      if (isTrial && (!expiresAt || expiresAt.getTime() <= Date.now())) {
+        res.status(500).json({ error: "Failed to compute trial expiry" });
+        return;
+      }
+
       const result = await activatePaidPlan(userId, planRaw, expiresAt);
       const upgraded = await upgradeUserToPremiumLive(userId, {
         preferKeepTemplate: true,
         forceRandomTemplate: false,
       });
 
-      await audit(req, "user.grant_plan", "user", userId, {
+      let trialMail: { emailed: boolean; email: string | null; error?: string } | null = null;
+      if (isTrial && result.expiresAt) {
+        trialMail = await finalizePremiumTrial({
+          userId,
+          plan: result.plan,
+          planLabel: result.plan,
+          expiresAt: result.expiresAt,
+          siteUrl: upgraded.subdomainUrl,
+        });
+        if (trialMail.error && !trialMail.emailed) {
+          // Plan is live but email failed validation — surface clearly; staff can fix email & re-send via re-grant.
+          logger.warn({ userId, err: trialMail.error }, "Trial activated without email");
+        }
+      }
+
+      await audit(req, isTrial ? "user.premium_trial" : "user.grant_plan", "user", userId, {
         plan: result.plan,
         expiresAt: result.expiresAt,
         reason,
+        trial: isTrial,
+        trialDays: isTrial ? PREMIUM_TRIAL_DAYS : undefined,
         renewalMode: result.renewalMode,
         templateId: upgraded.templateId,
         handle: upgraded.handle,
         subdomainUrl: upgraded.subdomainUrl,
+        trialEmailQueued: trialMail?.emailed ?? false,
+        trialEmailTo: trialMail?.email ?? null,
       });
 
       const subscriptionState = await resolveSubscriptionState(userId);
+      const host = upgraded.subdomainUrl?.replace(/^https?:\/\//, "") || null;
       res.json({
         ok: true,
+        trial: isTrial,
+        trialDays: isTrial ? PREMIUM_TRIAL_DAYS : null,
         result,
         templateId: upgraded.templateId,
         handle: upgraded.handle,
         subdomainUrl: upgraded.subdomainUrl,
         pathUrl: upgraded.handle ? pathPortfolioUrl(upgraded.handle) : null,
         subscriptionState,
-        message: upgraded.subdomainUrl
-          ? `Pro live at ${upgraded.subdomainUrl.replace(/^https?:\/\//, "")} · template ${upgraded.templateId}`
-          : `Pro activated with template ${upgraded.templateId} (no handle yet)`,
+        emailQueued: trialMail?.emailed ?? false,
+        emailTo: trialMail?.email ?? null,
+        emailError: trialMail?.error ?? null,
+        message: isTrial
+          ? trialMail?.emailed
+            ? `30-day ${result.plan} trial live${host ? ` at ${host}` : ""} · Autopay email sent to ${trialMail.email}`
+            : `30-day ${result.plan} trial live${host ? ` at ${host}` : ""} · WARNING: email not queued (${trialMail?.error || "unknown"})`
+          : upgraded.subdomainUrl
+            ? `Pro live at ${host} · template ${upgraded.templateId}`
+            : `Pro activated with template ${upgraded.templateId} (no handle yet)`,
       });
     } catch (err) {
       res.status(500).json({ error: (err as Error).message });
