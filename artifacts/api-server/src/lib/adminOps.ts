@@ -1,12 +1,30 @@
 import { and, eq, sql } from "drizzle-orm";
 import { db, payments, profiles, subscriptions, users } from "@workspace/db";
-import { enqueueEmail } from "./emailOutbox";
+import { enqueueEmail, processEmailOutbox } from "./emailOutbox";
 import { invalidatePricingCache } from "./pricingCatalog";
 import { appOrigin, portfolioPublicUrl } from "./platform";
 import { logger } from "./logger";
 import { invalidatePortfolioRenderCache } from "./portfolioRenderCache";
 
 export const PREMIUM_TEMPLATE_IDS = ["cura-futuri", "sierra-montana", "nico-palmer"] as const;
+export const PREMIUM_TRIAL_DAYS = 30;
+
+export function premiumTrialExpiry(from: Date = new Date()): Date {
+  const d = new Date(from.getTime());
+  d.setDate(d.getDate() + PREMIUM_TRIAL_DAYS);
+  return d;
+}
+
+export function formatTrialExpiryLabel(expiresAt: Date): string {
+  return expiresAt.toLocaleString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Asia/Kolkata",
+  });
+}
 
 export function pickRandomPremiumTemplate(exclude?: string | null): string {
   const pool = PREMIUM_TEMPLATE_IDS.filter((t) => t !== exclude);
@@ -68,6 +86,71 @@ export async function upgradeUserToPremiumLive(
     handle,
     subdomainUrl: handle ? portfolioPublicUrl(handle) : null,
   };
+}
+
+/** After admin starts a 30-day premium trial — email user + mark cancel-at-period-end. */
+export async function finalizePremiumTrial(opts: {
+  userId: string;
+  plan: string;
+  planLabel?: string;
+  expiresAt: Date;
+  siteUrl?: string | null;
+}): Promise<{ emailed: boolean; email: string | null; error?: string }> {
+  const [user] = await db
+    .select({ email: users.email, name: users.name })
+    .from(users)
+    .where(eq(users.id, opts.userId))
+    .limit(1);
+
+  const email = user?.email ? String(user.email).trim().toLowerCase() : "";
+  if (!email) {
+    return {
+      emailed: false,
+      email: null,
+      error: "User has no email on file — add an email before starting a trial so they get Autopay instructions.",
+    };
+  }
+
+  // Trial ends unless Autopay is set up (user must convert before expiry).
+  await db
+    .update(users)
+    .set({ cancelAtPeriodEnd: true })
+    .where(eq(users.id, opts.userId));
+
+  const origin = appOrigin();
+  const planLabel = opts.planLabel || opts.plan;
+  const expiresLabel = formatTrialExpiryLabel(opts.expiresAt);
+  const expiresDay = opts.expiresAt.toISOString().slice(0, 10);
+
+  const queued = await enqueueEmail({
+    eventType: "premium_trial_started",
+    recipient: email,
+    subject: `Your BEXO ${planLabel} free trial has started — set up Autopay`,
+    dedupeKey: `premium_trial_started:${opts.userId}:${expiresDay}`,
+    userId: opts.userId,
+    relatedId: opts.plan,
+    payload: {
+      userName: user?.name || "there",
+      plan: opts.plan,
+      planLabel,
+      expiresLabel,
+      billingUrl: `${origin}/billing`,
+      siteUrl: opts.siteUrl || "",
+      trialDays: PREMIUM_TRIAL_DAYS,
+    },
+  });
+
+  // Flush quickly so staff see delivery status soon after grant.
+  await processEmailOutbox(5).catch((err) =>
+    logger.warn({ err, userId: opts.userId }, "Trial email outbox flush failed"),
+  );
+
+  logger.info(
+    { userId: opts.userId, email, plan: opts.plan, expiresAt: opts.expiresAt.toISOString(), queued: !!queued },
+    "Premium trial notification processed",
+  );
+
+  return { emailed: !!queued, email };
 }
 
 export async function notifyPlanPriceChange(opts: {
