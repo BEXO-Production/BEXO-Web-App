@@ -154,7 +154,7 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
 
   if (loading) {
     return (
-      <div className="flex h-screen w-screen items-center justify-center bg-slate-50">
+      <div className="flex min-h-[100dvh] w-full items-center justify-center bg-slate-50">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="w-9 h-9 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin text-indigo-500" />
           <p className="text-sm font-medium text-slate-500">Loading portfolio...</p>
@@ -173,7 +173,7 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
             ? 'Subscription ended'
             : 'Temporarily paused';
     return (
-      <div className="flex min-h-screen w-full items-center justify-center bg-slate-50 p-6 font-sans">
+      <div className="flex min-h-[100dvh] w-full items-center justify-center bg-slate-50 p-6 font-sans">
         <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-lg space-y-4 text-left">
           <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-700">
             {reasonLabel}
@@ -206,7 +206,7 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
       return <UnclaimedHandleBanner handle={handle || handleOverride || 'yourname'} />;
     }
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6 text-center">
+      <div className="flex min-h-[100dvh] items-center justify-center bg-slate-50 p-6 text-center">
         <div className="max-w-md space-y-3 rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
           <h1 className="text-xl font-semibold text-slate-900">Portfolio temporarily unavailable</h1>
           <p className="text-sm text-slate-500">
@@ -228,7 +228,7 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
 
   if (isSubdomainAccess && !isPremium) {
     return (
-      <div className="flex h-screen w-screen flex-col items-center justify-center bg-slate-50 p-4 font-sans text-center">
+      <div className="flex min-h-[100dvh] w-full flex-col items-center justify-center bg-slate-50 p-4 font-sans text-center">
         <div className="max-w-md bg-white p-8 rounded-2xl border border-slate-200 shadow-lg space-y-6">
           <div className="w-16 h-16 bg-rose-50 rounded-full flex items-center justify-center mx-auto text-rose-500">
             <Globe className="w-8 h-8" />
@@ -274,7 +274,7 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
       if (window.location.href !== target) {
         window.location.replace(target);
         return (
-          <div className="flex h-screen w-screen items-center justify-center bg-slate-50">
+          <div className="flex min-h-[100dvh] w-full items-center justify-center bg-slate-50">
             <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
           </div>
         );
@@ -1232,7 +1232,7 @@ export default function PublicPortfolio({ handleOverride }: PublicPortfolioProps
 
   return (
     <div 
-      className="min-h-screen pb-20 font-sans relative overflow-x-hidden transition-colors duration-300 text-slate-800" 
+      className="min-h-[100dvh] pb-20 font-sans relative overflow-x-hidden transition-colors duration-300 text-slate-800" 
       style={{ 
         background: bgStyle === 'dots' || bgStyle === 'waves'
           ? '#f8fafc'

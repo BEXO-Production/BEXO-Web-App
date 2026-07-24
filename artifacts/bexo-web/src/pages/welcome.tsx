@@ -655,7 +655,7 @@ export default function WelcomeSuccess() {
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ ...spring, delay: 0.55 }}
-        className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-slate-950/85 px-4 py-3 backdrop-blur-md sm:static sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:backdrop-blur-none"
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-slate-950/85 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-md sm:static sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:pb-0 sm:backdrop-blur-none"
       >
         <div className="mx-auto flex w-full max-w-5xl flex-col gap-2 sm:flex-row sm:justify-end sm:px-6 sm:pb-8">
           <button

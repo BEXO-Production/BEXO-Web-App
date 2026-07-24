@@ -1,10 +1,19 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "wouter";
+import { Menu, X } from "lucide-react";
 import { BEXO_FOOTER_COPYRIGHT, BEXO_OAUTH_APP_NAME } from "@/lib/brand";
 import { resolveAppOrigin } from "@/lib/platform";
 import { BrandLogo } from "@/components/BrandLogo";
 import type { LegalDoc } from "@/content/legal/types";
 import { usePageSeo } from "@/hooks/use-page-seo";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetClose,
+} from "@/components/ui/sheet";
 
 const LEGAL_LINKS = [
   { href: "/terms", label: "Terms", slug: "terms" },
@@ -51,25 +60,45 @@ export function MarketingNav({
   dashboardReady?: boolean;
   continueHref?: string;
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
   const links = [
     { href: "/#about", label: "About" },
     { href: "/#how", label: "How it works" },
     { href: "/#features", label: "Features" },
     { href: "/#pricing", label: "Pricing" },
   ];
+  const primaryHref = signedIn
+    ? dashboardReady
+      ? "/dashboard"
+      : continueHref || "/step/1"
+    : "/login";
+  const primaryLabel = signedIn
+    ? dashboardReady
+      ? "Dashboard"
+      : "Continue"
+    : "Get Started";
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [menuOpen]);
 
   return (
     <header
-      className={`sticky top-0 z-50 border-b transition-colors ${
+      className={`sticky top-0 z-50 border-b transition-colors pt-[env(safe-area-inset-top,0px)] ${
         solid
           ? "border-slate-200/80 bg-[#F7F4EF]/95 backdrop-blur-xl"
           : "border-white/10 backdrop-blur-xl"
       }`}
       style={solid ? undefined : { backgroundColor: "rgba(11, 18, 32, 0.92)" }}
     >
-      <div className="mx-auto flex h-[4.25rem] max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
-        <Link href="/" className="group flex items-center gap-2.5 min-h-11">
-          <BrandLogo size="md" className="transition group-hover:scale-105" />
+      <div className="mx-auto flex h-[4.25rem] max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
+        <Link href="/" className="group flex items-center gap-2.5 min-h-11 min-w-0">
+          <BrandLogo size="md" className="transition group-hover:scale-105 shrink-0" />
           <span
             className={`font-serif text-xl font-bold tracking-tight ${
               solid ? "text-slate-900" : "text-white"
@@ -108,19 +137,19 @@ export function MarketingNav({
           ))}
         </nav>
 
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           {signedIn ? (
             <Link
-              href={dashboardReady ? "/dashboard" : continueHref || "/step/1"}
-              className="inline-flex h-10 items-center rounded-full bg-[#2F6BFF] px-5 text-sm font-bold text-white shadow-lg shadow-blue-500/25 transition hover:bg-[#2558e0] active:scale-[0.98]"
+              href={primaryHref}
+              className="hidden sm:inline-flex h-10 items-center rounded-full bg-[#2F6BFF] px-5 text-sm font-bold text-white shadow-lg shadow-blue-500/25 transition hover:bg-[#2558e0] active:scale-[0.98]"
             >
-              {dashboardReady ? "Dashboard" : "Continue"}
+              {primaryLabel}
             </Link>
           ) : (
             <>
               <Link
                 href="/login"
-                className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
+                className={`hidden sm:inline-flex rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
                   solid
                     ? "text-slate-700 hover:bg-slate-900/5"
                     : "text-white/90 hover:bg-white/10"
@@ -130,14 +159,87 @@ export function MarketingNav({
               </Link>
               <Link
                 href="/login"
-                className="inline-flex h-10 items-center rounded-full bg-[#2F6BFF] px-5 text-sm font-bold text-white shadow-lg shadow-blue-500/25 transition hover:bg-[#2558e0] active:scale-[0.98]"
+                className="hidden sm:inline-flex h-10 items-center rounded-full bg-[#2F6BFF] px-5 text-sm font-bold text-white shadow-lg shadow-blue-500/25 transition hover:bg-[#2558e0] active:scale-[0.98]"
               >
                 Get Started
               </Link>
             </>
           )}
+
+          <button
+            type="button"
+            className={`inline-flex h-11 w-11 items-center justify-center rounded-full md:hidden ${
+              solid
+                ? "text-slate-800 hover:bg-slate-900/5"
+                : "text-white hover:bg-white/10"
+            }`}
+            aria-label={menuOpen ? "Close menu" : "Open menu"}
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen(true)}
+          >
+            <Menu className="h-5 w-5" />
+          </button>
         </div>
       </div>
+
+      <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
+        <SheetContent
+          side="right"
+          className="flex !inset-0 h-[100dvh] max-h-[100dvh] w-full max-w-none flex-col gap-0 border-0 bg-[#070B14] p-0 text-white [&>button]:hidden sm:max-w-none"
+        >
+          <SheetHeader className="sr-only">
+            <SheetTitle>BEXO menu</SheetTitle>
+            <SheetDescription>Primary navigation</SheetDescription>
+          </SheetHeader>
+
+          <div className="flex h-14 items-center justify-between border-b border-white/10 px-4 pt-[env(safe-area-inset-top,0px)]">
+            <div className="flex items-center gap-2.5">
+              <BrandLogo size="sm" />
+              <span className="font-serif text-lg font-bold">BEXO</span>
+            </div>
+            <SheetClose asChild>
+              <button
+                type="button"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-full text-white hover:bg-white/10"
+                aria-label="Close menu"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </SheetClose>
+          </div>
+
+          <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))]">
+            {links.map((item) => (
+              <a
+                key={item.href}
+                href={item.href}
+                onClick={() => setMenuOpen(false)}
+                className="rounded-xl px-4 py-3.5 text-center text-base font-semibold text-white/80 transition hover:bg-white/8 hover:text-white"
+              >
+                {item.label}
+              </a>
+            ))}
+
+            {!signedIn && (
+              <Link
+                href="/login"
+                onClick={() => setMenuOpen(false)}
+                className="rounded-xl px-4 py-3.5 text-center text-base font-semibold text-[#9BB6FF] transition hover:bg-white/8"
+              >
+                Log in
+              </Link>
+            )}
+
+            <Link
+              href={primaryHref}
+              onClick={() => setMenuOpen(false)}
+              className="mt-4 inline-flex min-h-12 w-full items-center justify-center rounded-full bg-[#2F6BFF] px-5 text-sm font-bold text-white shadow-lg shadow-blue-500/25"
+            >
+              {primaryLabel}
+            </Link>
+          </nav>
+        </SheetContent>
+      </Sheet>
     </header>
   );
 }
@@ -229,7 +331,7 @@ export function LegalDocument({ doc, slug }: { doc: LegalDoc; slug: string }) {
   });
 
   return (
-    <div className="min-h-screen bg-[#F7F4EF] text-slate-800">
+    <div className="min-h-[100dvh] overflow-x-hidden bg-[#F7F4EF] text-slate-800">
       <MarketingNav solid />
       <main className="mx-auto max-w-3xl px-4 py-12 sm:px-6 sm:py-16">
         <p className="mb-3 text-xs font-bold uppercase tracking-[0.2em] text-[#2F6BFF]">

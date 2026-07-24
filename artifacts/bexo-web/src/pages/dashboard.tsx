@@ -5165,7 +5165,7 @@ export default function Dashboard() {
         )}
         {showCompletionModal && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white w-full max-w-lg rounded-2xl border border-slate-200 shadow-2xl p-6 relative flex flex-col max-h-[90vh]">
+            <div className="bg-white w-full max-w-lg rounded-2xl border border-slate-200 shadow-2xl p-6 relative flex flex-col max-h-[min(90dvh,100%)]">
               <button 
                 onClick={() => setShowCompletionModal(false)}
                 className="absolute right-4 top-4 text-slate-400 hover:text-slate-600 transition-colors p-1"

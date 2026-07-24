@@ -789,7 +789,7 @@ export default function CheckoutPage() {
         : 'One-time payment — yours forever';
 
   return (
-    <div className="min-h-screen bg-slate-50 px-3 sm:px-4 py-6 sm:py-8 pb-[max(2.5rem,env(safe-area-inset-bottom))]">
+    <div className="min-h-[100dvh] overflow-x-hidden bg-slate-50 px-3 sm:px-4 py-6 sm:py-8 pb-[max(2.5rem,env(safe-area-inset-bottom))]">
       <div className="flex flex-col max-w-md w-full mx-auto pb-8 sm:pb-10 animate-in fade-in slide-in-from-right-4">
         <button
           type="button"

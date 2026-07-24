@@ -95,7 +95,7 @@ function Router() {
         path === '/cookies');
     if (!isPublicMarketing) {
       return (
-        <div className="flex h-screen w-screen items-center justify-center bg-slate-50">
+        <div className="flex min-h-[100dvh] w-full items-center justify-center bg-slate-50">
           <div className="flex flex-col items-center gap-3">
             <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
             <p className="text-sm font-medium text-slate-500">Loading your profile...</p>
@@ -248,7 +248,7 @@ function Router() {
       </Route>
       <Route path="/billing">
         {hasToken ? (
-          <div className="min-h-screen bg-slate-50 px-4 py-8">
+          <div className="min-h-[100dvh] bg-slate-50 px-4 py-8">
             <div className="mx-auto mb-6 flex w-full max-w-lg items-center justify-between">
               <button
                 type="button"
