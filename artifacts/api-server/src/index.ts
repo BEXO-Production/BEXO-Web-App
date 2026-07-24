@@ -34,6 +34,9 @@ import { verifyMailer } from "./lib/mailer";
 import { startEmailOutboxWorker, processEmailOutbox } from "./lib/emailOutbox";
 import { scheduleLifecycleEmails } from "./lib/lifecycleEmails";
 import { runDailyBillingAndAnalyticsJob } from "./lib/dailyJobs";
+import { assertEnvHealthAtBoot } from "./lib/envHealth";
+
+assertEnvHealthAtBoot();
 
 const rawPort = process.env["PORT"];
 

@@ -2910,7 +2910,7 @@ async function enqueueDunningEmail(userId: string, graceUntil: Date, dayBucket: 
     userId,
     payload: {
       userName: user.name || "there",
-      billingUrl: `${process.env.FRONTEND_URL || process.env.WEB_URL || "https://mybexo.cyou"}/billing`,
+      billingUrl: `${process.env.FRONTEND_URL || process.env.WEB_URL || "https://dash.mybexo.cyou"}/billing`,
       pauseDate,
       dayBucket,
     },

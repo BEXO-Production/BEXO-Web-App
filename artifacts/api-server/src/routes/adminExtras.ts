@@ -19,6 +19,8 @@ import {
 import { staffGuard, type StaffRequest, type StaffRole } from "../middlewares/staffAuth";
 import { logger } from "../lib/logger";
 import { appOrigin } from "../lib/platform";
+import { loadGcpCloudRunAnalytics } from "../lib/gcpMonitoring";
+import { loadRazorpayAnalytics } from "../lib/razorpayAnalytics";
 
 const AUTOPAY_MANUAL_CAP_INR = 2000;
 const ADMIN_ORIGIN = process.env.ADMIN_URL || "https://bexo.acedigital.cc";
@@ -656,4 +658,62 @@ export function registerAdminExtras(router: IRouter) {
       },
     });
   });
+
+  router.get(
+    "/infra/gcp",
+    staffGuard(["super_admin", "ops", "billing"]),
+    async (req: StaffRequest, res: Response) => {
+      try {
+        const hours = Math.min(Math.max(Number(req.query.hours) || 48, 6), 168);
+        const data = await loadGcpCloudRunAnalytics(hours);
+        await audit(req, "infra.gcp.view", "infra", "gcp", { hours, configured: data.configured });
+        res.json(data);
+      } catch (err) {
+        res.status(500).json({ error: (err as Error).message });
+      }
+    },
+  );
+
+  router.get(
+    "/infra/razorpay",
+    staffGuard(["super_admin", "ops", "billing"]),
+    async (req: StaffRequest, res: Response) => {
+      try {
+        const days = Math.min(Math.max(Number(req.query.days) || 30, 7), 90);
+        const data = await loadRazorpayAnalytics(days);
+        await audit(req, "infra.razorpay.view", "infra", "razorpay", {
+          days,
+          configured: data.configured,
+        });
+        res.json(data);
+      } catch (err) {
+        res.status(500).json({ error: (err as Error).message });
+      }
+    },
+  );
+
+  /** Client-side admin activity (page views, exports) — always records IP + actor. */
+  router.post(
+    "/audit/client",
+    staffGuard(["super_admin", "ops", "billing", "support"]),
+    async (req: StaffRequest, res: Response) => {
+      try {
+        const action = String(req.body?.action || "client.event").slice(0, 120);
+        const targetType = req.body?.targetType ? String(req.body.targetType).slice(0, 64) : "ui";
+        const targetId = req.body?.targetId ? String(req.body.targetId).slice(0, 120) : null;
+        const meta =
+          req.body?.meta && typeof req.body.meta === "object"
+            ? (req.body.meta as Record<string, unknown>)
+            : {};
+        await audit(req, action, targetType, targetId, {
+          ...meta,
+          path: req.body?.path ? String(req.body.path).slice(0, 200) : undefined,
+          userAgent: String(req.headers["user-agent"] || "").slice(0, 240),
+        });
+        res.json({ ok: true });
+      } catch (err) {
+        res.status(500).json({ error: (err as Error).message });
+      }
+    },
+  );
 }

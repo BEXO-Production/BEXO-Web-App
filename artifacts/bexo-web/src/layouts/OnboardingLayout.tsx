@@ -20,6 +20,7 @@ import carousel2Img from '../assets/illustrations/carousel-2.jpeg';
 import carousel3Img from '../assets/illustrations/carousel-3.jpeg';
 import { useOnboarding } from '../context/OnboardingContext';
 import { supabase } from '../lib/supabase';
+import { getMediaCapability } from '../lib/mediaCapability';
 
 const CAROUSEL_IMAGES = [carousel1Img, carousel2Img, carousel3Img];
 
@@ -57,13 +58,15 @@ export function OnboardingLayout({ children }: { children: React.ReactNode }) {
 
   const [carouselIndex, setCarouselIndex] = React.useState(0);
   const [isLoggingOut, setIsLoggingOut] = React.useState(false);
+  const allowHeavyMotion = React.useMemo(() => getMediaCapability().allowHeavyMotion, []);
 
   React.useEffect(() => {
+    if (!allowHeavyMotion) return;
     const timer = setInterval(() => {
       setCarouselIndex((prev) => (prev + 1) % CAROUSEL_IMAGES.length);
     }, 5000);
     return () => clearInterval(timer);
-  }, []);
+  }, [allowHeavyMotion]);
 
   const handleLogout = async () => {
     if (isLoggingOut) return;
@@ -99,7 +102,7 @@ export function OnboardingLayout({ children }: { children: React.ReactNode }) {
           key={`atm-${currentStep}`}
           atmosphere={atmosphereForStep(currentStep)}
           intensity="ink"
-          animate
+          animate={allowHeavyMotion}
           className="!absolute inset-0"
         />
         <div className="relative z-10 px-3.5 pt-[max(0.65rem,env(safe-area-inset-top))] pb-3.5">

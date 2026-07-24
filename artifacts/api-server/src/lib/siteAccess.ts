@@ -123,7 +123,7 @@ export function buildPausedPortfolioHtml(opts: {
     <h1>${copy.title}</h1>
     <p>${copy.body}</p>
     <p class="meta">Handle: ${safeHandle}${opts.ownerName ? ` · ${String(opts.ownerName).replace(/[<>&"]/g, "")}` : ""}</p>
-    <a class="cta" href="${process.env.FRONTEND_URL || process.env.WEB_URL || "https://mybexo.cyou"}/billing">Owner: fix in Dashboard → Billing</a>
+    <a class="cta" href="${process.env.FRONTEND_URL || process.env.WEB_URL || "https://dash.mybexo.cyou"}/billing">Owner: fix in Dashboard → Billing</a>
   </main>
 </body>
 </html>`;

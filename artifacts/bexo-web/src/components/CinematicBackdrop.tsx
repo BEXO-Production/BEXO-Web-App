@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { cn } from "../design-system/primitives";
+import { getMediaCapability } from "../lib/mediaCapability";
 
 export type AtmosphereKey =
   | "auth"
@@ -49,13 +50,13 @@ type Props = {
   className?: string;
   /** Darker bottom wash for forms sitting low on mobile */
   intensity?: "soft" | "rich" | "ink";
-  /** Animate a slow Ken Burns drift */
+  /** Animate a slow Ken Burns drift (auto-disabled on low-power devices) */
   animate?: boolean;
 };
 
 /**
  * Full-bleed cinematic still — sourced Unsplash backgrounds with
- * brand-tinted washes. Prefer this on mobile over heavy video.
+ * brand-tinted washes. Prefer this on mobile / low-power over heavy video.
  */
 export function CinematicBackdrop({
   atmosphere = "auth",
@@ -64,6 +65,8 @@ export function CinematicBackdrop({
   animate = true,
 }: Props) {
   const shot = ATMOSPHERE[atmosphere];
+  const allowKenBurns = useMemo(() => getMediaCapability().allowKenBurns, []);
+  const shouldAnimate = animate && allowKenBurns;
 
   return (
     <div
@@ -78,14 +81,14 @@ export function CinematicBackdrop({
         alt=""
         className={cn(
           "absolute inset-0 h-full w-full object-cover",
-          animate && "bexo-ken-burns",
+          shouldAnimate && "bexo-ken-burns",
         )}
         decoding="async"
         fetchPriority="high"
       />
 
-      {/* Brand mesh — cyan / indigo matching the BEXO mark */}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_20%_0%,_rgba(56,189,248,0.18)_0%,_transparent_48%),radial-gradient(ellipse_at_90%_80%,_rgba(59,130,246,0.14)_0%,_transparent_42%)]" />
+      {/* Brand mesh — BEXO accent blue */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_20%_0%,_rgba(47,107,255,0.18)_0%,_transparent_48%),radial-gradient(ellipse_at_90%_80%,_rgba(37,88,224,0.14)_0%,_transparent_42%)]" />
 
       {intensity === "soft" && (
         <>

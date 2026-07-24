@@ -32,10 +32,19 @@ gcloud run deploy "$SERVICE" \
   --max-instances=20 \
   --timeout=300 \
   --concurrency=80 \
-  --update-env-vars="PLATFORM_DOMAIN=mybexo.cyou,FRONTEND_URL=https://dash.mybexo.cyou,WEB_URL=https://dash.mybexo.cyou,MARKETING_URL=https://mybexo.cyou,ALLOW_INMEMORY_OTP=1,SUPABASE_URL=https://qovrjyfhtaytaiwjbiqu.supabase.co,SUPABASE_ANON_KEY=sb_publishable_7BETYKsyTZEFOkiiW-Yq5A_qzwk5Ci2,VITE_SUPABASE_URL=https://qovrjyfhtaytaiwjbiqu.supabase.co,VITE_SUPABASE_ANON_KEY=sb_publishable_7BETYKsyTZEFOkiiW-Yq5A_qzwk5Ci2"
+  --update-env-vars="PLATFORM_DOMAIN=mybexo.cyou,BEXO_PLATFORM_DOMAIN=mybexo.cyou,FRONTEND_URL=https://dash.mybexo.cyou,WEB_URL=https://dash.mybexo.cyou,MARKETING_URL=https://mybexo.cyou,ADMIN_URL=https://bexo.acedigital.cc,ALLOW_INMEMORY_OTP=1,SMTP_FROM=emailer@mail.mybexo.com,SMTP_FROM_NAME=Bexo Support,SUPABASE_URL=https://qovrjyfhtaytaiwjbiqu.supabase.co,SUPABASE_ANON_KEY=sb_publishable_7BETYKsyTZEFOkiiW-Yq5A_qzwk5Ci2,VITE_SUPABASE_URL=https://qovrjyfhtaytaiwjbiqu.supabase.co,VITE_SUPABASE_ANON_KEY=sb_publishable_7BETYKsyTZEFOkiiW-Yq5A_qzwk5Ci2"
 
 SERVICE_URL="$(gcloud run services describe "$SERVICE" --project="$PROJECT" --region="$REGION" --format='value(status.url)')"
 echo "Cloud Run URL: $SERVICE_URL"
+
+# Keep PUBLIC_API_URL aligned with the live service URL (invite/admin surfaces).
+# Do not overwrite CRON_SECRET / ANALYTICS_HASH_SALT here — set once and leave stable.
+gcloud run services update "$SERVICE" \
+  --project="$PROJECT" \
+  --region="$REGION" \
+  --update-env-vars="PUBLIC_API_URL=${SERVICE_URL}" \
+  >/dev/null
+echo "==> PUBLIC_API_URL set to $SERVICE_URL"
 
 echo "==> Build dash SPA (dash.mybexo.cyou)"
 pnpm --filter @workspace/bexo-web run build:development
