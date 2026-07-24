@@ -838,7 +838,7 @@ export const getStaffInviteEmail = (opts: {
       )}
       ${highlightCard("Invite expires", escapeHtml(opts.expiresLabel || "in 7 days"), "#FEE2E2")}
       ${bodyParagraph(
-        `Sign in anytime at <a href="${escapeHtml(opts.loginUrl)}" style="color:${INK};font-weight:600;">${escapeHtml(opts.loginUrl.replace(/^https?:\/\//, ""))}</a> with the email and temporary password. You can change your password after you accept the invite.`,
+        `Sign in anytime at <a href="${escapeHtml(opts.loginUrl)}" style="color:${INK};font-weight:600;">${escapeHtml(opts.loginUrl.replace(/^https?:\/\//, ""))}</a> with the email and temporary password. You will be asked to choose a new password after sign-in.`,
       )}
       ${bodyParagraph(
         "<strong>This invite link expires in 7 days.</strong> Ask a super admin to tap Reinvite if you need a fresh link and password.",
@@ -847,3 +847,39 @@ export const getStaffInviteEmail = (opts: {
     `,
   });
 };
+
+export const getStaffPasswordResetEmail = (opts: {
+  userName: string;
+  email: string;
+  temporaryPassword: string;
+  resetUrl: string;
+  loginUrl: string;
+  expiresLabel: string;
+}) =>
+  wrapHtml({
+    title: "Reset your BEXO Admin password",
+    preheader: `Temporary password inside — reset link expires ${opts.expiresLabel}.`,
+    eyebrow: "Password reset",
+    headline: "Reset your BEXO Admin password.",
+    accent: "amber",
+    ctaLabel: "Choose a new password",
+    ctaUrl: opts.resetUrl,
+    footnote:
+      "BEXO Admin · Ace Digital · If you did not request this, contact a super admin immediately.",
+    bodyHtml: `
+      ${greeting(opts.userName)}
+      ${bodyParagraph(
+        `A super admin reset your <strong style="color:${INK};">BEXO Admin</strong> password for <strong style="color:${INK};">${escapeHtml(opts.email)}</strong>.`,
+      )}
+      ${highlightCard(
+        "Temporary password",
+        `<span style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:16px;letter-spacing:0.04em;">${escapeHtml(opts.temporaryPassword)}</span>`,
+        "#FEF3C7",
+      )}
+      ${highlightCard("Reset link expires", escapeHtml(opts.expiresLabel), "#FEE2E2")}
+      ${bodyParagraph(
+        `Open the button above to choose a new password, or sign in at <a href="${escapeHtml(opts.loginUrl)}" style="color:${INK};font-weight:600;">${escapeHtml(opts.loginUrl.replace(/^https?:\/\//, ""))}</a> with the temporary password — you will be prompted to change it immediately.`,
+      )}
+      ${featurePills(["Temp password", "24h reset link", "Forced change"])}
+    `,
+  });

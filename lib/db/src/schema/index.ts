@@ -456,6 +456,10 @@ export const staffUsers = pgTable("staff_users", {
   passwordHash: text("password_hash"),
   role: text("role").notNull().default("support"), // super_admin | support | billing | ops
   isActive: boolean("is_active").notNull().default(true),
+  /** True after invite / admin reset until the employee sets their own password. */
+  mustChangePassword: boolean("must_change_password").notNull().default(false),
+  passwordResetTokenHash: text("password_reset_token_hash"),
+  passwordResetExpiresAt: timestamp("password_reset_expires_at", { withTimezone: true }),
   linkedUserId: uuid("linked_user_id").references(() => users.id, { onDelete: "set null" }),
   invitedBy: uuid("invited_by"),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),

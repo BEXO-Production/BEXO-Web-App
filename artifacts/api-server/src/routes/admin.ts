@@ -141,7 +141,7 @@ router.post("/auth/login", async (req, res: Response) => {
     }
 
     // First login bootstrap: null passwordHash — never persist shared bootstrap as permanent hash.
-    let mustChangePassword = false;
+    let mustChangePassword = !!staff.mustChangePassword;
     if (!staff.passwordHash) {
       const isProd = process.env.NODE_ENV === "production";
       const bootstrapAllowed = process.env.ALLOW_STAFF_BOOTSTRAP === "1";
@@ -169,7 +169,7 @@ router.post("/auth/login", async (req, res: Response) => {
       mustChangePassword = true;
       await db
         .update(staffUsers)
-        .set({ lastLoginAt: new Date(), updatedAt: new Date() })
+        .set({ lastLoginAt: new Date(), updatedAt: new Date(), mustChangePassword: true })
         .where(eq(staffUsers.id, staff.id));
     } else if (!verifyPassword(password, staff.passwordHash)) {
       res.status(401).json({ error: "Invalid credentials" });
@@ -189,7 +189,9 @@ router.post("/auth/login", async (req, res: Response) => {
         id: staff.id,
         email: staff.email,
         name: staff.name,
+        phone: staff.phone,
         role: staff.role,
+        mustChangePassword,
       },
     });
   } catch (err) {
@@ -273,6 +275,9 @@ router.post("/auth/accept-invite", async (req, res: Response) => {
           phone: finalPhone || staff.phone,
           linkedUserId: linkedUser?.id || staff.linkedUserId,
           isActive: true,
+          mustChangePassword: false,
+          passwordResetTokenHash: null,
+          passwordResetExpiresAt: null,
           updatedAt: new Date(),
           lastLoginAt: new Date(),
         })
@@ -291,6 +296,7 @@ router.post("/auth/accept-invite", async (req, res: Response) => {
           invitedBy: invite.invitedBy,
           linkedUserId: linkedUser?.id || null,
           isActive: true,
+          mustChangePassword: false,
           lastLoginAt: new Date(),
         })
         .returning();
@@ -300,12 +306,14 @@ router.post("/auth/accept-invite", async (req, res: Response) => {
     const access = signStaffToken(staff!);
     res.json({
       token: access,
+      mustChangePassword: false,
       staff: {
         id: staff!.id,
         email: staff!.email,
         name: staff!.name,
         phone: staff!.phone,
         role: staff!.role,
+        mustChangePassword: false,
       },
     });
   } catch (err) {
@@ -323,13 +331,19 @@ router.get("/me", staffGuard(), async (req: StaffRequest, res: Response) => {
         phone: staffUsers.phone,
         role: staffUsers.role,
         linkedUserId: staffUsers.linkedUserId,
+        mustChangePassword: staffUsers.mustChangePassword,
       })
       .from(staffUsers)
       .where(eq(staffUsers.id, req.staff!.id))
       .limit(1);
-    res.json({ staff: row || req.staff });
+    res.json({
+      staff: row
+        ? { ...row, mustChangePassword: !!row.mustChangePassword }
+        : { ...req.staff, mustChangePassword: false },
+      mustChangePassword: !!row?.mustChangePassword,
+    });
   } catch {
-    res.json({ staff: req.staff });
+    res.json({ staff: req.staff, mustChangePassword: false });
   }
 });
 
@@ -1806,8 +1820,10 @@ router.get(
         id: staffUsers.id,
         email: staffUsers.email,
         name: staffUsers.name,
+        phone: staffUsers.phone,
         role: staffUsers.role,
         isActive: staffUsers.isActive,
+        mustChangePassword: staffUsers.mustChangePassword,
         lastLoginAt: staffUsers.lastLoginAt,
         createdAt: staffUsers.createdAt,
       })
@@ -1882,15 +1898,101 @@ router.patch(
   async (req: StaffRequest, res: Response) => {
     try {
       const staffId = String(req.params.staffId);
+      const [existing] = await db.select().from(staffUsers).where(eq(staffUsers.id, staffId)).limit(1);
+      if (!existing) {
+        res.status(404).json({ error: "Staff member not found" });
+        return;
+      }
+
       const patch: Record<string, unknown> = { updatedAt: new Date() };
-      if (req.body?.role) patch.role = req.body.role;
+      if (req.body?.role !== undefined) {
+        const role = String(req.body.role);
+        if (!["super_admin", "billing", "ops", "support"].includes(role)) {
+          res.status(400).json({ error: "Invalid role" });
+          return;
+        }
+        patch.role = role;
+      }
       if (req.body?.isActive !== undefined) patch.isActive = !!req.body.isActive;
-      if (req.body?.name !== undefined) patch.name = req.body.name;
-      await db.update(staffUsers).set(patch).where(eq(staffUsers.id, staffId));
+      if (req.body?.name !== undefined) patch.name = String(req.body.name || "").trim() || null;
+      if (req.body?.phone !== undefined) patch.phone = String(req.body.phone || "").trim() || null;
+      if (req.body?.email !== undefined) {
+        const nextEmail = String(req.body.email || "")
+          .toLowerCase()
+          .trim();
+        if (!nextEmail.includes("@")) {
+          res.status(400).json({ error: "Valid email required" });
+          return;
+        }
+        if (nextEmail !== existing.email) {
+          const [taken] = await db
+            .select({ id: staffUsers.id })
+            .from(staffUsers)
+            .where(eq(staffUsers.email, nextEmail))
+            .limit(1);
+          if (taken) {
+            res.status(409).json({ error: "Another staff account already uses that email." });
+            return;
+          }
+          patch.email = nextEmail;
+        }
+      }
+
+      if (
+        req.staff?.id === staffId &&
+        ((patch.role && patch.role !== "super_admin") || patch.isActive === false)
+      ) {
+        res.status(400).json({ error: "You cannot demote or deactivate your own account." });
+        return;
+      }
+
+      const [updated] = await db
+        .update(staffUsers)
+        .set(patch)
+        .where(eq(staffUsers.id, staffId))
+        .returning({
+          id: staffUsers.id,
+          email: staffUsers.email,
+          name: staffUsers.name,
+          phone: staffUsers.phone,
+          role: staffUsers.role,
+          isActive: staffUsers.isActive,
+          mustChangePassword: staffUsers.mustChangePassword,
+          lastLoginAt: staffUsers.lastLoginAt,
+          createdAt: staffUsers.createdAt,
+        });
       await audit(req, "staff.update", "staff_user", staffId, patch);
-      res.json({ ok: true });
+      res.json({ ok: true, staff: updated });
     } catch (err) {
       res.status(500).json({ error: (err as Error).message });
+    }
+  },
+);
+
+router.post(
+  "/staff/:staffId/reset-password",
+  staffGuard(["super_admin"]),
+  async (req: StaffRequest, res: Response) => {
+    try {
+      const staffId = String(req.params.staffId);
+      const { issueStaffPasswordReset } = await import("../lib/staffInvite");
+      const issued = await issueStaffPasswordReset({
+        staffId,
+        invitedBy: req.staff?.id,
+      });
+      await audit(req, "staff.reset_password", "staff_user", staffId, {
+        email: issued.email,
+        emailSent: issued.emailSent,
+      });
+      res.json({
+        ...issued,
+        message: issued.emailSent
+          ? "Password reset email sent with a temporary password and reset link (24h)."
+          : `Reset prepared but email failed: ${issued.emailError || "unknown"}. Share the temp password and link manually.`,
+      });
+    } catch (err: any) {
+      const status = Number(err?.status) || 500;
+      res.status(status).json({ error: err?.message || "Failed to reset password", code: err?.code });
     }
   },
 );

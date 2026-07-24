@@ -153,16 +153,119 @@ export function registerAdminExtras(router: IRouter) {
         res.status(404).json({ error: "Staff not found" });
         return;
       }
-      if (staff.passwordHash && !verifyPassword(currentPassword, staff.passwordHash)) {
-        res.status(401).json({ error: "Current password is incorrect" });
+      // Forced change after temp password / bootstrap: current password optional when mustChangePassword.
+      if (staff.passwordHash && !staff.mustChangePassword) {
+        if (!verifyPassword(currentPassword, staff.passwordHash)) {
+          res.status(401).json({ error: "Current password is incorrect" });
+          return;
+        }
+      } else if (staff.passwordHash && staff.mustChangePassword && currentPassword) {
+        if (!verifyPassword(currentPassword, staff.passwordHash)) {
+          res.status(401).json({ error: "Current (temporary) password is incorrect" });
+          return;
+        }
+      }
+      await db
+        .update(staffUsers)
+        .set({
+          passwordHash: hashPassword(newPassword),
+          mustChangePassword: false,
+          passwordResetTokenHash: null,
+          passwordResetExpiresAt: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(staffUsers.id, staff.id));
+      await audit(req, "staff.password_change", "staff_user", staff.id, {
+        forced: !!staff.mustChangePassword,
+      });
+      res.json({ ok: true, mustChangePassword: false });
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
+  // ——— Public password reset (email link) ———
+
+  router.get("/auth/reset-preview", async (req, res: Response) => {
+    try {
+      const token = String(req.query.token || "").trim();
+      if (!token) {
+        res.status(400).json({ error: "token required", code: "TOKEN_REQUIRED" });
+        return;
+      }
+      const [staff] = await db
+        .select({
+          id: staffUsers.id,
+          email: staffUsers.email,
+          name: staffUsers.name,
+          passwordResetExpiresAt: staffUsers.passwordResetExpiresAt,
+          isActive: staffUsers.isActive,
+        })
+        .from(staffUsers)
+        .where(eq(staffUsers.passwordResetTokenHash, hashToken(token)))
+        .limit(1);
+      if (!staff || !staff.passwordResetExpiresAt) {
+        res.status(404).json({ error: "Reset link is invalid.", code: "RESET_NOT_FOUND" });
+        return;
+      }
+      if (staff.passwordResetExpiresAt.getTime() <= Date.now()) {
+        res.status(410).json({
+          error: "Reset link has expired. Ask a super admin to send a new one.",
+          code: "RESET_EXPIRED",
+          email: staff.email,
+        });
+        return;
+      }
+      if (!staff.isActive) {
+        res.status(403).json({ error: "This staff account is deactivated.", code: "STAFF_INACTIVE" });
+        return;
+      }
+      res.json({
+        email: staff.email,
+        name: staff.name,
+        expiresAt: staff.passwordResetExpiresAt,
+      });
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
+  router.post("/auth/reset-password", async (req, res: Response) => {
+    try {
+      const token = String(req.body?.token || "").trim();
+      const newPassword = String(req.body?.newPassword || "");
+      if (!token || newPassword.length < 8) {
+        res.status(400).json({ error: "Token and new password (8+ chars) are required." });
+        return;
+      }
+      const [staff] = await db
+        .select()
+        .from(staffUsers)
+        .where(eq(staffUsers.passwordResetTokenHash, hashToken(token)))
+        .limit(1);
+      if (!staff || !staff.passwordResetExpiresAt) {
+        res.status(404).json({ error: "Reset link is invalid." });
+        return;
+      }
+      if (staff.passwordResetExpiresAt.getTime() <= Date.now()) {
+        res.status(410).json({ error: "Reset link has expired. Ask a super admin to send a new one." });
+        return;
+      }
+      if (!staff.isActive) {
+        res.status(403).json({ error: "This staff account is deactivated." });
         return;
       }
       await db
         .update(staffUsers)
-        .set({ passwordHash: hashPassword(newPassword), updatedAt: new Date() })
+        .set({
+          passwordHash: hashPassword(newPassword),
+          mustChangePassword: false,
+          passwordResetTokenHash: null,
+          passwordResetExpiresAt: null,
+          updatedAt: new Date(),
+        })
         .where(eq(staffUsers.id, staff.id));
-      await audit(req, "staff.password_change", "staff_user", staff.id, {});
-      res.json({ ok: true });
+      res.json({ ok: true, email: staff.email, message: "Password updated. Sign in with your new password." });
     } catch (err) {
       res.status(500).json({ error: (err as Error).message });
     }

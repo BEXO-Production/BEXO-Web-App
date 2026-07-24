@@ -22,6 +22,7 @@ import {
   getSupportTicketUpdatedEmail,
   getSupportTicketReplyEmail,
   getStaffInviteEmail,
+  getStaffPasswordResetEmail,
 } from "./templates";
 import { generateInvoicePDF } from "./invoice";
 import { uploadToR2 } from "./r2";
@@ -293,6 +294,19 @@ async function renderEmail(row: typeof emailDeliveries.$inferSelect) {
           loginUrl: payload.loginUrl || "",
           expiresLabel: payload.expiresLabel || "",
           isReinvite: !!payload.isReinvite,
+        }),
+        attachments: undefined,
+        replyTo: undefined,
+      };
+    case "staff_password_reset":
+      return {
+        html: getStaffPasswordResetEmail({
+          userName: name,
+          email: payload.email || row.recipient,
+          temporaryPassword: payload.temporaryPassword || "",
+          resetUrl: payload.resetUrl || "",
+          loginUrl: payload.loginUrl || "",
+          expiresLabel: payload.expiresLabel || "",
         }),
         attachments: undefined,
         replyTo: undefined,

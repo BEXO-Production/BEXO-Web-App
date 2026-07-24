@@ -7,7 +7,7 @@ import { db, staffInvites, staffUsers, users } from "@workspace/db";
 import { logger } from "./logger";
 import { sendEmail, isSmtpConfigured } from "./mailer";
 import { enqueueEmail } from "./emailOutbox";
-import { getStaffInviteEmail } from "./templates";
+import { getStaffInviteEmail, getStaffPasswordResetEmail } from "./templates";
 import type { StaffRole } from "../middlewares/staffAuth";
 
 export const STAFF_INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -234,6 +234,9 @@ export async function issueStaffInvite(
         phone: phone || existingStaff.phone,
         role,
         passwordHash,
+        mustChangePassword: true,
+        passwordResetTokenHash: null,
+        passwordResetExpiresAt: null,
         // Stay active so emailed password works immediately; invite marks onboarding done.
         isActive: true,
         invitedBy: input.invitedBy || existingStaff.invitedBy,
@@ -252,6 +255,7 @@ export async function issueStaffInvite(
         phone,
         role,
         passwordHash,
+        mustChangePassword: true,
         isActive: true,
         invitedBy: input.invitedBy || null,
         linkedUserId: linked?.id || null,
@@ -332,3 +336,117 @@ export function inviteStatus(invite: {
   if (invite.expiresAt.getTime() <= Date.now()) return "expired";
   return "pending";
 }
+
+const PASSWORD_RESET_TTL_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Admin-triggered password reset: new temp password + reset link, force change on next login.
+ */
+export async function issueStaffPasswordReset(opts: {
+  staffId: string;
+  invitedBy?: string | null;
+}): Promise<{
+  staffId: string;
+  email: string;
+  temporaryPassword: string;
+  resetUrl: string;
+  loginUrl: string;
+  expiresAt: Date;
+  emailSent: boolean;
+  emailError?: string;
+}> {
+  const [staff] = await db.select().from(staffUsers).where(eq(staffUsers.id, opts.staffId)).limit(1);
+  if (!staff) {
+    throw Object.assign(new Error("Staff member not found"), { status: 404 });
+  }
+  if (!staff.isActive) {
+    throw Object.assign(new Error("Reactivate the staff account before resetting their password."), {
+      status: 400,
+      code: "STAFF_INACTIVE",
+    });
+  }
+
+  const temporaryPassword = generateTemporaryPassword();
+  const rawToken = generateInviteToken();
+  const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MS);
+  const passwordHash = hashStaffPassword(temporaryPassword);
+
+  await db
+    .update(staffUsers)
+    .set({
+      passwordHash,
+      mustChangePassword: true,
+      passwordResetTokenHash: hashInviteToken(rawToken),
+      passwordResetExpiresAt: expiresAt,
+      updatedAt: new Date(),
+    })
+    .where(eq(staffUsers.id, staff.id));
+
+  const loginUrl = `${ADMIN_ORIGIN()}/login`;
+  const resetUrl = `${ADMIN_ORIGIN()}/reset-password?token=${rawToken}`;
+
+  const expiresLabel = expiresAt.toLocaleString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Asia/Kolkata",
+  });
+  const subject = "BEXO Admin — reset your password";
+  const html = getStaffPasswordResetEmail({
+    userName: staff.name || staff.email.split("@")[0] || "there",
+    email: staff.email,
+    temporaryPassword,
+    resetUrl,
+    loginUrl,
+    expiresLabel,
+  });
+
+  const direct = await sendEmail(staff.email, subject, html);
+  await enqueueEmail({
+    eventType: "staff_password_reset",
+    recipient: staff.email,
+    subject,
+    dedupeKey: `staff_password_reset:${staff.id}:${Date.now()}`,
+    relatedId: staff.id,
+    payload: {
+      userName: staff.name || staff.email.split("@")[0] || "there",
+      email: staff.email,
+      temporaryPassword,
+      resetUrl,
+      loginUrl,
+      expiresLabel,
+    },
+  }).catch((err) => logger.warn({ err }, "staff password reset enqueue failed"));
+
+  logger.info(
+    { staffId: staff.id, email: staff.email, emailSent: direct.ok, invitedBy: opts.invitedBy },
+    "Staff password reset issued",
+  );
+
+  if (direct.ok) {
+    return {
+      staffId: staff.id,
+      email: staff.email,
+      temporaryPassword,
+      resetUrl,
+      loginUrl,
+      expiresAt,
+      emailSent: true,
+    };
+  }
+  return {
+    staffId: staff.id,
+    email: staff.email,
+    temporaryPassword,
+    resetUrl,
+    loginUrl,
+    expiresAt,
+    emailSent: false,
+    emailError: !isSmtpConfigured()
+      ? "SMTP is not configured — share the temporary password and reset link manually."
+      : direct.error || "Failed to send reset email.",
+  };
+}
+
