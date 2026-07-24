@@ -58,13 +58,40 @@ function skillsContainAdditions(existing: unknown, next: unknown): boolean {
   return normalizeSkills(next).some((s) => !before.has(s.name.toLowerCase()));
 }
 
-async function loadSkillEntries(profileId: string): Promise<unknown[]> {
+/** Count list entries in `next` whose id is not present in `existing`. */
+function countNetNewEntries(existing: unknown, next: unknown): number {
+  if (!Array.isArray(next)) return 0;
+  const existingList = Array.isArray(existing) ? existing : [];
+  const before = new Set(
+    existingList
+      .map((e: any) => String(e?.id ?? "").trim())
+      .filter(Boolean),
+  );
+  // First-time normalize (legacy rows without ids): don't treat every row as "new".
+  if (existingList.length > 0 && before.size === 0) return 0;
+  let added = 0;
+  for (const entry of next) {
+    const id = String((entry as any)?.id ?? "").trim();
+    if (!id) {
+      added += 1;
+      continue;
+    }
+    if (!before.has(id)) added += 1;
+  }
+  return added;
+}
+
+async function loadSectionEntries(profileId: string, type: string): Promise<unknown[]> {
   const [section] = await db
     .select()
     .from(profileSections)
-    .where(and(eq(profileSections.profileId, profileId), eq(profileSections.type, "skills")))
+    .where(and(eq(profileSections.profileId, profileId), eq(profileSections.type, type)))
     .limit(1);
   return Array.isArray(section?.entries) ? (section!.entries as unknown[]) : [];
+}
+
+async function loadSkillEntries(profileId: string): Promise<unknown[]> {
+  return loadSectionEntries(profileId, "skills");
 }
 
 // Helper to get or create profile
@@ -229,7 +256,7 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<voi
         parsesRemaining: parsesUsage.remaining,
         parsesDaysToReset: parsesUsage.daysToReset,
       },
-      autopay: !!subscriptionState.subscription?.razorpaySubscriptionId,
+      autopay: !!subscriptionState.subscription?.razorpaySubscriptionId && !siteAccess.cancelAtPeriodEnd,
       aboutEntries: getEntries("about"),
       educationEntries: getEntries("education"),
       experienceEntries: getEntries("experience"),
@@ -456,7 +483,7 @@ router.patch("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<v
   const userId = req.user!.id;
     const { 
       name, dob, email, photoUrl, resumeUrl, handle, headline, careerGoal, bio, completionPct, profilePhotoAssetId,
-      openToHire, templateId, themeColor, themeBg,
+      openToHire, templateId, themeColor, themeBg, pronouns, nationality,
       aboutEntries, educationEntries, experienceEntries, projectEntries, certificateEntries, achievementEntries, researchEntries, skillEntries, contactData
     } = req.body;
     try {
@@ -519,7 +546,10 @@ router.patch("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<v
 
     // Update profile info
     const profile = await getOrCreateProfile(userId);
-    const profileUpdates: Partial<typeof profiles.$inferInsert> = {};
+    const profileUpdates: Partial<typeof profiles.$inferInsert> & {
+      pronouns?: string | null;
+      nationality?: string | null;
+    } = {};
     
     if (handle !== undefined && handle !== profile.handle) {
       const normalizedHandle =
@@ -558,6 +588,14 @@ router.patch("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<v
     if (headline !== undefined) profileUpdates.headline = headline;
     if (careerGoal !== undefined) profileUpdates.careerGoal = careerGoal;
     if (bio !== undefined) profileUpdates.bio = bio;
+    if (pronouns !== undefined) {
+      profileUpdates.pronouns =
+        typeof pronouns === "string" ? pronouns.trim().slice(0, 40) || null : null;
+    }
+    if (nationality !== undefined) {
+      profileUpdates.nationality =
+        typeof nationality === "string" ? nationality.trim().slice(0, 80) || null : null;
+    }
     if (completionPct !== undefined) profileUpdates.completionPct = completionPct;
     // Keep profile.templateId in sync — subdomain router prefers this field.
     if (templateId !== undefined) profileUpdates.templateId = templateId;
@@ -591,16 +629,61 @@ router.patch("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<v
       { type: "contact", entries: contactData }
     ];
 
-    if (skillEntries !== undefined) {
-      const existingSkills = await loadSkillEntries(profile.id);
-      if (skillsContainAdditions(existingSkills, skillEntries)) {
-        const [gateUser] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-        if (gateUser?.onboardingCompletedAt) {
+    // After onboarding: net-new list entries + new skills consume monthly update credits.
+    // Pure edits / deletes / reorders of existing rows are free.
+    const [gateUser] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+    if (gateUser?.onboardingCompletedAt) {
+      const meteredTypes = [
+        "education",
+        "experience",
+        "projects",
+        "certificates",
+        "achievements",
+        "research",
+      ] as const;
+      let creditsNeeded = 0;
+
+      for (const type of meteredTypes) {
+        const incoming = sectionsToSave.find((s) => s.type === type)?.entries;
+        if (incoming === undefined) continue;
+        const existing = await loadSectionEntries(profile.id, type);
+        creditsNeeded += countNetNewEntries(existing, incoming);
+      }
+
+      if (skillEntries !== undefined) {
+        const existingSkills = await loadSkillEntries(profile.id);
+        if (skillsContainAdditions(existingSkills, skillEntries)) {
+          const beforeNames = new Set(
+            normalizeSkills(existingSkills).map((s) => s.name.toLowerCase()),
+          );
+          creditsNeeded += normalizeSkills(skillEntries).filter(
+            (s) => !beforeNames.has(s.name.toLowerCase()),
+          ).length;
+        }
+      }
+
+      if (creditsNeeded > 0) {
+        const planLimits = await getPlanLimits(isPremium ? subscriptionState.plan : "free");
+        const usage = await getUpdatesUsage(gateUser, planLimits.updatesPerMonth);
+        if (usage.remaining < creditsNeeded) {
           res.status(403).json({
-            error: "New skills must be posted as a profile Update and use your monthly update limit.",
-            code: "SKILL_ADD_REQUIRES_UPDATE",
+            error: `You need ${creditsNeeded} profile update credit(s) to add these entries, but only ${usage.remaining} remain this month. Resets in ${usage.daysToReset} day(s).`,
+            code: "UPDATE_LIMIT",
+            needed: creditsNeeded,
+            remaining: usage.remaining,
+            daysToReset: usage.daysToReset,
           });
           return;
+        }
+        for (let i = 0; i < creditsNeeded; i += 1) {
+          const ok = await consumeUpdate(userId, planLimits.updatesPerMonth);
+          if (!ok) {
+            res.status(403).json({
+              error: `You have used all ${planLimits.updatesPerMonth} profile update(s) included in your plan this month.`,
+              code: "UPDATE_LIMIT",
+            });
+            return;
+          }
         }
       }
     }
@@ -779,15 +862,49 @@ router.patch("/sections/:type", requireAuth, async (req: AuthenticatedRequest, r
   try {
     const profile = await getOrCreateProfile(userId);
     let nextEntries = entries;
+    const [gateUser] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+    const meteredList =
+      gateUser?.onboardingCompletedAt &&
+      ["education", "experience", "projects", "certificates", "achievements", "research"].includes(type);
+
+    let creditsNeeded = 0;
     if (type === "skills") {
       nextEntries = normalizeSkills(entries).slice(0, MAX_SKILLS);
-      const existingSkills = await loadSkillEntries(profile.id);
-      if (skillsContainAdditions(existingSkills, nextEntries)) {
-        const [gateUser] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-        if (gateUser?.onboardingCompletedAt) {
+      if (gateUser?.onboardingCompletedAt) {
+        const existingSkills = await loadSkillEntries(profile.id);
+        if (skillsContainAdditions(existingSkills, nextEntries)) {
+          const beforeNames = new Set(
+            normalizeSkills(existingSkills).map((s) => s.name.toLowerCase()),
+          );
+          creditsNeeded = normalizeSkills(nextEntries).filter(
+            (s) => !beforeNames.has(s.name.toLowerCase()),
+          ).length;
+        }
+      }
+    } else if (meteredList) {
+      const existing = await loadSectionEntries(profile.id, type);
+      creditsNeeded = countNetNewEntries(existing, nextEntries);
+    }
+
+    if (creditsNeeded > 0) {
+      const sub = await resolveSubscriptionState(userId);
+      const planLimits = await getPlanLimits(sub.isPremium ? sub.plan : "free");
+      const usage = await getUpdatesUsage(gateUser!, planLimits.updatesPerMonth);
+      if (usage.remaining < creditsNeeded) {
+        res.status(403).json({
+          error: `You need ${creditsNeeded} profile update credit(s), but only ${usage.remaining} remain this month.`,
+          code: "UPDATE_LIMIT",
+          needed: creditsNeeded,
+          remaining: usage.remaining,
+        });
+        return;
+      }
+      for (let i = 0; i < creditsNeeded; i += 1) {
+        const ok = await consumeUpdate(userId, planLimits.updatesPerMonth);
+        if (!ok) {
           res.status(403).json({
-            error: "New skills must be posted as a profile Update and use your monthly update limit.",
-            code: "SKILL_ADD_REQUIRES_UPDATE",
+            error: `You have used all ${planLimits.updatesPerMonth} profile update(s) this month.`,
+            code: "UPDATE_LIMIT",
           });
           return;
         }

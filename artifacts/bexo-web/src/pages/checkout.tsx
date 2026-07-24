@@ -83,7 +83,8 @@ function parseQuery(search: string) {
   const planRaw = normalizeClientPlanId(params.get('plan') || '') || params.get('plan') || '';
   const plan = PAID_PLANS.includes(planRaw as PaidPlanId) ? (planRaw as PaidPlanId) : null;
   const blocks = Math.max(1, Math.min(20, Math.floor(Number(params.get('blocks')) || 1)));
-  return { kind, plan, blocks };
+  const billingOnly = params.get('billingOnly') === '1' || params.get('mode') === 'enable-autopay';
+  return { kind, plan, blocks, billingOnly };
 }
 
 export default function CheckoutPage() {
@@ -93,7 +94,7 @@ export default function CheckoutPage() {
   const { toast } = useToast();
   const { planById } = usePricing();
 
-  const { kind, plan: planFromQuery, blocks } = useMemo(() => parseQuery(search), [search]);
+  const { kind, plan: planFromQuery, blocks, billingOnly } = useMemo(() => parseQuery(search), [search]);
   const isStorage = kind === 'storage';
   const plan = planFromQuery || 'essential';
 
@@ -594,6 +595,12 @@ export default function CheckoutPage() {
             'This plan requires subscription checkout. Remove the coupon and try again, or contact support.',
         );
       }
+      if (subData.code === 'USE_ENABLE_AUTOPAY') {
+        throw new Error(
+          subData.error ||
+            'Your plan is still active. Open Billing and tap Enable Autopay to resume renewals without paying again.',
+        );
+      }
       throw new Error(subData.error || 'Failed to start subscription');
     }
 
@@ -760,6 +767,15 @@ export default function CheckoutPage() {
       const token = localStorage.getItem('token');
       if (!token) throw new Error('Please sign in again.');
       await persistBilling(token);
+      if (billingOnly) {
+        toast({
+          title: 'Billing saved',
+          description: 'Return to Billing and tap Enable Autopay. You will not be charged today.',
+        });
+        setIsProcessing(false);
+        setLocation('/billing');
+        return;
+      }
       track('checkout_start', {
         plan: isStorage ? 'storage_addon' : plan,
         kind: isStorage ? 'storage' : isSubscriptionPlan ? 'subscription' : 'order',
@@ -1008,6 +1024,14 @@ export default function CheckoutPage() {
                     const token = localStorage.getItem('token');
                     if (!token) throw new Error('Please sign in again.');
                     await persistBilling(token);
+                    if (billingOnly) {
+                      toast({
+                        title: 'Billing saved',
+                        description: 'Now enable Autopay from Billing — no charge today.',
+                      });
+                      setLocation('/billing');
+                      return;
+                    }
                     toast({ title: 'Saved', description: 'Billing information updated.' });
                   } catch (err: any) {
                     toast({
@@ -1018,7 +1042,13 @@ export default function CheckoutPage() {
                   }
                 }}
               >
-                {billingSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save billing information'}
+                {billingSaving ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : billingOnly ? (
+                  'Save & return to Billing'
+                ) : (
+                  'Save billing information'
+                )}
               </Button>
             </div>
           ) : (

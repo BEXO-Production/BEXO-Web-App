@@ -46,6 +46,8 @@ export const profiles = pgTable("profiles", {
   headline: text("headline"),
   careerGoal: text("career_goal"),
   bio: text("bio"),
+  pronouns: text("pronouns"),
+  nationality: text("nationality"),
   completionPct: integer("completion_pct").default(0),
   subdomain: text("subdomain").unique(),
   templateId: text("template_id").default("minimal"),
@@ -205,7 +207,7 @@ export const payments = pgTable("payments", {
   razorpayPaymentId: text("razorpay_payment_id").unique(),
   razorpaySubscriptionId: text("razorpay_subscription_id"),
   plan: text("plan"), // 'annual' | 'lifetime' | null (legacy rows)
-  kind: text("kind").notNull().default("order"), // 'order' | 'subscription' | 'subscription_bootstrap' | 'addon_increase' | 'admin_collect' | 'admin_collect_next'
+  kind: text("kind").notNull().default("order"), // 'order' | 'subscription' | 'subscription_bootstrap' | 'subscription_enable' | 'addon_increase' | 'activation' | 'admin_collect' | 'admin_collect_next'
   amount: integer("amount").notNull(), // in paise
   // pending | awaiting_mandate | success | failed | abandoned | refunded
   status: text("status").notNull(),

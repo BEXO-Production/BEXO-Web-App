@@ -332,12 +332,23 @@ export function buildMinimalPortfolioHTML(data: OnboardingData, themeColor: stri
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${esc(shareTitle)}</title>
   <meta name="description" content="${shareDesc}" />
+  <meta name="robots" content="index, follow, max-image-preview:large" />
+  <meta name="application-name" content="BEXO" />
+  <meta name="theme-color" content="#0b1220" />
+  <meta name="author" content="BEXO" />
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="shortcut icon" type="image/png" href="/favicon.png" />
+  <link rel="apple-touch-icon" href="/favicon.png" />
   <meta property="og:site_name" content="BEXO" />
-  <meta property="og:type" content="website" />
+  <meta property="og:locale" content="en_IN" />
+  <meta property="og:type" content="profile" />
   <meta property="og:title" content="${esc(shareTitle)}" />
   <meta property="og:description" content="${shareDesc}" />
   <meta property="og:url" content="${shareUrl}" />
   <meta property="og:image" content="${shareImage}" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="${esc(shareTitle)}" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="${esc(shareTitle)}" />
   <meta name="twitter:description" content="${shareDesc}" />

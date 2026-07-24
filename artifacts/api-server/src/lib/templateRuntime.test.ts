@@ -120,4 +120,25 @@ test("injects Open Graph tags for portfolio sharing", () => {
   assert.match(result, /name="robots" content="index, follow, max-image-preview:large"/);
   assert.match(result, /application\/ld\+json/);
   assert.match(result, /"@type":"Person"/);
+  assert.match(result, /rel="icon" type="image\/png" href="\/bexo-logo\.png"/);
+  assert.match(result, /rel="apple-touch-icon" href="\/bexo-logo\.png"/);
+  assert.match(result, /name="application-name" content="BEXO"/);
+  assert.match(result, /name="theme-color" content="#0b1220"/);
+});
+
+test("replaces template favicon links with injected BEXO icon", () => {
+  const html =
+    '<html><head><title>Old</title><link rel="icon" href="./wrong-icon.png" /></head><body></body></html>';
+  const result = injectPortfolioBootstrap(
+    html,
+    {
+      isPremium: true,
+      profile: { handle: "kavin" },
+      user: { name: "Kavin" },
+    },
+    "/",
+  );
+
+  assert.doesNotMatch(result, /wrong-icon\.png/);
+  assert.match(result, /rel="icon" type="image\/png" href="\/bexo-logo\.png"/);
 });

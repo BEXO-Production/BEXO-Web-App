@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useLocation } from 'wouter';
 import { useOnboarding } from '../context/OnboardingContext';
 import { Button, Input, Card } from '../design-system/primitives';
-import { Check, ShieldCheck, Loader2, ArrowRight, ArrowLeft, X, Eye, Globe, Database, Minus, Plus } from 'lucide-react';
+import { Check, ShieldCheck, Loader2, ArrowRight, ArrowLeft, X, Eye, Globe, Database, Minus, Plus, Pencil } from 'lucide-react';
 import { cn } from '../design-system/primitives';
 import { useToast } from '../hooks/use-toast';
 import { buildMinimalPortfolioHTML } from '../lib/buildMinimalHTML';
@@ -14,6 +14,7 @@ import { BILLING_PERIOD_LABELS, PLAN_LABELS, STORAGE_BLOCK_BYTES, planBaseQuotaB
 import { usePricing, type PublicPricingPlan } from '../hooks/use-pricing';
 import { apiUrl } from '../lib/api';
 import { portfolioHostname } from '../lib/platform';
+import { BillingAddressFields } from '../components/BillingAddressFields';
 
 declare global {
   interface Window {
@@ -29,6 +30,39 @@ const THEMES = [
 ];
 
 type PaidPlanId = 'identity' | 'essential' | 'growth' | 'studentplus';
+
+type BillingForm = {
+  fullName: string;
+  email: string;
+  phone: string;
+  line1: string;
+  line2: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  country: string;
+};
+
+const emptyBillingForm = (): BillingForm => ({
+  fullName: '',
+  email: '',
+  phone: '',
+  line1: '',
+  line2: '',
+  city: '',
+  state: '',
+  postalCode: '',
+  country: 'IN',
+});
+
+const isBillingFormComplete = (b: BillingForm) =>
+  b.fullName.trim().length >= 2 &&
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(b.email.trim()) &&
+  b.phone.replace(/\D/g, '').length >= 10 &&
+  b.line1.trim().length >= 3 &&
+  b.city.trim().length >= 2 &&
+  b.state.trim().length >= 2 &&
+  /^[1-9][0-9]{5}$/.test(b.postalCode.trim());
 
 const formatMb = (bytes: number) => `${Math.round((Number(bytes) || 0) / (1024 * 1024))}MB`;
 const fmtINR = (n: number) =>
@@ -60,6 +94,9 @@ export default function Step9Plan() {
   const [pendingMandateKey, setPendingMandateKey] = useState<string | null>(null);
   const [isConfirmingMandate, setIsConfirmingMandate] = useState(false);
   const [isCancellingSub, setIsCancellingSub] = useState(false);
+  const [isEnablingAutopay, setIsEnablingAutopay] = useState(false);
+  const [canEnableAutopay, setCanEnableAutopay] = useState(false);
+  const [activatedViaKey, setActivatedViaKey] = useState(false);
   const [billingProfile, setBillingProfile] = useState<{
     fullName: string;
     email: string;
@@ -72,6 +109,12 @@ export default function Step9Plan() {
     country: string;
     addressLines?: string[];
   } | null>(null);
+  const [billingEditing, setBillingEditing] = useState(false);
+  const [billingForm, setBillingForm] = useState<BillingForm>(emptyBillingForm);
+  const [billingSaving, setBillingSaving] = useState(false);
+  const [authToken] = useState(() =>
+    typeof window !== 'undefined' ? localStorage.getItem('token') : null,
+  );
 
   // Free flow states
   const [freeFlowStep, setFreeFlowStep] = useState<'none' | 'warning' | 'handle'>('none');
@@ -130,6 +173,8 @@ export default function Step9Plan() {
         setPendingMandateSubId(result.subscription?.razorpaySubscriptionId || null);
         setPendingMandateKey(result.razorpayKey || null);
         setBillingProfile(result.billingProfile || null);
+        setCanEnableAutopay(!!result.canEnableAutopay);
+        setActivatedViaKey(!!result.activatedViaKey);
       } catch (err) {
         console.error('Billing status refresh failed:', err);
       }
@@ -386,6 +431,7 @@ export default function Step9Plan() {
         cancelAtPeriodEnd: true,
         autopay: false,
       } as any);
+      setCanEnableAutopay(true);
       toast({ title: 'Auto-renew cancelled', description: result.message });
       setCancelStep('closed');
       setCancelConfirmText('');
@@ -394,6 +440,192 @@ export default function Step9Plan() {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
     } finally {
       setIsCancellingSub(false);
+    }
+  };
+
+  const handleEnableAutopay = async () => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      toast({ title: 'Sign in required', description: 'Sign in again to enable Autopay.', variant: 'destructive' });
+      return;
+    }
+    if (!billingProfile) {
+      toast({
+        title: 'Billing details needed',
+        description: 'Add your billing address above, then tap Enable Autopay. You will not be charged today.',
+        variant: 'destructive',
+      });
+      startBillingEdit();
+      return;
+    }
+    if (!window.Razorpay) {
+      toast({ title: 'Error', description: 'Razorpay SDK failed to load. Refresh and try again.', variant: 'destructive' });
+      return;
+    }
+
+    setIsEnablingAutopay(true);
+    try {
+      const res = await fetch(apiUrl('/api/payments/subscription/enable-autopay'), {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({}),
+      });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(result.error || 'Could not enable Autopay');
+
+      if (result.mock || (result.autopay && !result.needsMandateSetup)) {
+        updateData({ autopay: true, cancelAtPeriodEnd: false } as any);
+        setCanEnableAutopay(false);
+        setActivatedViaKey(false);
+        setNeedsMandateSetup(false);
+        toast({
+          title: 'Autopay enabled',
+          description: result.message || 'Renewals will charge automatically at period end.',
+        });
+        return;
+      }
+
+      const subscriptionId = result.subscriptionId as string | undefined;
+      const key = result.key as string | undefined;
+      if (!subscriptionId || !key) throw new Error('Missing Autopay subscription details');
+
+      setPendingMandateSubId(subscriptionId);
+      setPendingMandateKey(key);
+      setNeedsMandateSetup(true);
+
+      const rzp = new window.Razorpay({
+        key,
+        name: 'Bexo',
+        description: 'Authorize Razorpay Autopay for renewals',
+        subscription_id: subscriptionId,
+        prefill: {
+          name: billingProfile.fullName || data.name,
+          email: billingProfile.email || data.contactData?.email || '',
+          contact: billingProfile.phone || data.phone || '',
+        },
+        theme: { color: '#4f46e5' },
+        handler: async (response: any) => {
+          try {
+            const confirmRes = await fetch(apiUrl('/api/payments/confirm-autopay'), {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                razorpay_subscription_id: response.razorpay_subscription_id || subscriptionId,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+              }),
+            });
+            const confirmData = await confirmRes.json().catch(() => ({}));
+            if (!confirmRes.ok) throw new Error(confirmData.error || 'Could not confirm Autopay');
+            updateData({
+              autopay: true,
+              cancelAtPeriodEnd: false,
+              expiresAt: confirmData.expiresAt || data.expiresAt,
+            } as any);
+            setCanEnableAutopay(false);
+            setActivatedViaKey(false);
+            setNeedsMandateSetup(false);
+            setPendingMandateSubId(null);
+            toast({
+              title: 'Autopay enabled',
+              description:
+                confirmData.message ||
+                `Your ${currentPlanLabel} plan renews automatically after ${expiryLabel || 'this period'}.`,
+            });
+          } catch (err: any) {
+            toast({ title: 'Autopay not confirmed', description: err.message, variant: 'destructive' });
+          }
+        },
+        modal: {
+          ondismiss: () => {
+            toast({
+              title: 'Authorization incomplete',
+              description: 'Autopay was not enabled. You can try again anytime from Billing.',
+            });
+          },
+        },
+      });
+      rzp.open();
+      toast({
+        title: 'Authorize Autopay',
+        description: result.message || 'Complete Razorpay authorization. No charge today.',
+      });
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } finally {
+      setIsEnablingAutopay(false);
+    }
+  };
+
+  const startBillingEdit = () => {
+    const fallback = emptyBillingForm();
+    setBillingForm({
+      fullName: billingProfile?.fullName || data.name || fallback.fullName,
+      email: billingProfile?.email || data.contactData?.email || data.email || fallback.email,
+      phone: billingProfile?.phone || data.phone || data.contactData?.phone || fallback.phone,
+      line1: billingProfile?.line1 || '',
+      line2: billingProfile?.line2 || '',
+      city: billingProfile?.city || '',
+      state: billingProfile?.state || '',
+      postalCode: billingProfile?.postalCode || '',
+      country: billingProfile?.country || 'IN',
+    });
+    setBillingEditing(true);
+  };
+
+  const saveBillingProfile = async () => {
+    if (!isBillingFormComplete(billingForm)) {
+      toast({
+        title: 'Incomplete details',
+        description: 'Fill in name, email, phone, and a complete Indian address before saving.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    const token = localStorage.getItem('token');
+    if (!token) {
+      toast({ title: 'Sign in required', description: 'Sign in again to update billing details.', variant: 'destructive' });
+      return;
+    }
+    setBillingSaving(true);
+    try {
+      const res = await fetch(apiUrl('/api/payments/billing-profile'), {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(billingForm),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'Could not save billing information');
+      const saved = json.billingProfile;
+      if (saved) {
+        setBillingProfile(saved);
+        setBillingForm({
+          fullName: saved.fullName,
+          email: saved.email,
+          phone: saved.phone,
+          line1: saved.line1,
+          line2: saved.line2 || '',
+          city: saved.city,
+          state: saved.state,
+          postalCode: saved.postalCode,
+          country: saved.country || 'IN',
+        });
+      }
+      setBillingEditing(false);
+      toast({ title: 'Billing details saved', description: 'These will be used for invoices and Autopay.' });
+    } catch (err: any) {
+      toast({ title: 'Could not save', description: err.message, variant: 'destructive' });
+    } finally {
+      setBillingSaving(false);
     }
   };
 
@@ -618,9 +850,19 @@ export default function Step9Plan() {
                       ? `Valid until ${expiryLabel}.`
                       : 'Your premium plan is active.'}
                 </p>
-                {!isLifetimePlan && data.autopay && (
+                {!isLifetimePlan && data.autopay && !data.cancelAtPeriodEnd && (
                   <span className="inline-flex items-center gap-1 mt-2 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-bold">
                     <Check className="w-3 h-3" /> Auto-renew on ({data.billingPeriod === 'monthly' ? 'monthly' : 'yearly'})
+                  </span>
+                )}
+                {!isLifetimePlan && data.cancelAtPeriodEnd && (
+                  <span className="inline-flex items-center gap-1 mt-2 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-bold">
+                    Auto-renew off — access until {expiryLabel || 'period end'}
+                  </span>
+                )}
+                {!isLifetimePlan && !data.autopay && !data.cancelAtPeriodEnd && canEnableAutopay && (
+                  <span className="inline-flex items-center gap-1 mt-2 px-2.5 py-1 rounded-full bg-slate-50 border border-slate-200 text-slate-600 text-[11px] font-bold">
+                    Autopay not enabled
                   </span>
                 )}
               </div>
@@ -647,46 +889,138 @@ export default function Step9Plan() {
             </div>
           </Card>
 
-          {billingProfile && (
-            <Card className="p-6 bg-white border border-slate-200 shadow-sm">
-              <h3 className="text-xs font-bold tracking-[0.12em] text-slate-900 uppercase mb-4">
+          <Card className="p-6 bg-white border border-slate-200 shadow-sm">
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <h3 className="text-xs font-bold tracking-[0.12em] text-slate-900 uppercase">
                 Billing information
               </h3>
-              <dl className="space-y-2.5 text-sm">
-                <div className="grid grid-cols-[7rem_1fr] gap-2">
-                  <dt className="text-slate-400">Name</dt>
-                  <dd className="text-slate-900 font-medium">{billingProfile.fullName}</dd>
+              {!billingEditing && (
+                <button
+                  type="button"
+                  onClick={startBillingEdit}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                  {billingProfile ? 'Edit' : 'Add'}
+                </button>
+              )}
+            </div>
+
+            {billingEditing ? (
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Full name</label>
+                    <Input
+                      value={billingForm.fullName}
+                      onChange={(e) => setBillingForm((p) => ({ ...p, fullName: e.target.value }))}
+                      className="h-10 text-sm"
+                      disabled={billingSaving}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Email</label>
+                    <Input
+                      type="email"
+                      value={billingForm.email}
+                      onChange={(e) => setBillingForm((p) => ({ ...p, email: e.target.value }))}
+                      className="h-10 text-sm"
+                      disabled={billingSaving}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Phone</label>
+                    <Input
+                      value={billingForm.phone}
+                      onChange={(e) => setBillingForm((p) => ({ ...p, phone: e.target.value }))}
+                      className="h-10 text-sm"
+                      disabled={billingSaving}
+                      placeholder="+91…"
+                    />
+                  </div>
                 </div>
-                <div className="grid grid-cols-[7rem_1fr] gap-2">
-                  <dt className="text-slate-400">Email</dt>
-                  <dd className="text-slate-900 break-all">{billingProfile.email}</dd>
+                <BillingAddressFields
+                  value={{
+                    line1: billingForm.line1,
+                    line2: billingForm.line2,
+                    city: billingForm.city,
+                    state: billingForm.state,
+                    postalCode: billingForm.postalCode,
+                    country: billingForm.country,
+                  }}
+                  onChange={(patch) => setBillingForm((p) => ({ ...p, ...patch }))}
+                  disabled={billingSaving}
+                  authToken={authToken}
+                />
+                <div className="flex gap-2 pt-1">
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-9 text-xs"
+                    disabled={billingSaving || !isBillingFormComplete(billingForm)}
+                    onClick={saveBillingProfile}
+                  >
+                    {billingSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Save'}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-9 text-xs"
+                    disabled={billingSaving}
+                    onClick={() => setBillingEditing(false)}
+                  >
+                    Cancel
+                  </Button>
                 </div>
-                <div className="grid grid-cols-[7rem_1fr] gap-2">
-                  <dt className="text-slate-400">Billing address</dt>
-                  <dd className="text-slate-900 leading-snug">
-                    {(billingProfile.addressLines || [
-                      billingProfile.line1,
-                      billingProfile.line2,
-                      `${billingProfile.city} ${billingProfile.postalCode}`,
-                      billingProfile.state,
-                      billingProfile.country,
-                    ])
-                      .filter(Boolean)
-                      .map((line) => (
-                        <div key={String(line)}>{line}</div>
-                      ))}
-                  </dd>
-                </div>
-                <div className="grid grid-cols-[7rem_1fr] gap-2">
-                  <dt className="text-slate-400">Phone number</dt>
-                  <dd className="text-slate-900">{billingProfile.phone}</dd>
-                </div>
-              </dl>
-              <p className="text-xs text-slate-400 mt-4">
-                Used for tax invoices and monthly Autopay. Update it next time you check out.
-              </p>
-            </Card>
-          )}
+              </div>
+            ) : billingProfile ? (
+              <>
+                <dl className="space-y-2.5 text-sm">
+                  <div className="grid grid-cols-[7rem_1fr] gap-2">
+                    <dt className="text-slate-400">Name</dt>
+                    <dd className="text-slate-900 font-medium">{billingProfile.fullName}</dd>
+                  </div>
+                  <div className="grid grid-cols-[7rem_1fr] gap-2">
+                    <dt className="text-slate-400">Email</dt>
+                    <dd className="text-slate-900 break-all">{billingProfile.email}</dd>
+                  </div>
+                  <div className="grid grid-cols-[7rem_1fr] gap-2">
+                    <dt className="text-slate-400">Billing address</dt>
+                    <dd className="text-slate-900 leading-snug">
+                      {(billingProfile.addressLines || [
+                        billingProfile.line1,
+                        billingProfile.line2,
+                        `${billingProfile.city} ${billingProfile.postalCode}`,
+                        billingProfile.state,
+                        billingProfile.country,
+                      ])
+                        .filter(Boolean)
+                        .map((line) => (
+                          <div key={String(line)}>{line}</div>
+                        ))}
+                    </dd>
+                  </div>
+                  <div className="grid grid-cols-[7rem_1fr] gap-2">
+                    <dt className="text-slate-400">Phone number</dt>
+                    <dd className="text-slate-900">{billingProfile.phone}</dd>
+                  </div>
+                </dl>
+                <p className="text-xs text-slate-400 mt-4">
+                  Used for tax invoices and Autopay. Edit anytime — changes apply to future invoices.
+                </p>
+              </>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm text-slate-500">
+                  No billing details saved yet. Add them once for invoices and Autopay renewals.
+                </p>
+                <Button type="button" size="sm" className="h-9 text-xs" onClick={startBillingEdit}>
+                  Add billing information
+                </Button>
+              </div>
+            )}
+          </Card>
 
           {!isLifetimePlan && needsMandateSetup && (
             <Card className="p-6 bg-amber-50 border border-amber-200 shadow-sm space-y-3">
@@ -706,16 +1040,41 @@ export default function Step9Plan() {
             </Card>
           )}
 
-          {!isLifetimePlan && (data.autopay || data.cancelAtPeriodEnd) && (
+          {!isLifetimePlan && (data.autopay || data.cancelAtPeriodEnd || canEnableAutopay) && (
             <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-3">
-              {data.cancelAtPeriodEnd ? (
+              {data.cancelAtPeriodEnd || (!data.autopay && canEnableAutopay) ? (
                 <>
-                  <h3 className="font-bold text-slate-900 text-base mb-1.5">Auto-renew is off</h3>
+                  <h3 className="font-bold text-slate-900 text-base mb-1.5">
+                    {data.cancelAtPeriodEnd ? 'Auto-renew is off' : 'Autopay not enabled'}
+                  </h3>
                   <p className="text-sm text-slate-500">
-                    {expiryLabel
-                      ? `You'll keep ${currentPlanLabel} access until ${expiryLabel}, then move to Free.`
-                      : 'Auto-renew is cancelled. Access continues until the end of the paid period.'}
+                    {data.cancelAtPeriodEnd
+                      ? expiryLabel
+                        ? `You'll keep ${currentPlanLabel} access until ${expiryLabel}, then move to Free — unless you enable Autopay.`
+                        : 'Auto-renew is cancelled. Access continues until the end of the paid period.'
+                      : activatedViaKey
+                        ? expiryLabel
+                          ? `You unlocked ${currentPlanLabel} with an activation key through ${expiryLabel}. Enable Autopay to keep the same plan after that — Razorpay charges automatically at expiry.`
+                          : `You unlocked ${currentPlanLabel} with an activation key. Enable Autopay to renew automatically when it ends.`
+                        : expiryLabel
+                          ? `Enable Autopay to renew ${currentPlanLabel} automatically on ${expiryLabel}.`
+                          : `Enable Autopay so ${currentPlanLabel} renews automatically.`}
                   </p>
+                  <div className="pt-1">
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-9 text-xs"
+                      disabled={isEnablingAutopay || needsMandateSetup}
+                      onClick={handleEnableAutopay}
+                    >
+                      {isEnablingAutopay ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        'Enable Autopay'
+                      )}
+                    </Button>
+                  </div>
                 </>
               ) : (
                 <>
@@ -739,7 +1098,7 @@ export default function Step9Plan() {
                 </>
               )}
 
-              {cancelStep !== 'closed' && !data.cancelAtPeriodEnd && (
+              {cancelStep !== 'closed' && !data.cancelAtPeriodEnd && data.autopay && (
                 <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
                   {cancelStep === 'reason' && (
                     <>

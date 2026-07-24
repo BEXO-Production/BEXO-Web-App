@@ -3,6 +3,7 @@
  *
  * Responsibilities:
  * - Hard Autopay mandate gate for coupon/bootstrap checkouts
+ * - Delayed Autopay attach for cancelled renewals / activation-key users (subscription_enable)
  * - Append-only ledger for money + lifecycle events
  * - Webhook event idempotency
  * - Reconciliation + stale awaiting_mandate cleanup (daily job)
@@ -197,6 +198,30 @@ export async function expireStaleAwaitingMandates(opts: {
 
   for (const row of rows) {
     try {
+      // Enable-autopay rows: cancel the pending delayed sub only — keep premium intact.
+      if (row.kind === "subscription_enable") {
+        if (row.razorpaySubscriptionId) {
+          try {
+            await opts.cancelSubscription(row.razorpaySubscriptionId);
+          } catch (err) {
+            logger.warn({ err, subId: row.razorpaySubscriptionId }, "expireAwaiting: cancel enable sub failed");
+          }
+        }
+        await db.update(payments).set({ status: "abandoned" }).where(eq(payments.id, row.id));
+        await recordLedgerEvent({
+          userId: row.userId,
+          paymentId: row.id,
+          eventType: "mandate_abandoned",
+          amountPaise: 0,
+          plan: row.plan,
+          razorpaySubscriptionId: row.razorpaySubscriptionId,
+          idempotencyKey: `expire_awaiting:${row.id}`,
+          metadata: { reason: "awaiting_mandate_ttl", enableOnly: true },
+        });
+        expired += 1;
+        continue;
+      }
+
       if (row.razorpaySubscriptionId) {
         try {
           await opts.cancelSubscription(row.razorpaySubscriptionId);

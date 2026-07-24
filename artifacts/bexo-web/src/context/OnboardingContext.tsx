@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { computeCanBuy } from '../lib/pricing';
+import { toast } from '../hooks/use-toast';
 
 export type AssetMode = 'images' | 'pdfs' | 'links';
 
@@ -117,14 +118,6 @@ export type OnboardingData = {
   overStorage?: boolean;
 };
 
-interface OnboardingContextType {
-  data: OnboardingData;
-  isLoading: boolean;
-  updateData: (updates: Partial<OnboardingData>) => void;
-  nextStep: (currentStep: number) => void;
-  prevStep: (currentStep: number) => void;
-}
-
 const defaultData: OnboardingData = {
   phone: '',
   phoneVerifiedAt: null,
@@ -174,8 +167,6 @@ const defaultData: OnboardingData = {
   renewalMode: 'purchase',
   expiresAt: null,
 };
-
-const OnboardingContext = createContext<OnboardingContextType | undefined>(undefined);
 
 const ensureIdsAndDefaults = (entries: any[], type: string) => {
   if (!Array.isArray(entries)) return [];
@@ -288,18 +279,28 @@ const ensureIdsAndDefaults = (entries: any[], type: string) => {
 interface OnboardingContextType {
   data: OnboardingData;
   isLoading: boolean;
-  updateData: (updates: Partial<OnboardingData>) => void;
+  updateData: (updates: Partial<OnboardingData>) => Promise<boolean>;
   nextStep: (currentStep: number) => void;
   prevStep: (currentStep: number) => void;
   setToken: (token: string | null) => void;
   refreshProfile: (silent?: boolean) => Promise<void>;
+  saveStatus: 'idle' | 'saving' | 'saved' | 'error';
 }
+
+const OnboardingContext = createContext<OnboardingContextType | undefined>(undefined);
 
 export function OnboardingProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<OnboardingData>(defaultData);
   const [isLoading, setIsLoading] = useState(true);
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const dataRef = useRef(data);
+  const saveResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    dataRef.current = data;
+  }, [data]);
 
   const refreshProfile = useCallback(async (silent: boolean = true) => {
     const activeToken = token || localStorage.getItem('token');
@@ -334,6 +335,8 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
           dob: result.user.dob || prev.dob,
           phone: result.user.phone || prev.phone,
           photoUrl: result.user.photoUrl || prev.photoUrl,
+          pronouns: result.profile.pronouns ?? prev.pronouns,
+          nationality: result.profile.nationality ?? prev.nationality,
           resumeUrl: result.user.resumeUrl || prev.resumeUrl,
           uploadedResumeUrl: result.user.uploadedResumeUrl !== undefined ? result.user.uploadedResumeUrl : prev.uploadedResumeUrl,
           generatedResumeUrl: result.user.generatedResumeUrl !== undefined ? result.user.generatedResumeUrl : prev.generatedResumeUrl,
@@ -406,10 +409,11 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
     refreshProfile(false);
   }, [token, refreshProfile]);
 
-  const updateData = (updates: Partial<OnboardingData>) => {
+  const updateData = async (updates: Partial<OnboardingData>): Promise<boolean> => {
+    const previous = dataRef.current;
     setData((prev) => ({ ...prev, ...updates }));
     const activeToken = token || localStorage.getItem('token');
-    if (!activeToken) return;
+    if (!activeToken) return true;
 
     // Entitlement / site-access fields are server-derived — never PATCH them as profile content.
     const {
@@ -430,19 +434,66 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
       addonHasAutopay: _addonHasAutopay,
       isPremium: _isPremium,
       payments: _payments,
+      hasCompletedOnboarding: _hasCompletedOnboarding,
+      resumeParsesThisMonth: _resumeParsesThisMonth,
+      lastResumeParseReset: _lastResumeParseReset,
       ...persistable
     } = updates as any;
 
-    if (Object.keys(persistable).length === 0) return;
+    if (Object.keys(persistable).length === 0) return true;
 
-    fetch('/api/profile', {
-      method: 'PATCH',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${activeToken}`
-      },
-      body: JSON.stringify(persistable),
-    }).catch(console.error);
+    setSaveStatus('saving');
+    try {
+      const res = await fetch('/api/profile', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${activeToken}`,
+        },
+        body: JSON.stringify(persistable),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setData(previous);
+        setSaveStatus('error');
+        toast({
+          title: 'Could not save',
+          description: body?.error || `Save failed (${res.status}). Try again.`,
+          variant: 'destructive',
+        });
+        if (body?.code === 'UPDATE_LIMIT') {
+          // Refresh limits so the meter stays honest
+          void refreshProfile(true);
+        }
+        return false;
+      }
+      setSaveStatus('saved');
+      if (saveResetTimer.current) clearTimeout(saveResetTimer.current);
+      saveResetTimer.current = setTimeout(() => setSaveStatus('idle'), 2000);
+      // Keep update credit counters fresh after successful adds
+      if (
+        persistable.educationEntries ||
+        persistable.experienceEntries ||
+        persistable.projectEntries ||
+        persistable.certificateEntries ||
+        persistable.achievementEntries ||
+        persistable.researchEntries ||
+        persistable.skillEntries
+      ) {
+        void refreshProfile(true);
+      }
+      return true;
+    } catch (err) {
+      console.error(err);
+      setData(previous);
+      setSaveStatus('error');
+      toast({
+        title: 'Could not save',
+        description: 'Network error while saving your profile. Check your connection and try again.',
+        variant: 'destructive',
+      });
+      return false;
+    }
   };
 
   const nextStep = (currentStep: number) => {
@@ -469,7 +520,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <OnboardingContext.Provider value={{ data, isLoading, updateData, nextStep, prevStep, setToken, refreshProfile }}>
+    <OnboardingContext.Provider value={{ data, isLoading, updateData, nextStep, prevStep, setToken, refreshProfile, saveStatus }}>
       {children}
     </OnboardingContext.Provider>
   );

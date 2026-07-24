@@ -7,6 +7,7 @@ import pricingRouter from "./pricing";
 import analyticsRouter from "./analytics";
 import geoRouter from "./geo";
 import adminRouter from "./admin";
+import outreachRouter from "./outreach";
 
 const router: IRouter = Router();
 
@@ -19,5 +20,6 @@ router.use("/pricing", pricingRouter);
 router.use("/analytics", analyticsRouter);
 router.use("/geo", geoRouter);
 router.use("/admin", adminRouter);
+router.use("/outreach", outreachRouter);
 
 export default router;

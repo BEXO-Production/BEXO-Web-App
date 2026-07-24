@@ -134,12 +134,15 @@ type BillingStatus = {
   };
   canBuy?: Record<string, boolean>;
   renewalMode?: 'purchase' | 'renew' | 'addon';
+  autopay?: boolean;
+  cancelAtPeriodEnd?: boolean;
   subscription?: {
     plan: string;
     status: string;
     expiresAt: string | null;
     createdAt: string | null;
     autopay?: boolean;
+    cancelAtPeriodEnd?: boolean;
   } | null;
   latestPayment?: {
     amount: number;
@@ -151,7 +154,7 @@ type BillingStatus = {
 };
 
 export default function Dashboard() {
-  const { data, updateData, setToken, refreshProfile } = useOnboarding();
+  const { data, updateData, setToken, refreshProfile, saveStatus } = useOnboarding();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
@@ -663,7 +666,7 @@ export default function Dashboard() {
         canBuy: result.canBuy || computeCanBuy(!!result.isPremium, planId),
         renewalMode: result.renewalMode || 'purchase',
         expiresAt: result.expiresAt,
-        autopay: result.subscription?.autopay ?? false,
+        autopay: result.autopay ?? result.subscription?.autopay ?? false,
         billingPeriod: result.billingPeriod,
         addonBlocks: result.addonBlocks ?? 0,
         addonHasAutopay: result.addonHasAutopay ?? result.addon?.hasAutopay ?? false,
@@ -839,7 +842,7 @@ export default function Dashboard() {
   const planBadgeLabel = data.isPremium ? planShortLabel : 'Free';
   const isLifetimePlan = activePlanId === 'studentplus' || activePlanId === 'lifetime';
   const planRenewal = billingStatus?.expiresAt
-    ? `${billingStatus?.subscription?.autopay ? 'Renews' : 'Expires'} ${new Date(billingStatus.expiresAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`
+    ? `${(billingStatus?.autopay ?? billingStatus?.subscription?.autopay) && !billingStatus?.cancelAtPeriodEnd ? 'Renews' : 'Expires'} ${new Date(billingStatus.expiresAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`
     : isLifetimePlan
       ? 'Never expires'
       : 'Upgrade available';
@@ -990,20 +993,21 @@ export default function Dashboard() {
     }
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     const updated = {
       ...sections,
       [activeEditorTab]: sections[activeEditorTab as keyof typeof sections].filter((e: any) => e.id !== id)
     };
     setSections(updated);
-    updateContextSections(updated);
+    const ok = await updateContextSections(updated);
+    if (!ok) return;
     toast({
       title: 'Removed',
       description: 'Entry removed successfully.',
     });
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     // Check if any supporting assets are still uploading in the background
     const isUploadingImages = editForm.assets?.images?.some((img: any) => img.isUploading);
     const isUploadingPdfs = editForm.assets?.pdfs?.some((pdf: any) => pdf.isUploading);
@@ -1030,16 +1034,32 @@ export default function Dashboard() {
       };
     }
     setSections(updated);
-    updateContextSections(updated);
+    const ok = await updateContextSections(updated);
+    if (!ok) {
+      // Roll back local section state to context data on failed credit/save
+      setSections({
+        about: data.aboutEntries || [],
+        education: data.educationEntries || [],
+        experience: data.experienceEntries || [],
+        projects: data.projectEntries || [],
+        certificates: data.certificateEntries || [],
+        achievements: data.achievementEntries || [],
+        research: data.researchEntries || [],
+        skills: data.skillEntries || [],
+      });
+      return;
+    }
     setEditingId(null);
     toast({
-      title: 'Saved',
-      description: 'Profile information updated.',
+      title: isNew ? 'Entry added' : 'Saved',
+      description: isNew
+        ? 'New entry published to your portfolio (uses 1 update credit).'
+        : 'Profile information updated.',
     });
   };
 
-  const updateContextSections = (newSections: any) => {
-    updateData({
+  const updateContextSections = async (newSections: any): Promise<boolean> => {
+    return updateData({
       aboutEntries: newSections.about,
       educationEntries: newSections.education,
       experienceEntries: newSections.experience,
@@ -1460,17 +1480,35 @@ export default function Dashboard() {
     }
   };
 
-  const handleRemoveResume = () => {
-    setResumeFile(null);
-    setResumeStatus('idle');
-    updateData({
-      resumeFileName: '',
-      resumeFileSize: 0
-    });
-    toast({
-      title: 'Resume Removed',
-      description: 'Resume has been deleted.',
-    });
+  const handleRemoveResume = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(apiUrl('/api/profile/resume-file'), {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(result.error || 'Could not remove resume');
+      setResumeFile(null);
+      setResumeStatus('idle');
+      await updateData({
+        resumeFileName: '',
+        resumeFileSize: 0,
+        uploadedResumeUrl: null,
+        resumeUrl: data.generatedResumeUrl || '',
+        defaultResume: 'generated',
+      } as any);
+      toast({
+        title: 'Resume Removed',
+        description: 'Uploaded resume deleted from storage.',
+      });
+    } catch (err: any) {
+      toast({
+        title: 'Remove failed',
+        description: err?.message || 'Could not delete resume.',
+        variant: 'destructive',
+      });
+    }
   };
 
   // General Settings inputs
@@ -1497,16 +1535,65 @@ export default function Dashboard() {
     return phone || '—';
   };
 
-  const handleSaveSettings = () => {
-    updateData({
+  const handleSaveSettings = async () => {
+    const ok = await updateData({
       name: settingsName,
       pronouns: settingsPronouns,
       nationality: settingsNationality,
     });
+    if (!ok) return;
     toast({
       title: 'Settings Saved',
       description: 'Personal details updated successfully.',
     });
+  };
+
+  const [handleDraft, setHandleDraft] = useState(data.handle || '');
+  const [handleCheck, setHandleCheck] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle');
+  const [isHandleSaving, setIsHandleSaving] = useState(false);
+
+  useEffect(() => {
+    setHandleDraft(data.handle || '');
+    setHandleCheck('idle');
+  }, [data.handle]);
+
+  const checkHandleAvailability = async (value: string) => {
+    const normalized = value.toLowerCase().trim();
+    if (!normalized || normalized === (data.handle || '').toLowerCase()) {
+      setHandleCheck('idle');
+      return;
+    }
+    if (!/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/.test(normalized) || normalized.length > 40) {
+      setHandleCheck('invalid');
+      return;
+    }
+    setHandleCheck('checking');
+    try {
+      const res = await fetch(`/api/profile/check-handle?handle=${encodeURIComponent(normalized)}`);
+      const result = await res.json().catch(() => ({}));
+      setHandleCheck(result.available ? 'available' : 'taken');
+    } catch {
+      setHandleCheck('idle');
+    }
+  };
+
+  const handleSaveHandle = async () => {
+    const normalized = handleDraft.toLowerCase().trim();
+    if (!normalized || normalized === (data.handle || '').toLowerCase()) return;
+    if (handleCheck === 'taken' || handleCheck === 'invalid') return;
+    if (!window.confirm(`Change your portfolio URL to ${normalized}.${PLATFORM_DOMAIN}? The old link will stop working.`)) {
+      return;
+    }
+    setIsHandleSaving(true);
+    const ok = await updateData({ handle: normalized });
+    setIsHandleSaving(false);
+    if (ok) {
+      toast({
+        title: 'Handle updated',
+        description: `Your site is now https://${normalized}.${PLATFORM_DOMAIN}`,
+      });
+      setHandleCheck('idle');
+    }
   };
 
   const handleTemplateSelect = (id: string) => {
@@ -2350,6 +2437,44 @@ export default function Dashboard() {
               </div>
             </div>
 
+            {(() => {
+              const checks = [
+                { ok: !!data.photoUrl, label: 'Photo', fix: () => { setShowCompletionModal(true); } },
+                { ok: !!(data.aboutEntries && data.aboutEntries.length), label: 'Bio', fix: () => { setCurrentView('edit-profile'); setActiveEditorTab('about'); } },
+                { ok: !!(data.projectEntries && data.projectEntries.length), label: 'Project', fix: () => { setCurrentView('edit-profile'); setActiveEditorTab('projects'); setTimeout(() => handleAdd(), 0); } },
+                { ok: !!data.contactData?.email, label: 'Email', fix: () => { setCurrentView('edit-profile'); setActiveEditorTab('contact'); } },
+                { ok: !!data.openToHire, label: 'Open to hire', fix: () => { void updateData({ openToHire: true }); } },
+              ];
+              const done = checks.filter((c) => c.ok).length;
+              const pct = Math.round((done / checks.length) * 100);
+              if (pct >= 100) return null;
+              return (
+                <Card className="p-4 sm:p-5 border-indigo-100 bg-gradient-to-br from-indigo-50/80 to-white shadow-sm">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                    <div>
+                      <p className="text-sm font-bold text-slate-900">Portfolio readiness · {pct}%</p>
+                      <p className="text-xs text-slate-500 mt-0.5">Recruiters trust complete profiles. Fix the gaps below.</p>
+                    </div>
+                    <div className="h-2 w-full sm:w-40 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-indigo-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {checks.filter((c) => !c.ok).map((c) => (
+                      <button
+                        key={c.label}
+                        type="button"
+                        onClick={c.fix}
+                        className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full border border-slate-200 bg-white text-[11px] font-semibold text-slate-700 hover:border-indigo-200 hover:text-indigo-700"
+                      >
+                        <Plus className="w-3 h-3" /> {c.label}
+                      </button>
+                    ))}
+                  </div>
+                </Card>
+              );
+            })()}
+
             {/* Storage Alert (only shows if usedStorage >= 90% of limit) */}
             {isStorageExhausted90 && (
               <Card className="p-5 bg-rose-50 border border-rose-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6 animate-in slide-in-from-top duration-300">
@@ -2980,10 +3105,31 @@ export default function Dashboard() {
               <ChevronLeft className="w-4 h-4" /> Back to Dashboard
             </button>
 
-            <div className="flex justify-between items-center border-b border-slate-200 pb-4">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 border-b border-slate-200 pb-4">
               <div>
                 <h1 className="text-2xl sm:text-3xl font-serif font-bold text-slate-900">Edit Profile</h1>
                 <p className="text-slate-500 text-sm">Add, remove, and modify the details in your public portfolio.</p>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className={cn(
+                  "text-[11px] font-semibold px-2.5 py-1 rounded-full border",
+                  saveStatus === 'saving' && "bg-amber-50 text-amber-700 border-amber-100",
+                  saveStatus === 'saved' && "bg-emerald-50 text-emerald-700 border-emerald-100",
+                  saveStatus === 'error' && "bg-red-50 text-red-700 border-red-100",
+                  saveStatus === 'idle' && "bg-slate-50 text-slate-500 border-slate-100",
+                )}>
+                  {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' ? 'Saved' : saveStatus === 'error' ? 'Save failed' : 'Ready'}
+                </span>
+                {handleString && (
+                  <a
+                    href={livePortfolioHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" /> View live site
+                  </a>
+                )}
               </div>
             </div>
 
@@ -3248,31 +3394,97 @@ export default function Dashboard() {
                       <div>
                         <h3 className="text-lg font-bold text-slate-900">Skills</h3>
                         <p className="text-sm text-slate-500 mt-1">
-                          Review or remove skills here. New skills must be posted from Updates and use your monthly limit. Max {MAX_SKILLS_UI}.
+                          Add or remove skills here. Each new skill uses 1 monthly update credit. Max {MAX_SKILLS_UI}.
                         </p>
                       </div>
                       <p className="text-xs font-semibold text-slate-400">{(sections.skills || []).length}/{MAX_SKILLS_UI}</p>
                     </div>
 
-                    <div className="rounded-xl border border-indigo-100 bg-indigo-50/70 p-4 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-indigo-950">Add a skill via Updates</p>
-                        <p className="text-xs text-indigo-800/80 mt-0.5 leading-snug">
-                          Each new skill counts as 1 monthly profile update.
-                        </p>
+                    <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Add a skill</p>
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <Input
+                          id="skill-add-name"
+                          placeholder="e.g. React, Figma, Communication"
+                          className="h-10"
+                          onKeyDown={async (e) => {
+                            if (e.key !== 'Enter') return;
+                            e.preventDefault();
+                            const input = e.currentTarget;
+                            const name = input.value.trim();
+                            if (!name) return;
+                            if ((sections.skills || []).length >= MAX_SKILLS_UI) {
+                              toast({ title: 'Limit reached', description: `Max ${MAX_SKILLS_UI} skills.`, variant: 'destructive' });
+                              return;
+                            }
+                            const catEl = document.getElementById('skill-add-category') as HTMLSelectElement | null;
+                            const category = (catEl?.value || 'technical') as 'technical' | 'tools' | 'soft' | 'languages';
+                            const next = {
+                              ...sections,
+                              skills: [
+                                ...(sections.skills || []),
+                                { id: `skill-${Date.now()}`, name, category },
+                              ],
+                            };
+                            setSections(next);
+                            const ok = await updateContextSections(next);
+                            if (ok) {
+                              input.value = '';
+                              toast({ title: 'Skill added', description: 'Uses 1 update credit.' });
+                            } else {
+                              setSections({ ...sections, skills: data.skillEntries || [] });
+                            }
+                          }}
+                        />
+                        <select
+                          id="skill-add-category"
+                          className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm"
+                          defaultValue="technical"
+                        >
+                          {SKILL_CATEGORIES.map((c) => (
+                            <option key={c.id} value={c.id}>{c.label}</option>
+                          ))}
+                        </select>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="h-10 shrink-0"
+                          onClick={async () => {
+                            const input = document.getElementById('skill-add-name') as HTMLInputElement | null;
+                            const name = input?.value.trim() || '';
+                            if (!name) {
+                              toast({ title: 'Enter a skill name', variant: 'destructive' });
+                              return;
+                            }
+                            if ((sections.skills || []).length >= MAX_SKILLS_UI) {
+                              toast({ title: 'Limit reached', description: `Max ${MAX_SKILLS_UI} skills.`, variant: 'destructive' });
+                              return;
+                            }
+                            const catEl = document.getElementById('skill-add-category') as HTMLSelectElement | null;
+                            const category = (catEl?.value || 'technical') as 'technical' | 'tools' | 'soft' | 'languages';
+                            const next = {
+                              ...sections,
+                              skills: [
+                                ...(sections.skills || []),
+                                { id: `skill-${Date.now()}`, name, category },
+                              ],
+                            };
+                            setSections(next);
+                            const ok = await updateContextSections(next);
+                            if (ok) {
+                              if (input) input.value = '';
+                              toast({ title: 'Skill added', description: 'Uses 1 update credit.' });
+                            } else {
+                              setSections({ ...sections, skills: data.skillEntries || [] });
+                            }
+                          }}
+                        >
+                          <Plus className="w-4 h-4 mr-1" /> Add skill
+                        </Button>
                       </div>
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="h-10 shrink-0 touch-manipulation"
-                        onClick={() => {
-                          setCurrentView('updates');
-                          setUpdatesTab('post');
-                          setUpdateCategory('skill');
-                        }}
-                      >
-                        <Plus className="w-4 h-4 mr-1" /> Post skill update
-                      </Button>
+                      <p className="text-[10px] text-slate-400">
+                        Credits left this month: {data.limits?.updatesRemaining ?? '—'}
+                      </p>
                     </div>
 
                     {SKILL_CATEGORIES.map((cat) => {
@@ -3291,13 +3503,13 @@ export default function Dashboard() {
                                 <button
                                   type="button"
                                   className="text-slate-400 hover:text-red-500 min-h-[28px] min-w-[28px] inline-flex items-center justify-center touch-manipulation"
-                                  onClick={() => {
+                                  onClick={async () => {
                                     const next = {
                                       ...sections,
                                       skills: (sections.skills || []).filter((s: any) => s.id !== skill.id),
                                     };
                                     setSections(next);
-                                    updateContextSections(next);
+                                    await updateContextSections(next);
                                   }}
                                   aria-label={`Remove ${skill.name}`}
                                 >
@@ -3312,7 +3524,7 @@ export default function Dashboard() {
 
                     {(sections.skills || []).length === 0 && (
                       <p className="text-sm text-slate-400 italic">
-                        No skills yet — post your first skill from Updates to use a monthly credit.
+                        No skills yet — add your first skill above.
                       </p>
                     )}
                   </div>
@@ -3495,16 +3707,35 @@ export default function Dashboard() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    <div className="flex justify-between items-center border-b pb-2">
+                    <div className="flex justify-between items-center border-b pb-2 gap-3">
                       <h3 className="text-lg font-bold text-slate-900 capitalize">{activeEditorTab} List</h3>
                       {editingId === null && (
-                        <div className="text-xs text-slate-400 italic flex items-center">
-                          Use the <Plus className="w-3 h-3 mx-1" /> button on the dashboard to add entries.
-                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="h-9 text-xs px-3 shrink-0"
+                          onClick={handleAdd}
+                        >
+                          <Plus className="w-3.5 h-3.5 mr-1" />
+                          Add {activeEditorTab === 'education' ? 'Education' : activeEditorTab === 'experience' ? 'Experience' : activeEditorTab === 'projects' ? 'Project' : 'Entry'}
+                        </Button>
                       )}
                     </div>
 
                     <div className="space-y-3">
+                      {(sections[activeEditorTab as keyof typeof sections] || []).length === 0 && editingId === null && (
+                        <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 p-6 text-center space-y-3">
+                          <p className="text-sm text-slate-500">
+                            No {activeEditorTab} yet. Add your first entry to show on your live portfolio.
+                          </p>
+                          <Button type="button" size="sm" className="h-9 text-xs" onClick={handleAdd}>
+                            <Plus className="w-3.5 h-3.5 mr-1" /> Add first entry
+                          </Button>
+                          <p className="text-[10px] text-slate-400">
+                            New entries use 1 monthly update credit each. Edits and deletes are free.
+                          </p>
+                        </div>
+                      )}
                       {(sections[activeEditorTab as keyof typeof sections] || []).map((entry: any, idx: number) => (
                         <div 
                           key={entry.id}
@@ -3594,7 +3825,9 @@ export default function Dashboard() {
 
             <div>
               <h1 className="text-2.5xl font-serif font-bold text-slate-900 mb-1">Updates Hub</h1>
-              <p className="text-slate-500 text-sm">Parse your latest resume or add quick achievements to your portfolio.</p>
+              <p className="text-slate-500 text-sm">
+                Parse a resume or post a quick highlight. New entries from Edit Profile use the same monthly update credits.
+              </p>
             </div>
 
             <div className="flex bg-slate-100 p-1 rounded-xl w-fit">
@@ -4378,6 +4611,57 @@ export default function Dashboard() {
               <div className="min-w-0">
                 {settingsSubTab === 'profile' && (
                   <div className="space-y-6 animate-in fade-in duration-200">
+                  <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-4">
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                        <Globe className="w-4 h-4 text-indigo-500" /> Portfolio URL
+                      </h3>
+                      <p className="text-slate-500 text-xs mt-0.5">
+                        Change your public handle. Recruiters will use the new address; the old one stops working.
+                      </p>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                      <div className="flex h-12 flex-1 items-center rounded-xl border border-slate-200 bg-slate-50 overflow-hidden">
+                        <Input
+                          value={handleDraft}
+                          onChange={(e) => {
+                            const v = e.target.value.toLowerCase().replace(/[^a-z0-9.-]/g, '');
+                            setHandleDraft(v);
+                            setHandleCheck('idle');
+                          }}
+                          onBlur={() => void checkHandleAvailability(handleDraft)}
+                          className="border-0 bg-transparent shadow-none focus-visible:ring-0 h-12"
+                          placeholder="yourname"
+                        />
+                        <span className="pr-3 text-xs font-medium text-slate-400 shrink-0">.{PLATFORM_DOMAIN}</span>
+                      </div>
+                      <Button
+                        type="button"
+                        className="h-12 shrink-0"
+                        disabled={
+                          isHandleSaving ||
+                          !handleDraft ||
+                          handleDraft.toLowerCase() === (data.handle || '').toLowerCase() ||
+                          handleCheck === 'taken' ||
+                          handleCheck === 'invalid' ||
+                          handleCheck === 'checking'
+                        }
+                        onClick={() => void handleSaveHandle()}
+                      >
+                        {isHandleSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save handle'}
+                      </Button>
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      {handleCheck === 'checking' && 'Checking availability…'}
+                      {handleCheck === 'available' && <span className="text-emerald-600 font-semibold">Available</span>}
+                      {handleCheck === 'taken' && <span className="text-red-600 font-semibold">Already taken</span>}
+                      {handleCheck === 'invalid' && <span className="text-red-600 font-semibold">Invalid handle format</span>}
+                      {handleCheck === 'idle' && data.handle && (
+                        <>Current: <a className="text-indigo-600 font-semibold hover:underline" href={livePortfolioHref} target="_blank" rel="noreferrer">{livePortfolioHref.replace(/^https?:\/\//, '')}</a></>
+                      )}
+                    </p>
+                  </Card>
+
                   <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-6">
                     <div>
                       <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
@@ -5072,13 +5356,18 @@ export default function Dashboard() {
                             {isLifetimePlan
                               ? 'Lifetime access — one-time payment, never expires.'
                               : billingStatus?.expiresAt
-                                ? `${billingStatus?.subscription?.autopay ? 'Renews automatically on' : 'Valid until'} ${new Date(billingStatus.expiresAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}${billingStatus?.billingPeriod === 'monthly' ? ' (monthly billing)' : billingStatus?.billingPeriod === 'yearly' ? ' (yearly billing)' : ''}.`
+                                ? `${(billingStatus?.autopay ?? billingStatus?.subscription?.autopay) && !billingStatus?.cancelAtPeriodEnd ? 'Renews automatically on' : 'Valid until'} ${new Date(billingStatus.expiresAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}${billingStatus?.billingPeriod === 'monthly' ? ' (monthly billing)' : billingStatus?.billingPeriod === 'yearly' ? ' (yearly billing)' : ''}.`
                                 : 'Free plan — upgrade anytime for a subdomain, premium templates, and more storage.'}
                           </p>
                           <div className="flex flex-wrap items-center gap-2 mt-3">
-                            {!isLifetimePlan && billingStatus?.subscription?.autopay && (
+                            {!isLifetimePlan && (billingStatus?.autopay ?? billingStatus?.subscription?.autopay) && !billingStatus?.cancelAtPeriodEnd && (
                               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-bold">
                                 <CheckCircle2 className="w-3 h-3" /> Auto-renew on
+                              </span>
+                            )}
+                            {!isLifetimePlan && billingStatus?.cancelAtPeriodEnd && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-bold">
+                                Auto-renew off
                               </span>
                             )}
                             {(billingStatus?.addonBlocks || 0) > 0 && (
@@ -5425,6 +5714,7 @@ export default function Dashboard() {
                             setCurrentView('edit-profile');
                             setActiveEditorTab('education');
                             setShowCompletionModal(false);
+                            setTimeout(() => handleAdd(), 0);
                           }}
                         >
                           Add Education
@@ -5438,6 +5728,7 @@ export default function Dashboard() {
                             setCurrentView('edit-profile');
                             setActiveEditorTab('projects');
                             setShowCompletionModal(false);
+                            setTimeout(() => handleAdd(), 0);
                           }}
                         >
                           Add Project
@@ -5451,6 +5742,7 @@ export default function Dashboard() {
                             setCurrentView('edit-profile');
                             setActiveEditorTab('experience');
                             setShowCompletionModal(false);
+                            setTimeout(() => handleAdd(), 0);
                           }}
                         >
                           Add Experience
@@ -5495,6 +5787,24 @@ export default function Dashboard() {
         >
           {showFabMenu && (
             <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col w-[min(14rem,calc(100vw-1.5rem))] animate-in slide-in-from-bottom-4 fade-in duration-200 origin-bottom-right">
+              {currentView === 'edit-profile' &&
+                !['about', 'contact', 'skills'].includes(activeEditorTab) && (
+                <button
+                  onClick={() => {
+                    setShowFabMenu(false);
+                    handleAdd();
+                  }}
+                  className="flex items-center gap-3 p-3 w-full hover:bg-slate-50 transition-colors group border-b border-slate-100"
+                >
+                  <div className="w-10 h-10 rounded-full bg-slate-900 text-white flex items-center justify-center group-hover:scale-105 transition-all shrink-0">
+                    <Plus className="w-5 h-5" />
+                  </div>
+                  <div className="text-left min-w-0">
+                    <div className="font-semibold text-sm text-slate-900">Add to {activeEditorTab}</div>
+                    <div className="text-[10px] text-slate-500 font-normal leading-tight">Uses 1 update credit</div>
+                  </div>
+                </button>
+              )}
 
               <button 
                   onClick={() => {
@@ -5525,7 +5835,7 @@ export default function Dashboard() {
                   </div>
                   <div className="text-left min-w-0">
                     <div className="font-semibold text-sm text-slate-900 group-hover:text-emerald-600 transition-colors">Post an Update</div>
-                    <div className="text-[10px] text-slate-500 font-normal leading-tight">Add a quick achievement</div>
+                    <div className="text-[10px] text-slate-500 font-normal leading-tight">Quick add (same credit pool)</div>
                   </div>
                 </button>
             </div>

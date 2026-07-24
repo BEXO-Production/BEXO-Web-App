@@ -2,7 +2,7 @@
  * Activation code engine — unique codes, org batches, email-linked redeem.
  */
 import { randomBytes } from "node:crypto";
-import { and, count, desc, eq, ilike, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import {
   activationBatches,
   activationKeys,
@@ -790,3 +790,56 @@ export async function revokeActivationKey(keyId: string, staffId?: string | null
   if (!row) throw new Error("Only unused codes can be revoked");
   return row;
 }
+
+/** Non-redeeming status check for outreach tools (College Connect). */
+export async function previewActivationCodes(codes: string[]) {
+  const normalized = Array.from(
+    new Set(codes.map((c) => String(c || "").trim().toUpperCase()).filter(Boolean)),
+  );
+  if (normalized.length === 0) return [];
+
+  const rows = await db
+    .select({
+      code: activationKeys.code,
+      status: activationKeys.status,
+      plan: activationKeys.plan,
+      boundEmail: activationKeys.boundEmail,
+      expiresAt: activationKeys.expiresAt,
+      organizationId: activationKeys.organizationId,
+    })
+    .from(activationKeys)
+    .where(inArray(activationKeys.code, normalized));
+
+  const byCode = new Map(rows.map((r) => [r.code, r]));
+  const now = Date.now();
+
+  return normalized.map((code) => {
+    const row = byCode.get(code);
+    if (!row) {
+      return { code, ok: false as const, status: "missing", message: "Code not found in admin inventory" };
+    }
+    if (row.status === "revoked") {
+      return { code, ok: false as const, status: "revoked", message: "Code is revoked", plan: row.plan };
+    }
+    if (row.status === "redeemed") {
+      return { code, ok: false as const, status: "redeemed", message: "Code already redeemed", plan: row.plan };
+    }
+    if (row.status === "expired" || (row.expiresAt && row.expiresAt.getTime() < now)) {
+      return { code, ok: false as const, status: "expired", message: "Code expired", plan: row.plan };
+    }
+    if (row.status !== "unused") {
+      return { code, ok: false as const, status: row.status || "invalid", message: "Code is not unused", plan: row.plan };
+    }
+    return {
+      code,
+      ok: true as const,
+      status: "unused",
+      plan: row.plan,
+      boundEmail: row.boundEmail,
+      expiresAt: row.expiresAt ? row.expiresAt.toISOString() : null,
+      organizationId: row.organizationId,
+      message: "Ready to redeem in onboarding / billing",
+    };
+  });
+}
+

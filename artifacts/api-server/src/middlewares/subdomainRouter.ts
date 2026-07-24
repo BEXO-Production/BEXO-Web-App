@@ -72,7 +72,20 @@ async function renderBundledTemplate(
   const localBundleRoot = getTemplateBundleRoot(templateId);
   if (!localBundleRoot) return false;
 
-  const templateFile = resolveTemplateFile(localBundleRoot, pathName);
+  // Browsers request /favicon.ico by default; map it (and related icons) to BEXO logo.
+  const iconAlias =
+    pathName === "/favicon.ico" ||
+    pathName === "/favicon.png" ||
+    pathName === "/apple-touch-icon.png" ||
+    pathName === "/apple-touch-icon-precomposed.png" ||
+    pathName === "/site-icon.png";
+
+  let templateFile = resolveTemplateFile(localBundleRoot, pathName);
+  if (!templateFile && iconAlias) {
+    templateFile =
+      resolveTemplateFile(localBundleRoot, "/bexo-logo.png") ||
+      resolveTemplateFile(localBundleRoot, "/assets/bexo-logo.png");
+  }
   if (!templateFile) {
     res.status(404).send("Template asset not found.");
     return true;
@@ -91,6 +104,7 @@ async function renderBundledTemplate(
   }
 
   if (
+    iconAlias ||
     pathName.startsWith("/assets/") ||
     pathName.startsWith("/css/") ||
     pathName.startsWith("/js/") ||
@@ -103,6 +117,9 @@ async function renderBundledTemplate(
         ? "public, max-age=31536000, immutable"
         : "no-cache",
     );
+  }
+  if (iconAlias) {
+    res.type("png");
   }
   res.sendFile(templateFile);
   return true;
@@ -376,7 +393,20 @@ export async function renderPortfolioForHandle(
     // host is required; the gateway serves assets and injects this handle's
     // canonical profile into the SPA shell.
     if (localBundleRoot) {
-      const templateFile = resolveTemplateFile(localBundleRoot, path);
+      // Browsers request /favicon.ico by default; map brand icon aliases to BEXO logo.
+      const iconAlias =
+        path === "/favicon.ico" ||
+        path === "/favicon.png" ||
+        path === "/apple-touch-icon.png" ||
+        path === "/apple-touch-icon-precomposed.png" ||
+        path === "/site-icon.png";
+
+      let templateFile = resolveTemplateFile(localBundleRoot, path);
+      if (!templateFile && iconAlias) {
+        templateFile =
+          resolveTemplateFile(localBundleRoot, "/bexo-logo.png") ||
+          resolveTemplateFile(localBundleRoot, "/assets/bexo-logo.png");
+      }
       if (!templateFile) {
         res.status(404).send("Template asset not found.");
         return;
@@ -401,6 +431,7 @@ export async function renderPortfolioForHandle(
       }
 
       if (
+        iconAlias ||
         path.startsWith("/assets/") ||
         path.startsWith("/css/") ||
         path.startsWith("/js/") ||
@@ -415,6 +446,9 @@ export async function renderPortfolioForHandle(
             ? "public, max-age=31536000, immutable"
             : "no-cache",
         );
+      }
+      if (iconAlias) {
+        res.type("png");
       }
       res.sendFile(templateFile);
       return;

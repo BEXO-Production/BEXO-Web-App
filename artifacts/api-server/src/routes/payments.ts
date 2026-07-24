@@ -119,6 +119,16 @@ function bootstrapAutopayStartAt(plan: PaidPlan, expiresAt: Date): number {
 }
 
 /**
+ * Delayed Autopay for an ALREADY-PAID period (cancel re-enable / activation key).
+ * Charge at the current expiresAt — never push to a full new term from now.
+ * Razorpay requires start_at at least a few minutes in the future.
+ */
+function enableAutopayStartAt(expiresAt: Date): number {
+  const minStartMs = Date.now() + 15 * 60 * 1000; // Razorpay: start_at must be in the future
+  return Math.floor(Math.max(expiresAt.getTime(), minStartMs) / 1000);
+}
+
+/**
  * After a discounted first invoice (order), create a delayed Razorpay subscription
  * that charges the full plan price at the end of the paid period.
  * The customer must still authorize the mandate via Checkout (needsMandateSetup).
@@ -202,13 +212,21 @@ const isUpgradeTo = (state: Awaited<ReturnType<typeof resolveSubscriptionState>>
   return nextRank > currentRank;
 };
 
-const assertCanPurchase = (state: Awaited<ReturnType<typeof resolveSubscriptionState>>, plan: PaidPlan) => {
+const assertCanPurchase = (
+  state: Awaited<ReturnType<typeof resolveSubscriptionState>>,
+  plan: PaidPlan,
+  opts?: { cancelAtPeriodEnd?: boolean },
+) => {
   if (!state.isPremium) return null;
 
   if (state.plan === plan) {
-    return planBillingPeriod(plan) === "lifetime"
-      ? "This plan is already active on this account."
-      : "This plan is already active — renewals happen automatically.";
+    if (planBillingPeriod(plan) === "lifetime") {
+      return "This plan is already active on this account.";
+    }
+    if (opts?.cancelAtPeriodEnd) {
+      return "This plan is still active until period end. Open Billing and tap Enable Autopay to resume renewals — you will not be charged today.";
+    }
+    return "This plan is already active — renewals happen automatically.";
   }
 
   // Allow upgrades to a higher-ranked plan while premium.
@@ -216,6 +234,60 @@ const assertCanPurchase = (state: Awaited<ReturnType<typeof resolveSubscriptionS
 
   return "Downgrades are not available mid-cycle. Cancel auto-renew and switch after your current period ends, or upgrade to a higher plan.";
 };
+
+/** Extract a human-readable Razorpay / Error message for API clients. */
+function razorpayErrorMessage(error: unknown, fallback: string): string {
+  const err = error as {
+    error?: { description?: string; reason?: string; code?: string };
+    description?: string;
+    message?: string;
+  } | null;
+  const detail =
+    err?.error?.description ||
+    err?.description ||
+    (typeof err?.message === "string" && !err.message.startsWith("Error:") ? err.message : null);
+  return detail ? `${fallback.replace(/\.$/, "")}: ${detail}` : fallback;
+}
+
+async function assertRazorpayPlanReady(
+  plan: PaidPlan,
+  fullPlanPaise: number,
+): Promise<{ ok: true; planId: string } | { ok: false; status: number; error: string; code: string }> {
+  const rzpPlanId = await getRazorpayPlanIdFor(plan);
+  if (!rzpPlanId) {
+    return {
+      ok: false,
+      status: 503,
+      error: "Autopay is not configured for this plan yet. Please try again later or contact support.",
+      code: "RAZORPAY_PLAN_MISSING",
+    };
+  }
+  if (!razorpay) {
+    return { ok: false, status: 503, error: "Payments are not configured. Please contact support.", code: "RAZORPAY_UNAVAILABLE" };
+  }
+  try {
+    const rzpPlan: any = await razorpay.plans.fetch(rzpPlanId);
+    const planAmount = Number(rzpPlan?.item?.amount);
+    if (Number.isFinite(planAmount) && planAmount !== fullPlanPaise) {
+      logger.error({ planAmount, fullPlanPaise, rzpPlanId, plan }, "Razorpay plan amount mismatch with catalog pricing");
+      return {
+        ok: false,
+        status: 409,
+        error: "Pricing is being updated. Please try again in a few minutes or contact support.",
+        code: "PLAN_AMOUNT_MISMATCH",
+      };
+    }
+  } catch (planErr) {
+    logger.error({ planErr, rzpPlanId, plan }, "Razorpay plan id is invalid or inaccessible for current API keys");
+    return {
+      ok: false,
+      status: 503,
+      error: "Autopay is not configured for this plan yet. Please try again later or contact support.",
+      code: "RAZORPAY_PLAN_INVALID",
+    };
+  }
+  return { ok: true, planId: rzpPlanId };
+}
 
 /** After a successful upgrade, stop the previous Razorpay autopay immediately. */
 async function cancelPreviousRazorpaySubscription(
@@ -283,6 +355,9 @@ router.get("/status", requireAuth, async (req: any, res: any) => {
     const rzpSubId = state.subscription?.razorpaySubscriptionId || null;
     const rzpStatus = await fetchRazorpaySubscriptionStatus(rzpSubId);
     const autopayLive = !!rzpSubId && (rzpSubId.startsWith("mock_") || isMandateReadyStatus(rzpStatus));
+    // Effective renewing state: mandate is live AND user has not cancelled at period end.
+    // Keeping razorpaySubscriptionId after cancel_at_cycle_end must NOT show "Autopay on".
+    const willAutoRenew = autopayLive && !access.cancelAtPeriodEnd;
 
     const [heldMandate] = await db
       .select()
@@ -294,6 +369,23 @@ router.get("/status", requireAuth, async (req: any, res: any) => {
     const needsMandateSetup =
       !!heldMandate ||
       (!!rzpSubId && !rzpSubId.startsWith("mock_") && rzpStatus === "created" && !state.isPremium);
+
+    const isLifetime = state.billingPeriod === "lifetime" || planBillingPeriod(state.plan || "free") === "lifetime";
+    // Premium users without live Autopay (activation key / cancelled renew) can attach a delayed mandate.
+    const canEnableAutopay =
+      !!state.isPremium &&
+      !!state.plan &&
+      !isLifetime &&
+      SUBSCRIPTION_PLANS.includes(state.plan as PaidPlan) &&
+      (!willAutoRenew || access.cancelAtPeriodEnd);
+
+    const [latestActivation] = await db
+      .select({ id: payments.id })
+      .from(payments)
+      .where(and(eq(payments.userId, userId), eq(payments.kind, "activation"), eq(payments.status, "success")))
+      .orderBy(desc(payments.createdAt))
+      .limit(1);
+    const activatedViaKey = !!latestActivation && !willAutoRenew;
 
     res.json({
       plan: state.plan,
@@ -348,7 +440,9 @@ router.get("/status", requireAuth, async (req: any, res: any) => {
       },
       canBuy: state.canBuy,
       renewalMode: state.renewalMode,
-      autopay: autopayLive,
+      autopay: willAutoRenew,
+      canEnableAutopay,
+      activatedViaKey,
       needsMandateSetup,
       razorpayKey: needsMandateSetup ? razorpayKeyId : undefined,
       pendingCheckout: heldMandate
@@ -366,7 +460,7 @@ router.get("/status", requireAuth, async (req: any, res: any) => {
             status: state.subscription.status,
             expiresAt: state.subscription.expiresAt,
             createdAt: state.subscription.createdAt,
-            autopay: autopayLive,
+            autopay: willAutoRenew,
             razorpayStatus: rzpStatus,
             razorpaySubscriptionId: heldMandate?.razorpaySubscriptionId || rzpSubId,
             needsMandateSetup,
@@ -560,15 +654,27 @@ router.post("/create-subscription", requireAuth, async (req: any, res: any) => {
       return res.status(400).json({ error: billingGate.error, code: billingGate.code });
     }
 
-    const current = await resolveSubscriptionState(userId);
-    const blocked = assertCanPurchase(current, plan);
+    const access = await resolveSiteAccess(userId);
+    const current = access.subscription;
+    const blocked = assertCanPurchase(current, plan, { cancelAtPeriodEnd: access.cancelAtPeriodEnd });
     if (blocked) {
-      return res.status(409).json({ error: blocked, canBuy: current.canBuy, renewalMode: current.renewalMode });
+      return res.status(409).json({
+        error: blocked,
+        canBuy: current.canBuy,
+        renewalMode: current.renewalMode,
+        code: access.cancelAtPeriodEnd && current.plan === plan ? "USE_ENABLE_AUTOPAY" : "PURCHASE_BLOCKED",
+      });
     }
     const upgrading = isUpgradeTo(current, plan);
     // Same-plan autopay already running — no new subscription needed.
-    // Upgrades are allowed and will replace the Razorpay subscription on verify.
-    if (current.subscription?.razorpaySubscriptionId && current.isPremium && !upgrading) {
+    // After cancel-at-period-end the Razorpay id may still exist; allow upgrades,
+    // and for same-plan assertCanPurchase already points users to Enable Autopay.
+    if (
+      current.subscription?.razorpaySubscriptionId &&
+      current.isPremium &&
+      !upgrading &&
+      !access.cancelAtPeriodEnd
+    ) {
       return res.status(409).json({
         error: "Auto-renew is already on for your plan — no new subscription needed.",
         code: "SUBSCRIPTION_ACTIVE",
@@ -596,33 +702,11 @@ router.post("/create-subscription", requireAuth, async (req: any, res: any) => {
     }
 
     if (razorpay) {
-      const rzpPlanId = await getRazorpayPlanIdFor(plan);
-      if (!rzpPlanId) {
-        return res.status(503).json({
-          error: "Autopay is not configured for this plan yet. Please try again later or contact support.",
-        });
+      const planReady = await assertRazorpayPlanReady(plan, fullPlanPaise);
+      if (!planReady.ok) {
+        return res.status(planReady.status).json({ error: planReady.error, code: planReady.code });
       }
-
-      // Guard against catalog drift vs Razorpay Plan (always compare FULL list price).
-      // Invalid plan IDs (e.g. leftover test-mode IDs after switching to live keys)
-      // must fail loudly — otherwise subscriptions.create returns a generic 500.
-      try {
-        const rzpPlan: any = await razorpay.plans.fetch(rzpPlanId);
-        const planAmount = Number(rzpPlan?.item?.amount);
-        if (Number.isFinite(planAmount) && planAmount !== fullPlanPaise) {
-          logger.error({ planAmount, fullPlanPaise, rzpPlanId, plan }, "Razorpay plan amount mismatch with catalog pricing");
-          return res.status(409).json({
-            error: "Pricing is being updated. Please try again in a few minutes or contact support.",
-            code: "PLAN_AMOUNT_MISMATCH",
-          });
-        }
-      } catch (planErr) {
-        logger.error({ planErr, rzpPlanId, plan }, "Razorpay plan id is invalid or inaccessible for current API keys");
-        return res.status(503).json({
-          error: "Autopay is not configured for this plan yet. Please try again later or contact support.",
-          code: "RAZORPAY_PLAN_INVALID",
-        });
-      }
+      const rzpPlanId = planReady.planId;
 
       const planRow = await getPlanById(plan);
       void planRow; // reserved for future display metadata on bootstrap receipts
@@ -762,7 +846,10 @@ router.post("/create-subscription", requireAuth, async (req: any, res: any) => {
     return res.status(503).json({ error: "Payments are not configured. Please contact support." });
   } catch (error) {
     logger.error({ error, userId }, "Failed to create Razorpay subscription");
-    res.status(500).json({ error: "Unable to start subscription checkout right now." });
+    res.status(500).json({
+      error: razorpayErrorMessage(error, "Unable to start subscription checkout right now."),
+      code: "SUBSCRIPTION_CREATE_FAILED",
+    });
   }
 });
 
@@ -1246,7 +1333,15 @@ router.post("/confirm-autopay", requireAuth, async (req: any, res: any) => {
 
     const prior = await resolveSubscriptionState(userId);
     const previousRzpId = prior.subscription?.razorpaySubscriptionId || null;
-    const expiresAt = await getRenewalExpiry(userId, plan);
+    const isEnableOnly = payment.kind === "subscription_enable";
+
+    // Enable-autopay must NOT extend the current paid period — only attach the mandate.
+    // Bootstrap / first checkout still uses getRenewalExpiry (may stack from now).
+    const expiresAt = isEnableOnly
+      ? prior.expiresAt
+        ? new Date(prior.expiresAt)
+        : await getRenewalExpiry(userId, plan)
+      : await getRenewalExpiry(userId, plan);
 
     await db
       .update(payments)
@@ -1260,25 +1355,28 @@ router.post("/confirm-autopay", requireAuth, async (req: any, res: any) => {
       subscriptionId: razorpay_subscription_id,
       planId: (await getRazorpayPlanIdFor(plan)) || null,
     });
+    await setCancelAtPeriodEnd(userId, false);
     await cancelPreviousRazorpaySubscription(userId, previousRzpId, razorpay_subscription_id);
 
-    const couponCode =
-      (typeof req.body?.couponCode === "string" ? req.body.couponCode : undefined) ||
-      payment.couponCode ||
-      undefined;
-    await recordCouponRedemption(couponCode, { userId, paymentId: payment.id });
-    await generateAndStoreInvoice(payment.id);
-    if (payment.razorpayPaymentId || razorpay_payment_id) {
-      await sendBillingReceipts(
-        userId,
-        plan,
-        payment.amount / 100,
-        (payment.razorpayPaymentId || razorpay_payment_id) as string,
+    if (!isEnableOnly) {
+      const couponCode =
+        (typeof req.body?.couponCode === "string" ? req.body.couponCode : undefined) ||
+        payment.couponCode ||
+        undefined;
+      await recordCouponRedemption(couponCode, { userId, paymentId: payment.id });
+      await generateAndStoreInvoice(payment.id);
+      if (payment.amount > 0 && (payment.razorpayPaymentId || razorpay_payment_id)) {
+        await sendBillingReceipts(
+          userId,
+          plan,
+          payment.amount / 100,
+          (payment.razorpayPaymentId || razorpay_payment_id) as string,
+        );
+      }
+      await markOnboardingComplete(userId).catch((err) =>
+        logger.warn({ err, userId }, "markOnboardingComplete failed after Autopay confirm"),
       );
     }
-    await markOnboardingComplete(userId).catch((err) =>
-      logger.warn({ err, userId }, "markOnboardingComplete failed after Autopay confirm"),
-    );
 
     await recordLedgerEvent({
       userId,
@@ -1289,23 +1387,28 @@ router.post("/confirm-autopay", requireAuth, async (req: any, res: any) => {
       razorpaySubscriptionId: razorpay_subscription_id,
       razorpayPaymentId: payment.razorpayPaymentId || razorpay_payment_id,
       idempotencyKey: `mandate_confirmed:${payment.id}`,
+      metadata: { via: isEnableOnly ? "enable_autopay" : "hard_mandate" },
     });
-    await recordLedgerEvent({
-      userId,
-      paymentId: payment.id,
-      eventType: "plan_activated",
-      amountPaise: payment.amount,
-      plan,
-      razorpaySubscriptionId: razorpay_subscription_id,
-      razorpayPaymentId: payment.razorpayPaymentId,
-      razorpayOrderId: payment.razorpayOrderId,
-      idempotencyKey: `plan_activated:${payment.id}`,
-      metadata: { via: "hard_mandate" },
-    });
+    if (!isEnableOnly) {
+      await recordLedgerEvent({
+        userId,
+        paymentId: payment.id,
+        eventType: "plan_activated",
+        amountPaise: payment.amount,
+        plan,
+        razorpaySubscriptionId: razorpay_subscription_id,
+        razorpayPaymentId: payment.razorpayPaymentId,
+        razorpayOrderId: payment.razorpayOrderId,
+        idempotencyKey: `plan_activated:${payment.id}`,
+        metadata: { via: "hard_mandate" },
+      });
+    }
 
     res.json({
       success: true,
-      message: "Autopay authorized. Your plan is now active.",
+      message: isEnableOnly
+        ? "Autopay enabled. Your current plan stays active until period end; renewals charge automatically after that."
+        : "Autopay authorized. Your plan is now active.",
       plan: activated.plan,
       isPremium: true,
       activated: true,
@@ -1315,7 +1418,9 @@ router.post("/confirm-autopay", requireAuth, async (req: any, res: any) => {
       stacked: activated.stacked,
       renewalMode: activated.renewalMode,
       autopay: true,
+      cancelAtPeriodEnd: false,
       bootstrap: payment.kind === "subscription_bootstrap",
+      enableOnly: isEnableOnly,
       needsMandateSetup: false,
     });
   } catch (error) {
@@ -1333,20 +1438,35 @@ router.post("/abandon-autopay-setup", requireAuth, async (req: any, res: any) =>
     typeof req.body?.razorpay_subscription_id === "string" ? req.body.razorpay_subscription_id : null;
 
   try {
-    const [payment] = await db
-      .select()
-      .from(payments)
-      .where(
-        and(
-          eq(payments.userId, userId),
-          eq(payments.kind, "subscription_bootstrap"),
-          eq(payments.status, "awaiting_mandate"),
-        ),
-      )
-      .orderBy(desc(payments.createdAt))
-      .limit(1);
+    // Prefer exact subscription id; otherwise latest awaiting_mandate (bootstrap or enable).
+    let payment =
+      (
+        await db
+          .select()
+          .from(payments)
+          .where(
+            and(
+              eq(payments.userId, userId),
+              eq(payments.status, "awaiting_mandate"),
+              ...(subscriptionId ? [eq(payments.razorpaySubscriptionId, subscriptionId)] : []),
+            ),
+          )
+          .orderBy(desc(payments.createdAt))
+          .limit(1)
+      )[0] || null;
+
+    if (!payment) {
+      [payment] = await db
+        .select()
+        .from(payments)
+        .where(and(eq(payments.userId, userId), eq(payments.status, "awaiting_mandate")))
+        .orderBy(desc(payments.createdAt))
+        .limit(1);
+    }
 
     const linkedId = subscriptionId || payment?.razorpaySubscriptionId || null;
+    const isEnableOnly = payment?.kind === "subscription_enable";
+
     if (linkedId && razorpay && !linkedId.startsWith("mock_")) {
       try {
         await razorpay.subscriptions.cancel(linkedId, false);
@@ -1356,7 +1476,8 @@ router.post("/abandon-autopay-setup", requireAuth, async (req: any, res: any) =>
     }
 
     let refundId: string | null = null;
-    if (payment?.razorpayPaymentId && razorpay && payment.amount > 0) {
+    // Enable-autopay holds ₹0 — never refund and never strip an already-active plan.
+    if (!isEnableOnly && payment?.razorpayPaymentId && razorpay && payment.amount > 0) {
       try {
         const refund: any = await razorpay.payments.refund(payment.razorpayPaymentId, {
           amount: payment.amount,
@@ -1384,7 +1505,7 @@ router.post("/abandon-autopay-setup", requireAuth, async (req: any, res: any) =>
         razorpaySubscriptionId: linkedId,
         razorpayRefundId: refundId,
         idempotencyKey: `abandon:${payment.id}`,
-        metadata: { hardMandate: true },
+        metadata: { hardMandate: !isEnableOnly, enableOnly: isEnableOnly },
       });
       if (refundId) {
         try {
@@ -1409,12 +1530,14 @@ router.post("/abandon-autopay-setup", requireAuth, async (req: any, res: any) =>
     const refreshed = await resolveSubscriptionState(userId);
     res.json({
       success: true,
-      message: refundId
-        ? "Autopay was not authorized. Your first invoice has been refunded — plan was not activated."
-        : "Autopay was not authorized. Plan was not activated. Contact support if a charge remains.",
+      message: isEnableOnly
+        ? "Autopay setup was cancelled. Your current plan is unchanged."
+        : refundId
+          ? "Autopay was not authorized. Your first invoice has been refunded — plan was not activated."
+          : "Autopay was not authorized. Plan was not activated. Contact support if a charge remains.",
       plan: refreshed.plan,
       isPremium: refreshed.isPremium,
-      activated: false,
+      activated: refreshed.isPremium,
       expiresAt: refreshed.expiresAt,
       storageQuotaBytes: refreshed.storageQuotaBytes,
       storageBonusBytes: refreshed.storageBonusBytes,
@@ -1437,17 +1560,33 @@ router.post("/resume-autopay-setup", requireAuth, async (req: any, res: any) => 
     const [held] = await db
       .select()
       .from(payments)
-      .where(
-        and(
-          eq(payments.userId, userId),
-          eq(payments.kind, "subscription_bootstrap"),
-          eq(payments.status, "awaiting_mandate"),
-        ),
-      )
+      .where(and(eq(payments.userId, userId), eq(payments.status, "awaiting_mandate")))
       .orderBy(desc(payments.createdAt))
       .limit(1);
 
-    if (held) {
+    if (held?.kind === "subscription_enable") {
+      const plan = (normalizePlanId(held.plan) || "essential") as PaidPlan;
+      const subscriptionId = held.razorpaySubscriptionId;
+      const status = await fetchRazorpaySubscriptionStatus(subscriptionId);
+      if (!subscriptionId || status === "cancelled" || status === "completed" || status === "expired") {
+        return res.status(409).json({
+          error: "Previous Autopay setup expired. Tap Enable Autopay again.",
+          code: "ENABLE_EXPIRED",
+        });
+      }
+      return res.json({
+        success: true,
+        needsMandateSetup: true,
+        subscriptionId,
+        key: razorpayKeyId,
+        plan,
+        amount: held.amount,
+        enableOnly: true,
+        message: "Authorize Autopay to schedule renewals for your current plan.",
+      });
+    }
+
+    if (held?.kind === "subscription_bootstrap") {
       const plan = (normalizePlanId(held.plan) || "essential") as PaidPlan;
       let subscriptionId = held.razorpaySubscriptionId;
       const status = await fetchRazorpaySubscriptionStatus(subscriptionId);
@@ -2071,6 +2210,282 @@ router.post("/subscription/cancel", requireAuth, async (req: any, res: any) => {
   } catch (error) {
     logger.error({ error, userId }, "Failed to cancel base subscription");
     res.status(500).json({ error: "Unable to cancel your subscription right now." });
+  }
+});
+
+/**
+ * Re-enable / attach Autopay for the CURRENT paid plan without charging today.
+ * Used after cancel-at-period-end, and for activation-key users who want renewals
+ * to charge automatically when the complimentary period ends.
+ *
+ * Creates a delayed Razorpay subscription (start_at ≈ expiresAt). Customer must
+ * authorize the mandate in Checkout; first charge happens at period end via webhook.
+ */
+router.post("/subscription/enable-autopay", requireAuth, async (req: any, res: any) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+  try {
+    const billingGate = await ensureBillingProfileForCheckout(userId, req.body?.billing);
+    if (!billingGate.ok) {
+      return res.status(400).json({ error: billingGate.error, code: billingGate.code });
+    }
+
+    const access = await resolveSiteAccess(userId);
+    const state = access.subscription;
+    if (!state.isPremium || !state.plan) {
+      return res.status(400).json({
+        error: "Activate a paid plan first, then enable Autopay for renewals.",
+        code: "NO_ACTIVE_PLAN",
+      });
+    }
+
+    const plan = state.plan as PaidPlan;
+    if (!SUBSCRIPTION_PLANS.includes(plan) || planBillingPeriod(plan) === "lifetime") {
+      return res.status(400).json({
+        error: "Autopay is only available for Identity, Essential, and Growth plans.",
+        code: "PLAN_NOT_AUTOPAY",
+      });
+    }
+
+    if (!state.expiresAt) {
+      return res.status(400).json({
+        error: "Your plan has no renewal date — contact support.",
+        code: "NO_EXPIRY",
+      });
+    }
+
+    const rzpSubId = state.subscription?.razorpaySubscriptionId || null;
+    let rzpFull: any = null;
+    let rzpStatus: string | null = null;
+    if (razorpay && rzpSubId && !rzpSubId.startsWith("mock_")) {
+      try {
+        rzpFull = await razorpay.subscriptions.fetch(rzpSubId);
+        rzpStatus = typeof rzpFull?.status === "string" ? rzpFull.status : null;
+      } catch (err) {
+        logger.warn({ err, subscriptionId: rzpSubId }, "Could not fetch Razorpay subscription for enable-autopay");
+        rzpStatus = await fetchRazorpaySubscriptionStatus(rzpSubId);
+      }
+    } else if (rzpSubId?.startsWith("mock_")) {
+      rzpStatus = "active";
+    }
+
+    const autopayLive = !!rzpSubId && (rzpSubId.startsWith("mock_") || isMandateReadyStatus(rzpStatus));
+    const rzpCancelAtCycleEnd = !!rzpFull?.cancel_at_cycle_end;
+
+    // Already renewing and not cancelled → nothing to do.
+    if (autopayLive && !access.cancelAtPeriodEnd && !rzpCancelAtCycleEnd) {
+      return res.status(409).json({
+        error: "Auto-renew is already on for your plan.",
+        code: "AUTOPAY_ALREADY_ON",
+        autopay: true,
+        cancelAtPeriodEnd: false,
+      });
+    }
+
+    // Desync: local cancel flag set but Razorpay never got cancel_at_cycle_end
+    // (cancel API failed / webhook lag). Restore renewals without a new mandate.
+    if (access.cancelAtPeriodEnd && autopayLive && rzpSubId && !rzpCancelAtCycleEnd && !rzpSubId.startsWith("mock_")) {
+      await setCancelAtPeriodEnd(userId, false);
+      await recordLedgerEvent({
+        userId,
+        eventType: "autopay_enable_started",
+        amountPaise: 0,
+        plan,
+        razorpaySubscriptionId: rzpSubId,
+        idempotencyKey: `autopay_reenable_desync:${userId}:${rzpSubId}`,
+        metadata: { source: "desync_clear_cancel_flag" },
+      }).catch(() => undefined);
+      logger.info({ userId, rzpSubId, plan }, "Cleared cancelAtPeriodEnd desync — Razorpay still renewing");
+      return res.json({
+        success: true,
+        needsMandateSetup: false,
+        autopay: true,
+        cancelAtPeriodEnd: false,
+        subscriptionId: rzpSubId,
+        plan,
+        expiresAt: state.expiresAt,
+        message: "Auto-renew is on again. Renewals will charge at period end.",
+      });
+    }
+
+    // Resume an in-flight enable/mandate if one is already awaiting auth.
+    const [pendingEnable] = await db
+      .select()
+      .from(payments)
+      .where(
+        and(
+          eq(payments.userId, userId),
+          eq(payments.status, "awaiting_mandate"),
+          eq(payments.kind, "subscription_enable"),
+        ),
+      )
+      .orderBy(desc(payments.createdAt))
+      .limit(1);
+
+    if (pendingEnable?.razorpaySubscriptionId) {
+      const pendingStatus = await fetchRazorpaySubscriptionStatus(pendingEnable.razorpaySubscriptionId);
+      if (
+        pendingEnable.razorpaySubscriptionId.startsWith("mock_") ||
+        (pendingStatus && pendingStatus !== "cancelled" && pendingStatus !== "completed" && pendingStatus !== "expired")
+      ) {
+        return res.json({
+          success: true,
+          needsMandateSetup: true,
+          subscriptionId: pendingEnable.razorpaySubscriptionId,
+          key: razorpayKeyId,
+          plan,
+          expiresAt: state.expiresAt,
+          message: "Finish authorizing Razorpay Autopay to schedule your renewal.",
+          resume: true,
+        });
+      }
+      // Stale pending row — abandon so we can create a fresh delayed sub.
+      await db
+        .update(payments)
+        .set({ status: "abandoned" })
+        .where(eq(payments.id, pendingEnable.id));
+    }
+
+    const startAt = enableAutopayStartAt(new Date(state.expiresAt));
+    const listPricing = await calculatePlanAmount(plan);
+    const fullPlanPaise = listPricing.totalPaise;
+    const totalCount = planBillingPeriod(plan) === "monthly" ? 100 : 10;
+
+    let subscriptionId: string;
+    let planId: string | null = null;
+
+    if (razorpay) {
+      const planReady = await assertRazorpayPlanReady(plan, fullPlanPaise);
+      if (!planReady.ok) {
+        return res.status(planReady.status).json({ error: planReady.error, code: planReady.code });
+      }
+      planId = planReady.planId;
+
+      try {
+        const subscription: any = await razorpay.subscriptions.create({
+          plan_id: planId,
+          total_count: totalCount,
+          quantity: 1,
+          customer_notify: 1,
+          start_at: startAt,
+          notes: {
+            userId,
+            plan,
+            mode: "subscription_enable",
+            source: access.cancelAtPeriodEnd || rzpCancelAtCycleEnd ? "reenable_after_cancel" : "activation_key_attach",
+            previousSubscriptionId: rzpSubId || "",
+            firstChargeAt: new Date(startAt * 1000).toISOString(),
+            renewalPaise: String(fullPlanPaise),
+          },
+        } as any);
+
+        subscriptionId = subscription.id as string;
+      } catch (createErr) {
+        logger.error(
+          {
+            createErr,
+            userId,
+            plan,
+            planId,
+            startAt,
+            startAtIso: new Date(startAt * 1000).toISOString(),
+            previousSubscriptionId: rzpSubId,
+          },
+          "Razorpay subscriptions.create failed during enable-autopay",
+        );
+        return res.status(502).json({
+          error: razorpayErrorMessage(createErr, "Unable to enable Autopay right now."),
+          code: "RAZORPAY_SUBSCRIPTION_CREATE_FAILED",
+        });
+      }
+    } else if (process.env.NODE_ENV !== "production") {
+      subscriptionId = `mock_sub_enable_${Date.now()}`;
+      planId = `mock_plan_${plan}`;
+    } else {
+      return res.status(503).json({ error: "Payments are not configured. Please contact support." });
+    }
+
+    await db.insert(payments).values({
+      userId,
+      razorpaySubscriptionId: subscriptionId,
+      amount: 0,
+      status: "awaiting_mandate",
+      plan,
+      kind: "subscription_enable",
+      couponCode: null,
+    });
+
+    await recordLedgerEvent({
+      userId,
+      eventType: "autopay_enable_started",
+      amountPaise: 0,
+      plan,
+      razorpaySubscriptionId: subscriptionId,
+      idempotencyKey: `autopay_enable_started:${userId}:${subscriptionId}`,
+      metadata: {
+        startAt,
+        startAtIso: new Date(startAt * 1000).toISOString(),
+        cancelAtPeriodEnd: access.cancelAtPeriodEnd,
+        rzpCancelAtCycleEnd,
+      },
+    }).catch(() => undefined);
+
+    logger.info(
+      {
+        userId,
+        plan,
+        subscriptionId,
+        startAt,
+        startAtIso: new Date(startAt * 1000).toISOString(),
+        cancelAtPeriodEnd: access.cancelAtPeriodEnd,
+      },
+      "Scheduled delayed Autopay enable for current paid period",
+    );
+
+    // Dev mock: auto-confirm link without Razorpay Checkout.
+    if (subscriptionId.startsWith("mock_")) {
+      await activatePaidPlan(userId, plan, new Date(state.expiresAt), {
+        subscriptionId,
+        planId,
+      });
+      await setCancelAtPeriodEnd(userId, false);
+      await db
+        .update(payments)
+        .set({ status: "success" })
+        .where(and(eq(payments.userId, userId), eq(payments.razorpaySubscriptionId, subscriptionId)));
+
+      return res.json({
+        success: true,
+        needsMandateSetup: false,
+        autopay: true,
+        cancelAtPeriodEnd: false,
+        subscriptionId,
+        plan,
+        expiresAt: state.expiresAt,
+        message: "Autopay enabled (mock). Renewals will charge at period end.",
+        mock: true,
+      });
+    }
+
+    res.json({
+      success: true,
+      needsMandateSetup: true,
+      subscriptionId,
+      key: razorpayKeyId,
+      plan,
+      amount: fullPlanPaise,
+      currency: "INR",
+      expiresAt: state.expiresAt,
+      firstChargeAt: new Date(startAt * 1000).toISOString(),
+      message: `Authorize Autopay now. Your ${plan} plan stays free until ${new Date(state.expiresAt).toLocaleDateString("en-IN")}; then Razorpay charges the renewal automatically.`,
+    });
+  } catch (error) {
+    logger.error({ error, userId }, "Failed to enable Autopay");
+    res.status(500).json({
+      error: razorpayErrorMessage(error, "Unable to enable Autopay right now."),
+      code: "AUTOPAY_ENABLE_FAILED",
+    });
   }
 });
 
@@ -2795,12 +3210,30 @@ router.post("/webhook", async (req: any, res: any) => {
 
       const userId = await findUserIdForSubscription(subscriptionId, subscriptionEntity.notes);
       if (userId) {
-        // Access continues until expiresAt; clearing the link marks autopay as off.
-        const [subRow] = await db
+        // Only mutate local Autopay state when THIS subscription is still the linked one.
+        // Upgrades / re-enable Autopay cancel the previous Razorpay sub; that webhook must
+        // not flip cancelAtPeriodEnd back on or clear the new subscription id.
+        const [linkedSub] = await db
           .select()
           .from(subscriptions)
-          .where(and(eq(subscriptions.userId, userId), eq(subscriptions.razorpaySubscriptionId, subscriptionId)))
+          .where(eq(subscriptions.userId, userId))
           .limit(1);
+        const isCurrentLink = linkedSub?.razorpaySubscriptionId === subscriptionId;
+
+        if (!isCurrentLink) {
+          logger.info(
+            {
+              userId,
+              subscriptionId,
+              currentLink: linkedSub?.razorpaySubscriptionId || null,
+              event,
+            },
+            "Ignoring cancel webhook for superseded Razorpay subscription",
+          );
+          return res.json({ received: true, ignored: true, reason: "superseded_subscription" });
+        }
+
+        // Access continues until expiresAt; clearing the link marks autopay as off.
         await db
           .update(subscriptions)
           .set({ razorpaySubscriptionId: null })
@@ -2813,8 +3246,8 @@ router.post("/webhook", async (req: any, res: any) => {
             await sendCancellationEmail({
               email: u.email,
               userName: u.name || "there",
-              plan: subRow?.plan || "plan",
-              expiresAt: subRow?.expiresAt || null,
+              plan: linkedSub?.plan || "plan",
+              expiresAt: linkedSub?.expiresAt || null,
               userId,
               kind: "subscription",
             });
@@ -2823,7 +3256,7 @@ router.post("/webhook", async (req: any, res: any) => {
             userId,
             eventType: "subscription_cancelled",
             amountPaise: 0,
-            plan: subRow?.plan,
+            plan: linkedSub?.plan,
             razorpaySubscriptionId: subscriptionId,
             idempotencyKey: `subscription_cancelled:webhook:${subscriptionId}:${event}`,
             metadata: { source: "webhook", event },

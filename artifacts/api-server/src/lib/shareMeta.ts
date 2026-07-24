@@ -101,15 +101,30 @@ export function buildOpenGraphMetaTags(
     image: string;
     url: string;
     siteName?: string;
+    iconUrl?: string;
   },
   options?: { ogType?: "website" | "profile"; robots?: string },
 ): string {
   const site = meta.siteName || "BEXO";
   const ogType = options?.ogType || "website";
   const robots = options?.robots || "index, follow, max-image-preview:large";
+  let iconUrl = meta.iconUrl || "";
+  if (!iconUrl) {
+    try {
+      iconUrl = `${new URL(meta.url).origin}/bexo-logo.png`;
+    } catch {
+      iconUrl = `${appOrigin()}/favicon.png`;
+    }
+  }
 
   return [
     `<meta name="robots" content="${escapeAttr(robots)}" />`,
+    `<meta name="application-name" content="BEXO" />`,
+    `<meta name="theme-color" content="#0b1220" />`,
+    `<meta name="author" content="${escapeAttr(site)}" />`,
+    `<link rel="icon" type="image/png" href="${escapeAttr(iconUrl)}" />`,
+    `<link rel="shortcut icon" type="image/png" href="${escapeAttr(iconUrl)}" />`,
+    `<link rel="apple-touch-icon" href="${escapeAttr(iconUrl)}" />`,
     `<meta property="og:site_name" content="${escapeAttr(site)}" />`,
     `<meta property="og:locale" content="en_IN" />`,
     `<meta property="og:type" content="${escapeAttr(ogType)}" />`,
@@ -129,9 +144,16 @@ export function buildOpenGraphMetaTags(
   ].join("\n");
 }
 
-export function injectShareMetaIntoHtml(html: string, profile: unknown): string {
+export function injectShareMetaIntoHtml(
+  html: string,
+  profile: unknown,
+  options?: { iconUrl?: string },
+): string {
   const meta = resolvePortfolioShareMeta(profile);
-  const tags = buildOpenGraphMetaTags(meta, { ogType: "profile" });
+  const tags = buildOpenGraphMetaTags(
+    { ...meta, ...(options?.iconUrl ? { iconUrl: options.iconUrl } : {}) },
+    { ogType: "profile" },
+  );
   const jsonLd = `<script type="application/ld+json" id="bexo-portfolio-jsonld">${escapeJsonForHtml(buildPortfolioJsonLd(meta))}</script>`;
   const titleTag = `<title>${escapeAttr(meta.title)}</title>`;
 
@@ -143,10 +165,15 @@ export function injectShareMetaIntoHtml(html: string, profile: unknown): string 
   }
 
   prepared = prepared.replace(
-    /<meta\s+(?:property|name)=["'](?:og:[^"']+|twitter:[^"']+|description|robots)["'][^>]*>\s*/gi,
+    /<meta\s+(?:property|name)=["'](?:og:[^"']+|twitter:[^"']+|description|robots|application-name|theme-color|author)["'][^>]*>\s*/gi,
     "",
   );
   prepared = prepared.replace(/<link\s+rel=["']canonical["'][^>]*>\s*/gi, "");
+  // Drop stale/template favicons so every portfolio uses the injected BEXO icon.
+  prepared = prepared.replace(
+    /<link\s+rel=["'](?:icon|shortcut icon|apple-touch-icon)["'][^>]*>\s*/gi,
+    "",
+  );
   prepared = prepared.replace(
     /<script\s+type=["']application\/ld\+json["'][^>]*id=["']bexo-portfolio-jsonld["'][^>]*>[\s\S]*?<\/script>\s*/gi,
     "",
