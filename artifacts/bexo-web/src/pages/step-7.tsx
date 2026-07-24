@@ -8,7 +8,6 @@ import { portfolioHostname } from '../lib/platform';
 import {
   DEFAULT_TEMPLATE_ID,
   getDemoPreviewUrl,
-  getTemplatePreviewUrl,
   getSelectableTemplates,
   MARKETING_DEMO_HANDLE,
   THEMEABLE_TEMPLATE_IDS,
@@ -196,6 +195,12 @@ function buildProfileFromOnboardingData(
     };
   });
 
+  const skillEntries = (data.skillEntries || []).map((e: any, idx: number) => ({
+    id: asString(e.id, String(idx + 1)),
+    name: asString(e.name || e.title || e.skill),
+    category: asString(e.category, 'technical') || 'technical',
+  })).filter((s: { name: string }) => !!s.name);
+
   const contactDataObj = {
     email: userEmail,
     phone: userPhone,
@@ -232,6 +237,7 @@ function buildProfileFromOnboardingData(
     certificateEntries,
     achievementEntries,
     researchEntries,
+    skillEntries,
     contactData: contactDataObj,
     sections: {
       about: { reviewed: true, entries: aboutEntries },
@@ -241,6 +247,7 @@ function buildProfileFromOnboardingData(
       certificates: { reviewed: true, entries: certificateEntries },
       achievements: { reviewed: true, entries: achievementEntries },
       research: { reviewed: true, entries: researchEntries },
+      skills: { reviewed: true, entries: skillEntries },
       contact: { reviewed: true, entries: [{ email: userEmail, socials }] }
     }
   };
@@ -252,15 +259,19 @@ function PreviewIframe({
   themeColor,
   themeBg,
   data,
-  className = "w-full h-full border-0"
+  className = "w-full h-full border-0",
+  interactive = false,
 }: {
   templateId: string;
   themeColor: string;
   themeBg: string;
   data: OnboardingData;
   className?: string;
+  /** Fullscreen modal: allow click/scroll. Card thumbs stay non-interactive. */
+  interactive?: boolean;
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [ready, setReady] = useState(false);
 
   const sendUpdate = useCallback(() => {
     if (!iframeRef.current || !iframeRef.current.contentWindow) return;
@@ -276,29 +287,91 @@ function PreviewIframe({
   }, [data, themeColor, themeBg, templateId]);
 
   const handleLoad = () => {
+    setReady(true);
     sendUpdate();
+    // Templates hydrate asynchronously — re-push a few times so name/photo stick.
     setTimeout(sendUpdate, 150);
     setTimeout(sendUpdate, 500);
     setTimeout(sendUpdate, 1200);
+    setTimeout(sendUpdate, 2500);
   };
 
   useEffect(() => {
+    if (!ready) return;
     sendUpdate();
-  }, [sendUpdate]);
+  }, [sendUpdate, ready]);
 
-  const handle = data?.handle || (data?.name ? data.name.toLowerCase().replace(/[^a-z0-9]/g, '') : '');
-  const previewUrl = handle ? getTemplatePreviewUrl(templateId, handle) : getDemoPreviewUrl(templateId);
+  // Always load the bexo-demo template shell. During onboarding the user's
+  // handle is not published yet, so /api/render/{handle} returns the unclaimed
+  // claim-page HTML (looks blank). Demo shell + postMessage paints their data.
+  const previewUrl = getDemoPreviewUrl(templateId);
 
   return (
     <iframe
+      key={`${templateId}-${previewUrl}`}
       ref={iframeRef}
       src={previewUrl}
       title={`${templateId} Live Preview`}
       className={className}
       onLoad={handleLoad}
-      tabIndex={-1}
-      loading="lazy"
+      tabIndex={interactive ? 0 : -1}
+      loading={interactive ? "eager" : "lazy"}
+      allow="clipboard-write"
+      style={interactive ? undefined : { pointerEvents: 'none' }}
     />
+  );
+}
+
+/** Cover-scale a desktop iframe into a small card thumbnail */
+function TemplateCardThumb({
+  templateId,
+  themeColor,
+  themeBg,
+  data,
+}: {
+  templateId: string;
+  themeColor: string;
+  themeBg: string;
+  data: OnboardingData;
+}) {
+  const DESIGN_W = 1440;
+  const DESIGN_H = 900;
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(0.25);
+
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const update = () => {
+      const { width, height } = el.getBoundingClientRect();
+      if (width < 2 || height < 2) return;
+      setScale(Math.max(width / DESIGN_W, height / DESIGN_H));
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  return (
+    <div ref={wrapRef} className="absolute inset-0 overflow-hidden bg-slate-100">
+      <div
+        className="origin-top-left pointer-events-none select-none"
+        style={{
+          width: DESIGN_W,
+          height: DESIGN_H,
+          transform: `scale(${scale})`,
+        }}
+      >
+        <PreviewIframe
+          templateId={templateId}
+          themeColor={themeColor}
+          themeBg={themeBg}
+          data={data}
+          className="w-full h-full border-0 bg-white"
+        />
+      </div>
+    </div>
   );
 }
 
@@ -419,10 +492,10 @@ export default function Step7Theme() {
             )}
             onClick={() => setSelectedTemplate(tpl.id)}
           >
-            {/* Mock Thumbnail Preview */}
-            <div className="h-40 sm:h-44 md:h-48 bg-slate-50 border-b border-slate-100 relative overflow-hidden flex flex-col pointer-events-none select-none">
+            {/* Live thumbnail — user's onboarding data painted into the template shell */}
+            <div className="h-40 sm:h-44 md:h-48 bg-slate-50 border-b border-slate-100 relative overflow-hidden flex flex-col select-none">
               {/* Fake browser header */}
-              <div className="h-6 bg-white border-b border-slate-200 flex items-center px-2 gap-1.5 shrink-0 z-10">
+              <div className="h-6 bg-white border-b border-slate-200 flex items-center px-2 gap-1.5 shrink-0 z-10 relative">
                 <div className="w-2 h-2 rounded-full bg-red-400" />
                 <div className="w-2 h-2 rounded-full bg-amber-400" />
                 <div className="w-2 h-2 rounded-full bg-green-400" />
@@ -431,22 +504,21 @@ export default function Step7Theme() {
                 </span>
               </div>
               
-              {/* Miniature Website Iframe rendering actual user data */}
-              {tpl.previewable ? (
-                <div className="w-[300%] h-[300%] origin-top-left scale-[0.333] pointer-events-none select-none shrink-0">
-                  <PreviewIframe
+              <div className="relative flex-1 min-h-0 pointer-events-none">
+                {tpl.previewable ? (
+                  <TemplateCardThumb
                     templateId={tpl.id}
                     themeColor={selectedTheme}
                     themeBg={selectedThemeBg}
                     data={data}
                   />
-                </div>
-              ) : (
-                <div className="flex-1 flex flex-col items-center justify-center gap-1.5 bg-gradient-to-br from-slate-100 via-white to-indigo-50">
-                  <span className="font-serif text-lg font-bold text-slate-300">{tpl.name}</span>
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Preview coming soon</span>
-                </div>
-              )}
+                ) : (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-gradient-to-br from-slate-100 via-white to-indigo-50">
+                    <span className="font-serif text-lg font-bold text-slate-300">{tpl.name}</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Preview coming soon</span>
+                  </div>
+                )}
+              </div>
 
               {/* Actions Overlay */}
               <div className={cn(
@@ -492,7 +564,7 @@ export default function Step7Theme() {
         <div className="mt-6 flex items-start gap-2.5 rounded-xl border border-indigo-100 bg-indigo-50/70 px-4 py-3">
           <CheckCircle2 className="w-4 h-4 text-indigo-500 mt-0.5 shrink-0" />
           <p className="text-xs text-indigo-900 leading-relaxed">
-            <span className="font-bold">Pro template selected.</span> Previewing your live profile — your selection will activate automatically once you pick a Pro plan.
+            <span className="font-bold">Pro template selected.</span> Cards and Live Preview show your profile data — this layout activates automatically once you pick a Pro plan.
           </p>
         </div>
       )}
@@ -536,6 +608,7 @@ export default function Step7Theme() {
                 themeColor={selectedTheme}
                 themeBg={selectedThemeBg}
                 data={data}
+                interactive
                 className="w-full h-full rounded-b-xl border-none bg-white"
               />
             </div>
