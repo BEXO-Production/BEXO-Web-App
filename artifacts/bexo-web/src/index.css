@@ -633,6 +633,17 @@
       rgba(247, 248, 252, 0) 100%
     );
   }
+
+  .bexo-onboarding-cinematic input,
+  .bexo-onboarding-cinematic textarea,
+  .bexo-onboarding-cinematic select {
+    font-size: 16px !important;
+  }
+
+  .bexo-onboarding-cinematic button:not(.inline-flex.h-10):not([aria-label="Logout"]),
+  .bexo-onboarding-cinematic [type="submit"] {
+    min-height: 48px;
+  }
 }
 
 @keyframes bexo-ken-burns {
