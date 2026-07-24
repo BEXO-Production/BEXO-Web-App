@@ -70,6 +70,7 @@ import {
 } from '../lib/templates';
 import { PLATFORM_DOMAIN, portfolioHostname, portfolioPublicUrl, pathPortfolioUrl } from '../lib/platform';
 import { apiUrl } from '../lib/api';
+import { dashboardPath, legacyDashboardQueryToPath, parseDashboardPath } from '../lib/dashboard-routes';
 import { track } from '../lib/track';
 import { computeCanBuy, normalizeClientPlanId, PLAN_LABELS } from '../lib/pricing';
 
@@ -156,7 +157,7 @@ type BillingStatus = {
 export default function Dashboard() {
   const { data, updateData, setToken, refreshProfile, saveStatus } = useOnboarding();
   const { toast } = useToast();
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
 
   usePageSeo({
     title: "Dashboard — BEXO",
@@ -164,9 +165,17 @@ export default function Dashboard() {
     noindex: true,
   });
 
-  const [currentView, setCurrentView] = useState<'overview' | 'edit-profile' | 'updates' | 'settings'>('overview');
-  const [updatesTab, setUpdatesTab] = useState<'parse' | 'post'>('parse');
-  const [settingsSubTab, setSettingsSubTab] = useState<'profile' | 'design' | 'storage' | 'assets' | 'billing'>('profile');
+  const route = parseDashboardPath(location);
+  const currentView = route.view;
+  const updatesTab = route.updatesTab;
+  const settingsSubTab = route.settingsTab;
+
+  const goView = useCallback((
+    view: 'overview' | 'edit-profile' | 'updates' | 'settings',
+    opts?: { updatesTab?: 'parse' | 'post'; settingsTab?: 'profile' | 'design' | 'storage' | 'assets' | 'billing' },
+  ) => {
+    setLocation(dashboardPath(view, opts));
+  }, [setLocation]);
   // Fullscreen "try this template with your data" preview (free users included)
   const [previewTemplateId, setPreviewTemplateId] = useState<string | null>(null);
   const [showLoginToast, setShowLoginToast] = useState(false);
@@ -176,7 +185,7 @@ export default function Dashboard() {
   const fabRef = useRef<HTMLDivElement>(null);
 
   // Dynamic Post Update States
-  const [updateCategory, setUpdateCategory] = useState<'achievement' | 'experience' | 'education' | 'project' | 'certificate' | 'research' | 'skill'>('education');
+  const [updateCategory, setUpdateCategory] = useState<'achievement' | 'experience' | 'education' | 'project' | 'certificate' | 'research' | 'skill'>('achievement');
   const [updateForm, setUpdateForm] = useState<any>({
     assets: { mode: 'images' as AssetMode, images: [], pdfs: [], links: [] }
   });
@@ -197,19 +206,12 @@ export default function Dashboard() {
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [leadsList, setLeadsList] = useState<any[]>([]);
 
-  // Deep-link: /dashboard?view=settings&tab=assets etc.
+  // Migrate legacy ?view=&tab= bookmarks to dedicated paths
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const view = params.get('view');
-    const tab = params.get('tab');
-    if (view === 'edit-profile' || view === 'updates' || view === 'settings' || view === 'overview') {
-      setCurrentView(view);
-    }
-    if (tab === 'parse' || tab === 'post') setUpdatesTab(tab);
-    if (tab === 'profile' || tab === 'design' || tab === 'storage' || tab === 'assets' || tab === 'billing') {
-      setSettingsSubTab(tab);
-    }
-  }, []);
+    const next = legacyDashboardQueryToPath(window.location.search);
+    if (!next) return;
+    setLocation(next);
+  }, [setLocation]);
 
   const loadAnalytics = useCallback(async (silent = false) => {
     if (!silent) setAnalyticsLoading(true);
@@ -262,6 +264,13 @@ export default function Dashboard() {
       if (!silent) setAssetsLoading(false);
     }
   }, []);
+
+  // Load assets when landing on storage/assets via URL (refresh-safe)
+  useEffect(() => {
+    if (currentView === 'settings' && (settingsSubTab === 'storage' || settingsSubTab === 'assets')) {
+      loadAssets(true);
+    }
+  }, [currentView, settingsSubTab, loadAssets]);
 
   const performSoftRefresh = useCallback(() => {
     if (typeof refreshProfile === 'function') {
@@ -770,7 +779,7 @@ export default function Dashboard() {
       hint: 'Add at least one education entry.',
       actionLabel: 'Add education',
       onFix: () => {
-        setCurrentView('edit-profile');
+        goView('edit-profile');
         setActiveEditorTab('education');
         setShowCompletionModal(false);
       },
@@ -783,7 +792,7 @@ export default function Dashboard() {
       hint: 'Add work, internship, or volunteer experience.',
       actionLabel: 'Add experience',
       onFix: () => {
-        setCurrentView('edit-profile');
+        goView('edit-profile');
         setActiveEditorTab('experience');
         setShowCompletionModal(false);
       },
@@ -796,7 +805,7 @@ export default function Dashboard() {
       hint: 'Showcase at least one project.',
       actionLabel: 'Add project',
       onFix: () => {
-        setCurrentView('edit-profile');
+        goView('edit-profile');
         setActiveEditorTab('projects');
         setShowCompletionModal(false);
       },
@@ -809,8 +818,7 @@ export default function Dashboard() {
       hint: `Add at least 3 skills (${data.skillEntries?.length || 0}/3 so far).`,
       actionLabel: 'Post skill update',
       onFix: () => {
-        setCurrentView('updates');
-        setUpdatesTab('post');
+        goView('updates', { updatesTab: 'post' });
         setUpdateCategory('skill');
         setShowCompletionModal(false);
       },
@@ -859,7 +867,7 @@ export default function Dashboard() {
   const nextAction = completionScore < 90
     ? { label: 'Complete portfolio', detail: 'Add the missing profile sections before sharing widely.', action: () => setShowCompletionModal(true), icon: CheckCircle2 }
       : !hasResume
-      ? { label: 'Attach resume', detail: 'A resume improves the downloadable version and future parsing.', action: () => { setCurrentView('updates'); setUpdatesTab('parse'); }, icon: FileText }
+      ? { label: 'Attach resume', detail: 'A resume improves the downloadable version and future parsing.', action: () => { goView('updates', { updatesTab: 'parse' }); }, icon: FileText }
       : !data.isPremium
         ? { label: 'Unlock Pro publishing', detail: 'Move to custom subdomain, premium templates, and 100MB Yearly storage.', action: openBilling, icon: Crown }
         : { label: 'Review live portfolio', detail: 'Your public page is ready for recruiters and applications.', action: () => window.open(correctVisitUrl, '_blank', 'noopener,noreferrer'), icon: ExternalLink };
@@ -2258,7 +2266,7 @@ export default function Dashboard() {
 
       {/* Navigation bar */}
       <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 px-3 py-2.5 sm:px-6 sm:py-4 flex items-center justify-between sticky top-0 z-20 transition-colors duration-300 w-full pt-[max(0.625rem,env(safe-area-inset-top))]">
-        <div className="flex items-center gap-2 cursor-pointer min-w-0 min-h-11" onClick={() => setCurrentView('overview')}>
+        <div className="flex items-center gap-2 cursor-pointer min-w-0 min-h-11" onClick={() => goView('overview')}>
           <BrandLogo size="sm" className="sm:hidden" />
           <BrandLogo size="md" className="hidden sm:inline-flex" />
           <span className="font-serif font-bold text-lg sm:text-xl text-slate-900 tracking-tight">BEXO</span>
@@ -2339,19 +2347,19 @@ export default function Dashboard() {
               {/* Menu items */}
               <div className="px-1.5 py-1">
                 <button 
-                  onClick={() => { setCurrentView('overview'); setShowProfileMenu(false); }} 
+                  onClick={() => { goView('overview'); setShowProfileMenu(false); }} 
                   className="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-900 transition-colors flex items-center gap-2.5"
                 >
                   <Layout className="w-4 h-4 text-slate-400" /> Dashboard Overview
                 </button>
                 <button 
-                  onClick={() => { setCurrentView('edit-profile'); setShowProfileMenu(false); }} 
+                  onClick={() => { goView('edit-profile'); setShowProfileMenu(false); }} 
                   className="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-900 transition-colors flex items-center gap-2.5"
                 >
                   <User className="w-4 h-4 text-slate-400" /> Edit Profile Info
                 </button>
                 <button 
-                  onClick={() => { setCurrentView('settings'); setShowProfileMenu(false); }} 
+                  onClick={() => { goView('settings'); setShowProfileMenu(false); }} 
                   className="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-900 transition-colors flex items-center gap-2.5"
                 >
                   <Settings className="w-4 h-4 text-slate-400" /> Appearance & Settings
@@ -2406,7 +2414,7 @@ export default function Dashboard() {
                 </p>
                 <div className="flex flex-wrap gap-2 mt-3">
                   <Button size="sm" className="h-9 text-xs" onClick={openBilling}>Open billing</Button>
-                  <Button size="sm" variant="outline" className="h-9 text-xs" onClick={() => { setCurrentView('settings'); setSettingsSubTab('assets'); loadAssets(); setLocation('/dashboard?view=settings&tab=assets'); }}>
+                  <Button size="sm" variant="outline" className="h-9 text-xs" onClick={() => { goView('settings', { settingsTab: 'assets' }); loadAssets(); }}>
                     Manage assets
                   </Button>
                 </div>
@@ -2426,7 +2434,7 @@ export default function Dashboard() {
                 <p className="text-[13px] sm:text-base text-slate-500 max-w-2xl mt-1.5 leading-relaxed">Keep your public portfolio ready for applications, recruiters, and campus opportunities.</p>
               </div>
               <div className="grid grid-cols-2 gap-2 w-full md:w-auto md:flex md:flex-wrap md:items-center">
-                <Button onClick={() => setCurrentView('edit-profile')} className="tap-scale h-11 md:h-10 px-3 sm:px-4 text-xs gap-1.5 sm:gap-2 w-full md:w-auto">
+                <Button onClick={() => goView('edit-profile')} className="tap-scale h-11 md:h-10 px-3 sm:px-4 text-xs gap-1.5 sm:gap-2 w-full md:w-auto">
                   <Pencil className="w-4 h-4 shrink-0" /> Edit profile
                 </Button>
                 <a href={correctVisitUrl} target="_blank" rel="noreferrer" className="w-full md:w-auto">
@@ -2440,9 +2448,9 @@ export default function Dashboard() {
             {(() => {
               const checks = [
                 { ok: !!data.photoUrl, label: 'Photo', fix: () => { setShowCompletionModal(true); } },
-                { ok: !!(data.aboutEntries && data.aboutEntries.length), label: 'Bio', fix: () => { setCurrentView('edit-profile'); setActiveEditorTab('about'); } },
-                { ok: !!(data.projectEntries && data.projectEntries.length), label: 'Project', fix: () => { setCurrentView('edit-profile'); setActiveEditorTab('projects'); setTimeout(() => handleAdd(), 0); } },
-                { ok: !!data.contactData?.email, label: 'Email', fix: () => { setCurrentView('edit-profile'); setActiveEditorTab('contact'); } },
+                { ok: !!(data.aboutEntries && data.aboutEntries.length), label: 'Bio', fix: () => { goView('edit-profile'); setActiveEditorTab('about'); } },
+                { ok: !!(data.projectEntries && data.projectEntries.length), label: 'Project', fix: () => { goView('edit-profile'); setActiveEditorTab('projects'); setTimeout(() => handleAdd(), 0); } },
+                { ok: !!data.contactData?.email, label: 'Email', fix: () => { goView('edit-profile'); setActiveEditorTab('contact'); } },
                 { ok: !!data.openToHire, label: 'Open to hire', fix: () => { void updateData({ openToHire: true }); } },
               ];
               const done = checks.filter((c) => c.ok).length;
@@ -2913,8 +2921,7 @@ export default function Dashboard() {
                 </div>
                 <button 
                   onClick={() => {
-                    setCurrentView('settings');
-                    setSettingsSubTab('design');
+                    goView('settings', { settingsTab: 'design' });
                   }} 
                   className="text-xs font-bold text-indigo-600 hover:text-indigo-800 text-left transition-colors"
                 >
@@ -3038,7 +3045,7 @@ export default function Dashboard() {
               </div>
               <div className="flex flex-col gap-2.5 md:grid md:grid-cols-3 md:gap-6">
                 <Card 
-                  onClick={() => setCurrentView('edit-profile')} 
+                  onClick={() => goView('edit-profile')} 
                   className="tap-scale p-3.5 md:p-6 hover:shadow-md transition-shadow group cursor-pointer border-slate-200 bg-white flex flex-row items-center gap-3.5 md:flex-col md:items-stretch md:justify-between min-w-0"
                 >
                   <div className="w-11 h-11 md:w-10 md:h-10 rounded-xl bg-blue-50 text-indigo-600 flex items-center justify-center shrink-0 md:mb-4 group-hover:scale-105 transition-transform">
@@ -3056,26 +3063,25 @@ export default function Dashboard() {
 
                 <Card 
                   onClick={() => {
-                    setCurrentView('updates');
-                    setUpdatesTab('parse');
+                    goView('updates', { updatesTab: 'post' });
                   }} 
                   className="tap-scale p-3.5 md:p-6 hover:shadow-md transition-shadow group cursor-pointer border-slate-200 bg-white flex flex-row items-center gap-3.5 md:flex-col md:items-stretch md:justify-between min-w-0"
                 >
-                  <div className="w-11 h-11 md:w-10 md:h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0 md:mb-4 group-hover:scale-105 transition-transform">
-                    <FileText className="w-5 h-5" />
+                  <div className="w-11 h-11 md:w-10 md:h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 md:mb-4 group-hover:scale-105 transition-transform">
+                    <Plus className="w-5 h-5" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <h3 className="font-bold text-slate-900 text-sm md:text-base md:mb-1">Manage Resume</h3>
-                    <p className="text-[11px] md:text-xs text-slate-500 leading-relaxed truncate md:whitespace-normal md:mb-4">Upload a PDF resume to automatically parse and refresh your experience details.</p>
-                    <div className="hidden md:flex items-center text-xs font-bold text-purple-600 group-hover:translate-x-1 transition-transform">
-                      Upload PDF <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                    <h3 className="font-bold text-slate-900 text-sm md:text-base md:mb-1">Post Achievement</h3>
+                    <p className="text-[11px] md:text-xs text-slate-500 leading-relaxed truncate md:whitespace-normal md:mb-4">Add education, experience, projects, skills, and highlights to your portfolio.</p>
+                    <div className="hidden md:flex items-center text-xs font-bold text-emerald-600 group-hover:translate-x-1 transition-transform">
+                      Post update <ArrowRight className="w-3.5 h-3.5 ml-1" />
                     </div>
                   </div>
                   <ChevronRight className="w-5 h-5 text-slate-300 shrink-0 md:hidden" />
                 </Card>
 
                 <Card 
-                  onClick={() => setCurrentView('settings')} 
+                  onClick={() => goView('settings')} 
                   className="tap-scale p-3.5 md:p-6 hover:shadow-md transition-shadow group cursor-pointer border-slate-200 bg-white flex flex-row items-center gap-3.5 md:flex-col md:items-stretch md:justify-between min-w-0"
                 >
                   <div className="w-11 h-11 md:w-10 md:h-10 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center shrink-0 md:mb-4 group-hover:scale-105 transition-transform">
@@ -3099,7 +3105,7 @@ export default function Dashboard() {
         {currentView === 'edit-profile' && (
           <div className="space-y-6 animate-in slide-in-from-bottom duration-300">
             <button 
-              onClick={() => setCurrentView('overview')}
+              onClick={() => goView('overview')}
               className="inline-flex items-center gap-1 text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors"
             >
               <ChevronLeft className="w-4 h-4" /> Back to Dashboard
@@ -3817,7 +3823,7 @@ export default function Dashboard() {
         {currentView === 'updates' && (
           <div className="space-y-6 animate-in slide-in-from-bottom duration-300 max-w-2xl mx-auto">
             <button 
-              onClick={() => setCurrentView('overview')}
+              onClick={() => goView('overview')}
               className="inline-flex items-center gap-1 text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors"
             >
               <ChevronLeft className="w-4 h-4" /> Back to Dashboard
@@ -3832,22 +3838,22 @@ export default function Dashboard() {
 
             <div className="flex bg-slate-100 p-1 rounded-xl w-fit">
               <button 
-                onClick={() => setUpdatesTab('parse')}
-                className={cn(
-                  "px-4 py-2 text-sm font-semibold rounded-lg transition-all",
-                  updatesTab === 'parse' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
-                )}
-              >
-                Parse Resume
-              </button>
-              <button 
-                onClick={() => setUpdatesTab('post')}
+                onClick={() => goView('updates', { updatesTab: 'post' })}
                 className={cn(
                   "px-4 py-2 text-sm font-semibold rounded-lg transition-all",
                   updatesTab === 'post' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
                 )}
               >
                 Post Achievement
+              </button>
+              <button 
+                onClick={() => goView('updates', { updatesTab: 'parse' })}
+                className={cn(
+                  "px-4 py-2 text-sm font-semibold rounded-lg transition-all",
+                  updatesTab === 'parse' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                )}
+              >
+                Parse Resume
               </button>
             </div>
 
@@ -3964,124 +3970,137 @@ export default function Dashboard() {
                         </div>
                       </Card>
 
-                      {/* Generated PDF Resume Panel */}
-                      {data.resumeUrl && (
-                        <Card className="p-6 bg-white border border-slate-200 shadow-sm flex flex-col gap-4 animate-in slide-in-from-bottom duration-300">
-                          <div className="flex items-center justify-between border-b border-slate-150 pb-3">
-                            <div className="space-y-0.5">
-                              <h3 className="text-sm font-bold text-slate-900">Your Current Resume PDF</h3>
-                              <p className="text-xs text-slate-500">Your resume is parsed and synchronized with your digital portfolio details.</p>
-                            </div>
-                            <a 
-                              href={data.resumeUrl} 
-                              target="_blank" 
-                              rel="noreferrer" 
-                              className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-800 hover:underline"
+                      {/* Re-compile ATS resume — always below the parse/upload compiler */}
+                      <Card className="p-6 bg-white border border-slate-200 shadow-sm flex flex-col gap-4 animate-in slide-in-from-bottom duration-300">
+                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 border-b border-slate-100 pb-3">
+                          <div className="space-y-0.5">
+                            <h3 className="text-sm font-bold text-slate-900">Re-Compile ATS Resume</h3>
+                            <p className="text-xs text-slate-500">
+                              Builds a fresh PDF from your portfolio. The previous compiled version is replaced.
+                              Your uploaded resume stays intact until you upload a new one.
+                            </p>
+                          </div>
+                          {data.generatedResumeUrl && (
+                            <a
+                              href={data.generatedResumeUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-800 hover:underline shrink-0"
                             >
                               View / Download <ExternalLink className="w-3.5 h-3.5" />
                             </a>
-                          </div>
+                          )}
+                        </div>
 
-                          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 bg-slate-50 p-4 rounded-xl border border-slate-150">
-                            <div className="flex items-center gap-2">
-                              <FileText className="w-5 h-5 text-indigo-500 shrink-0" />
-                              <span className="text-xs font-medium text-slate-800">
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <FileText className="w-5 h-5 text-indigo-500 shrink-0" />
+                            <div className="min-w-0">
+                              <span className="text-xs font-medium text-slate-800 block">
                                 ATS Professional Resume PDF
                               </span>
+                              <span className="text-[11px] text-slate-500">
+                                {data.generatedResumeUrl ? 'Compiled version ready' : 'Not compiled yet — generate from your profile'}
+                              </span>
                             </div>
-                            <div className="flex gap-2">
-                              
-                              <Button 
-                                onClick={() => { setIsCompileDialogOpen(true); setHasAcceptedDeclaration(false); }}
-                                variant="secondary" 
-                                size="sm" 
-                                className="text-xs h-9 px-3 flex gap-1 bg-white hover:bg-slate-100 border-slate-200"
-                              >
-                                Re-Compile PDF
-                              </Button>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              onClick={() => { setIsCompileDialogOpen(true); setHasAcceptedDeclaration(false); }}
+                              variant="secondary"
+                              size="sm"
+                              className="text-xs h-9 px-3 flex gap-1 bg-white hover:bg-slate-100 border-slate-200"
+                            >
+                              {data.generatedResumeUrl ? 'Re-Compile PDF' : 'Compile PDF'}
+                            </Button>
 
-                              <Dialog open={isCompileDialogOpen} onOpenChange={setIsCompileDialogOpen}>
-                                <DialogContent className="sm:max-w-[425px]">
-                                  <DialogHeader>
-                                    <DialogTitle>Compile Professional ATS Resume</DialogTitle>
-                                    <DialogDescription>
-                                      Your resume will be generated dynamically using the information provided in your portfolio (Education, Experience, Projects, etc.).
-                                    </DialogDescription>
-                                  </DialogHeader>
-                                  <div className="py-4 space-y-4">
-                                    <div className="flex items-start space-x-3 p-3 bg-amber-50 text-amber-800 rounded-lg text-sm border border-amber-200/50">
-                                      <Checkbox 
-                                        id="declaration" 
-                                        checked={hasAcceptedDeclaration} 
-                                        onCheckedChange={(c) => setHasAcceptedDeclaration(!!c)} 
-                                        className="mt-0.5 border-amber-300 data-[state=checked]:bg-amber-600 data-[state=checked]:border-amber-600"
-                                      />
-                                      <div className="grid gap-1.5 leading-none">
-                                        <label htmlFor="declaration" className="font-semibold text-sm cursor-pointer">
-                                          Declaration of Authenticity
-                                        </label>
-                                        <p className="text-xs text-amber-700/80 leading-snug">
-                                          I hereby declare that all the details, achievements, and assets provided by me are original, verified, and strictly correct to the best of my knowledge.
-                                        </p>
-                                      </div>
+                            <Dialog open={isCompileDialogOpen} onOpenChange={setIsCompileDialogOpen}>
+                              <DialogContent className="sm:max-w-[425px]">
+                                <DialogHeader>
+                                  <DialogTitle>Compile Professional ATS Resume</DialogTitle>
+                                  <DialogDescription>
+                                    Your resume will be generated from portfolio details. The previous compiled file is replaced; your uploaded PDF is not touched.
+                                  </DialogDescription>
+                                </DialogHeader>
+                                <div className="py-4 space-y-4">
+                                  <div className="flex items-start space-x-3 p-3 bg-amber-50 text-amber-800 rounded-lg text-sm border border-amber-200/50">
+                                    <Checkbox
+                                      id="declaration"
+                                      checked={hasAcceptedDeclaration}
+                                      onCheckedChange={(c) => setHasAcceptedDeclaration(!!c)}
+                                      className="mt-0.5 border-amber-300 data-[state=checked]:bg-amber-600 data-[state=checked]:border-amber-600"
+                                    />
+                                    <div className="grid gap-1.5 leading-none">
+                                      <label htmlFor="declaration" className="font-semibold text-sm cursor-pointer">
+                                        Declaration of Authenticity
+                                      </label>
+                                      <p className="text-xs text-amber-700/80 leading-snug">
+                                        I hereby declare that all the details, achievements, and assets provided by me are original, verified, and strictly correct to the best of my knowledge.
+                                      </p>
                                     </div>
-                                    <p className="text-xs text-slate-500 bg-slate-50 p-3 rounded-lg border border-slate-100">
-                                      <strong className="text-slate-700">Need to make changes?</strong> Close this window and post an update or edit your portfolio details first before generating.
-                                    </p>
                                   </div>
-                                  <DialogFooter className="flex-col sm:flex-row gap-2">
-                                    <Button variant="outline" onClick={() => setIsCompileDialogOpen(false)}>
-                                      Cancel & Edit Content
-                                    </Button>
-                                    <Button 
-                                      disabled={!hasAcceptedDeclaration || isCompiling}
-                                      onClick={async () => {
-                                        setIsCompiling(true);
-                                        try {
-                                          const token = localStorage.getItem('token');
-                                          const res = await fetch(apiUrl('/api/profile/generate-resume'), {
-                                            method: 'POST',
-                                            headers: {
-                                              'Authorization': `Bearer ${token}`
-                                            }
-                                          });
-                                          if (!res.ok) {
-                                            const errorData = await res.json().catch(() => ({}));
-                                            throw new Error(errorData.error || 'Generation failed');
+                                  <p className="text-xs text-slate-500 bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                    <strong className="text-slate-700">Need to make changes?</strong> Close this window and post an update or edit your portfolio details first before generating.
+                                  </p>
+                                </div>
+                                <DialogFooter className="flex-col sm:flex-row gap-2">
+                                  <Button variant="outline" onClick={() => setIsCompileDialogOpen(false)}>
+                                    Cancel & Edit Content
+                                  </Button>
+                                  <Button
+                                    disabled={!hasAcceptedDeclaration || isCompiling}
+                                    onClick={async () => {
+                                      setIsCompiling(true);
+                                      try {
+                                        const token = localStorage.getItem('token');
+                                        const res = await fetch(apiUrl('/api/profile/generate-resume'), {
+                                          method: 'POST',
+                                          headers: {
+                                            'Authorization': `Bearer ${token}`
                                           }
-                                          const result = await res.json();
-                                          updateData({ resumeUrl: result.url });
-                                          setIsCompileDialogOpen(false);
-                                          toast({
-                                            title: "Resume Compiled",
-                                            description: "ATS Professional Resume compiled successfully from current details."
-                                          });
-                                        } catch (err: any) {
-                                          toast({
-                                            title: "Error",
-                                            description: err.message || "Failed to compile resume",
-                                            variant: "destructive"
-                                          });
-                                        } finally {
-                                          setIsCompiling(false);
+                                        });
+                                        if (!res.ok) {
+                                          const errorData = await res.json().catch(() => ({}));
+                                          throw new Error(errorData.error || 'Generation failed');
                                         }
-                                      }}
-                                    >
-                                      {isCompiling ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
-                                      Compile PDF
-                                    </Button>
-                                  </DialogFooter>
-                                </DialogContent>
-                              </Dialog>
-                              <a href={data.resumeUrl} target="_blank" rel="noreferrer">
+                                        const result = await res.json();
+                                        updateData({
+                                          generatedResumeUrl: result.url,
+                                          // Prefer generated for site download unless user chose uploaded
+                                          ...(data.defaultResume === 'uploaded' ? {} : { resumeUrl: result.url }),
+                                        } as any);
+                                        setIsCompileDialogOpen(false);
+                                        toast({
+                                          title: "Resume Compiled",
+                                          description: "Previous compiled version replaced. Uploaded resume unchanged."
+                                        });
+                                      } catch (err: any) {
+                                        toast({
+                                          title: "Error",
+                                          description: err.message || "Failed to compile resume",
+                                          variant: "destructive"
+                                        });
+                                      } finally {
+                                        setIsCompiling(false);
+                                      }
+                                    }}
+                                  >
+                                    {isCompiling ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
+                                    Compile PDF
+                                  </Button>
+                                </DialogFooter>
+                              </DialogContent>
+                            </Dialog>
+                            {data.generatedResumeUrl && (
+                              <a href={data.generatedResumeUrl} target="_blank" rel="noreferrer">
                                 <Button size="sm" className="text-xs h-9 px-3 flex gap-1">
                                   Download PDF
                                 </Button>
                               </a>
-                            </div>
+                            )}
                           </div>
-                        </Card>
-                      )}
+                        </div>
+                      </Card>
                     </>
                   );
                 })()}
@@ -4406,8 +4425,24 @@ export default function Dashboard() {
                     {updateCategory === 'skill' && (
                       <>
                         <div className="space-y-1">
-                          <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Skill Name</Label>
-                          <Input value={updateForm.name || ''} onChange={e => setUpdateForm({...updateForm, name: e.target.value})} placeholder="E.g., React, Python, Figma" />
+                          <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Skills</Label>
+                          <Input
+                            value={updateForm.name || ''}
+                            onChange={e => setUpdateForm({ ...updateForm, name: e.target.value })}
+                            onKeyDown={async (e) => {
+                              if (e.key !== 'Enter') return;
+                              e.preventDefault();
+                              if (isPostingUpdate || updatesLocked || isUpdateUploading) return;
+                              const raw = String(updateForm.name || '').trim();
+                              if (!raw) return;
+                              // Trigger the same post flow via clicking the button programmatically
+                              (document.getElementById('post-update-submit') as HTMLButtonElement | null)?.click();
+                            }}
+                            placeholder="React, Python, Figma — comma-separated, Enter to post"
+                          />
+                          <p className="text-[11px] text-slate-400">
+                            Separate multiple skills with commas. Press Enter or Post to add them in one update.
+                          </p>
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Category</Label>
@@ -4428,6 +4463,7 @@ export default function Dashboard() {
 
                   <div className="flex justify-end pt-4 border-t border-slate-100">
                     <Button 
+                      id="post-update-submit"
                       className="h-10 px-6"
                       disabled={isPostingUpdate || updatesLocked}
                       onClick={async () => {
@@ -4490,8 +4526,13 @@ export default function Dashboard() {
                           };
                           const targetKey = stateKeyMap[updateCategory];
                           const currentList = Array.isArray((data as any)[targetKey]) ? (data as any)[targetKey] : [];
+                          const appended = Array.isArray(result.entries)
+                            ? result.entries
+                            : result.entry
+                              ? [result.entry]
+                              : [];
                           updateData({
-                            [targetKey]: [...currentList, result.entry],
+                            [targetKey]: [...currentList, ...appended],
                             limits: {
                               ...(data.limits || ({} as any)),
                               updatesUsed: result.usage?.used ?? ((data.limits?.updatesUsed ?? 0) + 1),
@@ -4500,14 +4541,17 @@ export default function Dashboard() {
                             } as any,
                           } as any);
 
+                          const skillCount = updateCategory === 'skill' ? appended.length : 0;
                           toast({
                             title: "Update posted!",
-                            description: `Your new entry has been added. ${result.usage?.remaining ?? 0} update(s) left this month.`
+                            description: skillCount > 1
+                              ? `Added ${skillCount} skills. ${result.usage?.remaining ?? 0} update(s) left this month.`
+                              : `Your new entry has been added. ${result.usage?.remaining ?? 0} update(s) left this month.`
                           });
 
                           // Reset form
                           setUpdateForm({ assets: { mode: 'images' as AssetMode, images: [], pdfs: [], links: [] } });
-                          setCurrentView('overview');
+                          goView('overview');
                         } catch (err: any) {
                           toast({ title: 'Error', description: err.message || 'Failed to post update.', variant: 'destructive' });
                         } finally {
@@ -4531,7 +4575,7 @@ export default function Dashboard() {
         {currentView === 'settings' && (
           <div className="space-y-6 animate-in slide-in-from-bottom duration-300">
             <button 
-              onClick={() => setCurrentView('overview')}
+              onClick={() => goView('overview')}
               className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-slate-800 transition-colors uppercase tracking-wider select-none"
             >
               <ChevronLeft className="w-4 h-4" /> Back to Dashboard
@@ -4547,7 +4591,7 @@ export default function Dashboard() {
               {/* Tab Navigation — horizontal scroll pills on mobile, stacked card on desktop */}
               <Card className="p-1.5 md:p-2.5 bg-white border border-slate-200 shadow-sm flex flex-row md:flex-col gap-1 overflow-x-auto md:overflow-visible hide-scrollbar sticky top-[calc(3.5rem+env(safe-area-inset-top))] md:static z-10 w-full min-w-0">
                 <button
-                  onClick={() => setSettingsSubTab('profile')}
+                  onClick={() => goView('settings', { settingsTab: 'profile' })}
                   className={cn(
                     "flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-sm font-semibold transition-all text-left md:w-full whitespace-nowrap shrink-0",
                     settingsSubTab === 'profile' 
@@ -4559,7 +4603,7 @@ export default function Dashboard() {
                 </button>
                 
                 <button
-                  onClick={() => setSettingsSubTab('design')}
+                  onClick={() => goView('settings', { settingsTab: 'design' })}
                   className={cn(
                     "flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-sm font-semibold transition-all text-left md:w-full whitespace-nowrap shrink-0",
                     settingsSubTab === 'design' 
@@ -4571,7 +4615,7 @@ export default function Dashboard() {
                 </button>
                 
                 <button
-                  onClick={() => { setSettingsSubTab('storage'); loadAssets(); }}
+                  onClick={() => { goView('settings', { settingsTab: 'storage' }); loadAssets(); }}
                   className={cn(
                     "flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-sm font-semibold transition-all text-left md:w-full whitespace-nowrap shrink-0",
                     settingsSubTab === 'storage' 
@@ -4583,7 +4627,7 @@ export default function Dashboard() {
                 </button>
 
                 <button
-                  onClick={() => { setSettingsSubTab('assets'); loadAssets(); }}
+                  onClick={() => { goView('settings', { settingsTab: 'assets' }); loadAssets(); }}
                   className={cn(
                     "flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-sm font-semibold transition-all text-left md:w-full whitespace-nowrap shrink-0",
                     settingsSubTab === 'assets' 
@@ -4595,7 +4639,7 @@ export default function Dashboard() {
                 </button>
 
                 <button
-                  onClick={() => setSettingsSubTab('billing')}
+                  onClick={() => goView('settings', { settingsTab: 'billing' })}
                   className={cn(
                     "flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-sm font-semibold transition-all text-left md:w-full whitespace-nowrap shrink-0",
                     settingsSubTab === 'billing' 
@@ -4668,6 +4712,42 @@ export default function Dashboard() {
                         <User className="w-4 h-4 text-indigo-500" /> Personal Settings
                       </h3>
                       <p className="text-slate-500 text-xs mt-0.5">Update your basic onboarding and contact information.</p>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-4 p-4 rounded-xl border border-slate-100 bg-slate-50/80">
+                      <div className="w-20 h-20 rounded-full overflow-hidden bg-slate-200 border border-slate-200 shrink-0 flex items-center justify-center text-2xl font-bold text-slate-500">
+                        {data.photoUrl ? (
+                          <img src={data.photoUrl} alt="Profile" className="w-full h-full object-cover" />
+                        ) : (
+                          (data.name ? data.name.charAt(0).toUpperCase() : 'U')
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <div>
+                          <p className="text-sm font-bold text-slate-900">Profile picture</p>
+                          <p className="text-[11px] text-slate-500">Shown on your portfolio and dashboard. JPG or PNG.</p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <input
+                            type="file"
+                            id="settings-photo-upload"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) handleUploadPhoto(file);
+                              e.target.value = '';
+                            }}
+                          />
+                          <label
+                            htmlFor="settings-photo-upload"
+                            className="cursor-pointer inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold border border-indigo-200 transition-colors"
+                          >
+                            <Upload className="w-3.5 h-3.5" />
+                            {data.photoUrl ? 'Change photo' : 'Upload photo'}
+                          </label>
+                        </div>
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -5216,7 +5296,7 @@ export default function Dashboard() {
                       
                       <div className="flex flex-col sm:flex-row gap-3 pt-1">
                         <Button
-                          onClick={() => { setSettingsSubTab('assets'); loadAssets(); }}
+                          onClick={() => { goView('settings', { settingsTab: 'assets' }); loadAssets(); }}
                           size="sm"
                           variant="outline"
                           className="h-10 text-xs px-4 flex-1"
@@ -5519,7 +5599,7 @@ export default function Dashboard() {
               {/* List of sections */}
               <div className="space-y-4 overflow-y-auto pr-1 flex-1">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">All checklist items</p>
-                <div className="border border-slate-100 rounded-xl p-4 bg-white shadow-sm flex flex-col gap-3">
+                  <div className="border border-slate-100 rounded-xl p-4 bg-white shadow-sm flex flex-col gap-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       {data.photoUrl ? (
@@ -5533,27 +5613,31 @@ export default function Dashboard() {
                       <span className="text-[10px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-semibold">Done</span>
                     )}
                   </div>
-                  {!data.photoUrl && (
-                    <div className="flex items-center gap-3">
-                      <input 
-                        type="file" 
-                        id="modal-photo-upload" 
-                        accept="image/*"
-                        className="hidden" 
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) handleUploadPhoto(file);
-                        }}
-                      />
-                      <label 
-                        htmlFor="modal-photo-upload"
-                        className="cursor-pointer inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold border border-indigo-200 transition-colors"
-                      >
-                        <Upload className="w-3.5 h-3.5" /> Select Photo
-                      </label>
-                      <span className="text-[10px] text-slate-400">Supported formats: JPG, PNG</span>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-3">
+                    {data.photoUrl && (
+                      <div className="w-12 h-12 rounded-full overflow-hidden border border-slate-200 shrink-0">
+                        <img src={data.photoUrl} alt="Profile" className="w-full h-full object-cover" />
+                      </div>
+                    )}
+                    <input
+                      type="file"
+                      id="modal-photo-upload"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleUploadPhoto(file);
+                        e.target.value = '';
+                      }}
+                    />
+                    <label
+                      htmlFor="modal-photo-upload"
+                      className="cursor-pointer inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold border border-indigo-200 transition-colors"
+                    >
+                      <Upload className="w-3.5 h-3.5" /> {data.photoUrl ? 'Change Photo' : 'Select Photo'}
+                    </label>
+                    <span className="text-[10px] text-slate-400">Supported formats: JPG, PNG</span>
+                  </div>
                 </div>
 
                 {/* 2. Resume PDF */}
@@ -5711,7 +5795,7 @@ export default function Dashboard() {
                           size="sm" 
                           className="h-8 text-[11px] px-3 bg-white border border-slate-200 text-slate-800 hover:bg-slate-50 shadow-none"
                           onClick={() => {
-                            setCurrentView('edit-profile');
+                            goView('edit-profile');
                             setActiveEditorTab('education');
                             setShowCompletionModal(false);
                             setTimeout(() => handleAdd(), 0);
@@ -5725,7 +5809,7 @@ export default function Dashboard() {
                           size="sm" 
                           className="h-8 text-[11px] px-3 bg-white border border-slate-200 text-slate-800 hover:bg-slate-50 shadow-none"
                           onClick={() => {
-                            setCurrentView('edit-profile');
+                            goView('edit-profile');
                             setActiveEditorTab('projects');
                             setShowCompletionModal(false);
                             setTimeout(() => handleAdd(), 0);
@@ -5739,7 +5823,7 @@ export default function Dashboard() {
                           size="sm" 
                           className="h-8 text-[11px] px-3 bg-white border border-slate-200 text-slate-800 hover:bg-slate-50 shadow-none"
                           onClick={() => {
-                            setCurrentView('edit-profile');
+                            goView('edit-profile');
                             setActiveEditorTab('experience');
                             setShowCompletionModal(false);
                             setTimeout(() => handleAdd(), 0);
@@ -5753,8 +5837,7 @@ export default function Dashboard() {
                           size="sm" 
                           className="h-8 text-[11px] px-3 bg-white border border-slate-200 text-slate-800 hover:bg-slate-50 shadow-none"
                           onClick={() => {
-                            setCurrentView('updates');
-                            setUpdatesTab('post');
+                            goView('updates', { updatesTab: 'post' });
                             setUpdateCategory('skill');
                             setShowCompletionModal(false);
                           }}
@@ -5806,11 +5889,25 @@ export default function Dashboard() {
                 </button>
               )}
 
+                <button 
+                  onClick={() => {
+                    setShowFabMenu(false);
+                    goView('updates', { updatesTab: 'post' });
+                  }}
+                  className="flex items-center gap-3 p-3 w-full hover:bg-slate-50 transition-colors group border-b border-slate-100"
+                >
+                  <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:bg-emerald-100 group-hover:scale-105 transition-all shrink-0">
+                    <Plus className="w-5 h-5" />
+                  </div>
+                  <div className="text-left min-w-0">
+                    <div className="font-semibold text-sm text-slate-900 group-hover:text-emerald-600 transition-colors">Post an Update</div>
+                    <div className="text-[10px] text-slate-500 font-normal leading-tight">Primary — achievements, skills & more</div>
+                  </div>
+                </button>
               <button 
                   onClick={() => {
                     setShowFabMenu(false);
-                    setCurrentView('updates');
-                    setUpdatesTab('parse');
+                    goView('updates', { updatesTab: 'parse' });
                   }}
                   className="flex items-center gap-3 p-3 w-full hover:bg-slate-50 transition-colors group"
                 >
@@ -5819,23 +5916,7 @@ export default function Dashboard() {
                   </div>
                   <div className="text-left min-w-0">
                     <div className="font-semibold text-sm text-slate-900 group-hover:text-indigo-600 transition-colors">Parse My Resume</div>
-                    <div className="text-[10px] text-slate-500 font-normal leading-tight">Auto-fill via AI</div>
-                  </div>
-                </button>
-                <button 
-                  onClick={() => {
-                    setShowFabMenu(false);
-                    setCurrentView('updates');
-                    setUpdatesTab('post');
-                  }}
-                  className="flex items-center gap-3 p-3 w-full hover:bg-slate-50 transition-colors group"
-                >
-                  <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:bg-emerald-100 group-hover:scale-105 transition-all shrink-0">
-                    <Plus className="w-5 h-5" />
-                  </div>
-                  <div className="text-left min-w-0">
-                    <div className="font-semibold text-sm text-slate-900 group-hover:text-emerald-600 transition-colors">Post an Update</div>
-                    <div className="text-[10px] text-slate-500 font-normal leading-tight">Quick add (same credit pool)</div>
+                    <div className="text-[10px] text-slate-500 font-normal leading-tight">Secondary — AI auto-fill</div>
                   </div>
                 </button>
             </div>

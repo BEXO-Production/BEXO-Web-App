@@ -21,6 +21,9 @@ import CheckoutPage from './pages/checkout';
 
 import Login from './pages/login';
 import Dashboard from './pages/dashboard';
+import DashboardEditProfile from './pages/dashboard-edit-profile';
+import DashboardUpdates from './pages/dashboard-updates';
+import DashboardSettings from './pages/dashboard-settings';
 import DashboardInbox from './pages/dashboard-inbox';
 import DashboardAnalytics from './pages/dashboard-analytics';
 import PublicPortfolio from './pages/public-portfolio';
@@ -33,6 +36,7 @@ import {
   getPortfolioSubdomain,
   isCombinedMarketingHost,
 } from './lib/platform';
+import { isSettingsTab } from './lib/dashboard-routes';
 
 const queryClient = new QueryClient();
 
@@ -227,6 +231,43 @@ function Router() {
         ) : (
           <Redirect to="/login" />
         )}
+      </Route>
+      <Route path="/dashboard/settings">
+        {hasToken ? (
+          data.hasCompletedOnboarding ? <Redirect to="/dashboard/settings/profile" /> : <Redirect to={`/step/${maxAllowedStep}`} />
+        ) : (
+          <Redirect to="/login" />
+        )}
+      </Route>
+      {/* Dedicated dashboard screens (edit-profile, updates, settings/:tab) — one component, path-driven */}
+      <Route path="/dashboard/edit-profile">
+        {hasToken ? (
+          data.hasCompletedOnboarding ? <DashboardEditProfile /> : <Redirect to={`/step/${maxAllowedStep}`} />
+        ) : (
+          <Redirect to="/login" />
+        )}
+      </Route>
+      <Route path="/dashboard/updates/parse">
+        {hasToken ? (
+          data.hasCompletedOnboarding ? <DashboardUpdates /> : <Redirect to={`/step/${maxAllowedStep}`} />
+        ) : (
+          <Redirect to="/login" />
+        )}
+      </Route>
+      <Route path="/dashboard/updates">
+        {hasToken ? (
+          data.hasCompletedOnboarding ? <DashboardUpdates /> : <Redirect to={`/step/${maxAllowedStep}`} />
+        ) : (
+          <Redirect to="/login" />
+        )}
+      </Route>
+      <Route path="/dashboard/settings/:tab">
+        {(params) => {
+          if (!hasToken) return <Redirect to="/login" />;
+          if (!data.hasCompletedOnboarding) return <Redirect to={`/step/${maxAllowedStep}`} />;
+          if (!isSettingsTab(params.tab)) return <Redirect to="/dashboard/settings/profile" />;
+          return <DashboardSettings />;
+        }}
       </Route>
       <Route path="/dashboard">
         {hasToken ? (

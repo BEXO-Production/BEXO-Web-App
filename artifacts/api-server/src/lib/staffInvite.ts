@@ -305,7 +305,8 @@ export async function issueStaffInvite(
 }
 
 /**
- * Reinvite by invite row id — works anytime (pending, expired, or even after accept for password reset).
+ * Reinvite by invite row id — only for pending/expired invites.
+ * Accepted invites must use POST /staff/:id/reset-password instead.
  */
 export async function reissueStaffInviteById(
   inviteId: string,
@@ -314,6 +315,14 @@ export async function reissueStaffInviteById(
   const [row] = await db.select().from(staffInvites).where(eq(staffInvites.id, inviteId)).limit(1);
   if (!row) {
     throw Object.assign(new Error("Invite not found"), { status: 404 });
+  }
+  if (row.acceptedAt) {
+    throw Object.assign(
+      new Error(
+        "This invite was already accepted. Use Reset password on Active staff instead of Reinvite.",
+      ),
+      { status: 409, code: "INVITE_ACCEPTED" },
+    );
   }
   return issueStaffInvite(
     {

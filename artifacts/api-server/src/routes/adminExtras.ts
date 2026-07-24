@@ -367,15 +367,18 @@ export function registerAdminExtras(router: IRouter) {
       .orderBy(desc(staffInvites.createdAt))
       .limit(200);
     res.json({
-      invites: rows.map((r) => ({
-        ...r,
-        status: inviteStatus(r),
-        canReinvite: true,
-      })),
+      invites: rows.map((r) => {
+        const status = inviteStatus(r);
+        return {
+          ...r,
+          status,
+          canReinvite: status === "pending" || status === "expired",
+        };
+      }),
     });
   });
 
-  /** Reinvite anytime — new token, new password, fresh 7-day expiry, resend email. */
+  /** Reinvite pending/expired invites — new token, password, 7-day expiry, resend email. */
   router.post(
     "/staff/invites/:inviteId/reinvite",
     staffGuard(["super_admin"]),

@@ -376,7 +376,7 @@ router.get(
         db
           .select({ payments30: count() })
           .from(payments)
-          .where(gte(payments.createdAt, since30)),
+          .where(and(eq(payments.status, "success"), gte(payments.createdAt, since30))),
         db.select({ liveSites: count() }).from(users).where(eq(users.siteStatus, "live")),
         db.select({ pausedSites: count() }).from(users).where(eq(users.siteStatus, "paused")),
         db.select({ graceSites: count() }).from(users).where(eq(users.siteStatus, "grace")),
@@ -2004,6 +2004,7 @@ router.get(
     try {
       const limit = Math.min(Number(req.query.limit) || 100, 500);
       const q = String(req.query.q || "").trim().toLowerCase();
+      const fetchLimit = q ? Math.min(2000, limit * 10) : limit;
       const rows = await db
         .select({
           id: adminAuditLog.id,
@@ -2017,20 +2018,24 @@ router.get(
           actorEmail: staffUsers.email,
           actorName: staffUsers.name,
           actorRole: staffUsers.role,
+          actorPhone: staffUsers.phone,
+          actorIsActive: staffUsers.isActive,
         })
         .from(adminAuditLog)
         .leftJoin(staffUsers, eq(adminAuditLog.actorStaffId, staffUsers.id))
         .orderBy(desc(adminAuditLog.createdAt))
-        .limit(limit);
+        .limit(fetchLimit);
 
-      const entries = q
+      const filtered = q
         ? rows.filter((r) => {
-            const hay = `${r.action} ${r.targetType} ${r.targetId} ${r.actorEmail} ${r.actorName} ${r.ip} ${JSON.stringify(r.meta)}`.toLowerCase();
+            const hay =
+              `${r.action} ${r.targetType} ${r.targetId} ${r.actorEmail} ${r.actorName} ${r.actorRole} ${r.actorPhone} ${r.ip} ${JSON.stringify(r.meta)}`.toLowerCase();
             return hay.includes(q);
           })
         : rows;
+      const entries = filtered.slice(0, limit);
 
-      res.json({ entries, total: entries.length });
+      res.json({ entries, total: entries.length, searched: Boolean(q) });
     } catch (err) {
       res.status(500).json({ error: (err as Error).message });
     }

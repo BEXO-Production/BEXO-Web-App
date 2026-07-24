@@ -1991,19 +1991,50 @@ router.post("/updates", requireAuth, async (req: AuthenticatedRequest, res): Pro
     }
 
     let newEntry: any = { ...entry, id: String(entry.id || Date.now()) };
+    let newEntries: any[] | null = null;
     if (sectionType === "skills") {
-      const normalized = normalizeSkills([entry])[0];
-      if (!normalized) {
+      const skillCategory = entry?.category || "technical";
+      const rawNames = String(entry?.name || "")
+        .split(/[,;\n]+/)
+        .map((n: string) => n.trim())
+        .filter(Boolean);
+      if (rawNames.length === 0) {
         res.status(400).json({ error: "Provide a skill name." });
         return;
       }
-      if (existingEntries.some((e: any) => String(e.name || "").toLowerCase() === normalized.name.toLowerCase())) {
+      const normalizedList = normalizeSkills(
+        rawNames.map((name: string) => ({ name, category: skillCategory })),
+      );
+      if (normalizedList.length === 0) {
+        res.status(400).json({ error: "Provide a skill name." });
+        return;
+      }
+      const existingLower = new Set(
+        existingEntries.map((e: any) => String(e.name || "").toLowerCase()),
+      );
+      const uniqueNew = normalizedList.filter(
+        (s) => !existingLower.has(String(s.name || "").toLowerCase()),
+      );
+      if (uniqueNew.length === 0) {
         res.status(409).json({ error: "That skill is already on your profile.", code: "SKILL_DUPLICATE" });
         return;
       }
-      newEntry = normalized;
+      if (existingEntries.length + uniqueNew.length > MAX_SKILLS) {
+        res.status(400).json({
+          error: `You can save up to ${MAX_SKILLS} skills.`,
+          code: "SKILLS_CAP",
+        });
+        return;
+      }
+      newEntries = uniqueNew.map((s, i) => ({
+        ...s,
+        id: String(s.id || `${Date.now()}-${i}`),
+      }));
+      newEntry = newEntries[0];
     }
-    const nextEntries = [...existingEntries, newEntry];
+    const nextEntries = newEntries
+      ? [...existingEntries, ...newEntries]
+      : [...existingEntries, newEntry];
     if (sectionType === "skills" && nextEntries.length > MAX_SKILLS) {
       res.status(400).json({ error: `You can save up to ${MAX_SKILLS} skills.`, code: "SKILLS_CAP" });
       return;
@@ -2040,6 +2071,7 @@ router.post("/updates", requireAuth, async (req: AuthenticatedRequest, res): Pro
     res.json({
       success: true,
       entry: newEntry,
+      entries: newEntries || [newEntry],
       sectionType,
       usage: {
         used: usage.used + 1,
