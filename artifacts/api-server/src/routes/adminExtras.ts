@@ -315,16 +315,18 @@ export function registerAdminExtras(router: IRouter) {
     },
   );
 
-  // Peek invite (public) for accept page
+  // Peek invite (public) for accept page — always return email when token matches
+  // so the Work email field can auto-fill even if the invite is expired/used.
   router.get("/auth/invite-preview", async (req, res: Response) => {
     try {
-      const token = String(req.query.token || "");
+      const token = String(req.query.token || "").trim();
       if (!token) {
-        res.status(400).json({ error: "token required" });
+        res.status(400).json({ error: "token required", code: "TOKEN_REQUIRED" });
         return;
       }
       const [invite] = await db
         .select({
+          id: staffInvites.id,
           email: staffInvites.email,
           name: staffInvites.name,
           phone: staffInvites.phone,
@@ -335,11 +337,47 @@ export function registerAdminExtras(router: IRouter) {
         .from(staffInvites)
         .where(eq(staffInvites.tokenHash, hashToken(token)))
         .limit(1);
-      if (!invite || invite.acceptedAt || invite.expiresAt < new Date()) {
-        res.status(400).json({ error: "Invite invalid or expired" });
+
+      if (!invite) {
+        res.status(404).json({
+          error: "Invite link is invalid. Ask a super admin to send a new invite.",
+          code: "INVITE_NOT_FOUND",
+        });
         return;
       }
-      res.json({ invite });
+
+      const status = inviteStatus(invite);
+      const payload = {
+        invite: {
+          id: invite.id,
+          email: invite.email,
+          name: invite.name,
+          phone: invite.phone,
+          role: invite.role,
+          expiresAt: invite.expiresAt,
+          acceptedAt: invite.acceptedAt,
+          status,
+        },
+      };
+
+      if (status === "accepted") {
+        res.status(409).json({
+          ...payload,
+          error: "This invite was already accepted. Sign in with your email and password.",
+          code: "INVITE_ACCEPTED",
+        });
+        return;
+      }
+      if (status === "expired") {
+        res.status(410).json({
+          ...payload,
+          error: "This invite has expired. Ask a super admin to tap Reinvite for a fresh link.",
+          code: "INVITE_EXPIRED",
+        });
+        return;
+      }
+
+      res.json(payload);
     } catch (err) {
       res.status(500).json({ error: (err as Error).message });
     }
