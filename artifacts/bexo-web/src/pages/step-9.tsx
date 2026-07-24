@@ -226,7 +226,7 @@ export default function Step9Plan() {
       const rzp = new window.Razorpay({
         key,
         name: 'Bexo',
-        description: 'Authorize Razorpay Autopay for renewals',
+        description: 'Authorize Autopay — ₹1 verification, refunded automatically',
         subscription_id: subscriptionId,
         prefill: {
           name: data.name,
@@ -452,7 +452,7 @@ export default function Step9Plan() {
     if (!billingProfile) {
       toast({
         title: 'Billing details needed',
-        description: 'Add your billing address above, then tap Enable Autopay. You will not be charged today.',
+        description: 'Add your billing address above, then tap Enable Autopay. Only a refundable ₹1 verification is debited.',
         variant: 'destructive',
       });
       startBillingEdit();
@@ -499,7 +499,7 @@ export default function Step9Plan() {
       const rzp = new window.Razorpay({
         key,
         name: 'Bexo',
-        description: 'Authorize Razorpay Autopay for renewals',
+        description: 'Authorize Autopay — ₹1 verification, refunded automatically',
         subscription_id: subscriptionId,
         prefill: {
           name: billingProfile.fullName || data.name,
@@ -554,7 +554,9 @@ export default function Step9Plan() {
       rzp.open();
       toast({
         title: 'Authorize Autopay',
-        description: result.message || 'Complete Razorpay authorization. No charge today.',
+        description:
+          result.message ||
+          '₹1 is debited to verify your payment method and refunded automatically. Renewals charge at period end.',
       });
     } catch (err: any) {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });

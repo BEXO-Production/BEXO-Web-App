@@ -9,7 +9,7 @@
  * - Reconciliation + stale awaiting_mandate cleanup (daily job)
  */
 import { db, billingLedger, payments, razorpayWebhookEvents, subscriptions, users } from "@workspace/db";
-import { and, asc, eq, lt } from "drizzle-orm";
+import { and, asc, eq, gt, gte, lt, lte } from "drizzle-orm";
 import { logger } from "../logger";
 import { sendRefundEmail } from "../billing";
 
@@ -23,7 +23,11 @@ export type BillingEventType =
   | "payment_refunded"
   | "subscription_cancelled"
   | "reconciliation_fix"
-  | "webhook_processed";
+  | "webhook_processed"
+  | "autopay_verification_charged"
+  | "autopay_verification_refunded"
+  | "autopay_verification_refund_forced"
+  | "payment_refund_processed";
 
 export type PaymentLifecycleStatus =
   | "pending"
@@ -182,6 +186,100 @@ export async function listStaleAwaitingMandatePayments(limit = 100) {
 
 export type RefundFn = (paymentId: string, amountPaise: number) => Promise<{ id: string } | null>;
 export type CancelSubFn = (subscriptionId: string) => Promise<void>;
+export type FetchPaymentFn = (
+  paymentId: string,
+) => Promise<{ amountPaise: number; amountRefundedPaise: number; status: string } | null>;
+
+/** Verification debits above this are never auto-refunded by the sweep (sanity cap). */
+const VERIFICATION_MAX_PAISE = 500; // ₹5
+/** Give Razorpay's own auto-refund this long before we force one ourselves. */
+const VERIFICATION_REFUND_GRACE_MS = 3 * 24 * 60 * 60 * 1000;
+/** Don't sweep rows older than this (already settled / pre-feature rows). */
+const VERIFICATION_SWEEP_WINDOW_MS = 60 * 24 * 60 * 60 * 1000;
+
+/**
+ * Safety net: the ₹1 Autopay verification debit is normally auto-refunded by
+ * Razorpay. If a captured verification charge is still un-refunded after the
+ * grace window, force the refund ourselves so no user is ever double-collected.
+ */
+export async function sweepUnrefundedAutopayVerifications(opts: {
+  fetchPayment: FetchPaymentFn;
+  refundPayment: RefundFn;
+  limit?: number;
+}): Promise<{ checked: number; refunded: number; errors: number }> {
+  const now = Date.now();
+  const rows = await db
+    .select()
+    .from(payments)
+    .where(
+      and(
+        eq(payments.kind, "subscription_enable"),
+        eq(payments.status, "success"),
+        gt(payments.amount, 0),
+        lte(payments.amount, VERIFICATION_MAX_PAISE),
+        lt(payments.createdAt, new Date(now - VERIFICATION_REFUND_GRACE_MS)),
+        gte(payments.createdAt, new Date(now - VERIFICATION_SWEEP_WINDOW_MS)),
+      ),
+    )
+    .orderBy(asc(payments.createdAt))
+    .limit(opts.limit ?? 50);
+
+  let checked = 0;
+  let refunded = 0;
+  let errors = 0;
+
+  for (const row of rows) {
+    if (!row.razorpayPaymentId || row.razorpayPaymentId.startsWith("mock_")) continue;
+    checked += 1;
+    try {
+      const remote = await opts.fetchPayment(row.razorpayPaymentId);
+      if (!remote) continue;
+
+      if (remote.amountRefundedPaise >= remote.amountPaise) {
+        // Razorpay already refunded it — just make sure the ledger says so.
+        await recordLedgerEvent({
+          userId: row.userId,
+          paymentId: row.id,
+          eventType: "autopay_verification_refunded",
+          amountPaise: remote.amountRefundedPaise,
+          plan: row.plan,
+          razorpayPaymentId: row.razorpayPaymentId,
+          idempotencyKey: `autopay_verification_refunded:${row.id}`,
+          metadata: { via: "sweep_confirmed", status: remote.status },
+        });
+        continue;
+      }
+
+      if (remote.status !== "captured") continue;
+
+      const outstanding = remote.amountPaise - remote.amountRefundedPaise;
+      const refund = await opts.refundPayment(row.razorpayPaymentId, outstanding);
+      if (refund?.id) {
+        refunded += 1;
+        await recordLedgerEvent({
+          userId: row.userId,
+          paymentId: row.id,
+          eventType: "autopay_verification_refund_forced",
+          amountPaise: outstanding,
+          plan: row.plan,
+          razorpayPaymentId: row.razorpayPaymentId,
+          razorpayRefundId: refund.id,
+          idempotencyKey: `autopay_verification_refund_forced:${row.id}`,
+          metadata: { reason: "verification_not_auto_refunded" },
+        });
+        logger.info(
+          { paymentId: row.id, userId: row.userId, refundId: refund.id, outstanding },
+          "Force-refunded un-refunded Autopay verification debit",
+        );
+      }
+    } catch (error) {
+      errors += 1;
+      logger.error({ error, paymentId: row.id }, "sweepUnrefundedAutopayVerifications row failed");
+    }
+  }
+
+  return { checked, refunded, errors };
+}
 
 /**
  * Expire stale awaiting_mandate rows: cancel pending Autopay sub, refund first invoice, mark abandoned/refunded.

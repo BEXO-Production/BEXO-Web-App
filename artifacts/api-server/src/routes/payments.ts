@@ -1389,6 +1389,43 @@ router.post("/confirm-autopay", requireAuth, async (req: any, res: any) => {
       idempotencyKey: `mandate_confirmed:${payment.id}`,
       metadata: { via: isEnableOnly ? "enable_autopay" : "hard_mandate" },
     });
+
+    // Enable-only mandates authorize via a small verification debit (₹1 token
+    // for delayed-start subscriptions). Record the actual amount so the ledger
+    // shows the debit; Razorpay auto-refunds it, and the daily sweep force-
+    // refunds any that slip through.
+    if (isEnableOnly && razorpay && razorpay_payment_id && !razorpay_payment_id.startsWith("mock_")) {
+      try {
+        const authPayment: any = await razorpay.payments.fetch(razorpay_payment_id);
+        const authPaise = Number(authPayment?.amount) || 0;
+        if (authPaise > 0) {
+          await db
+            .update(payments)
+            .set({ amount: authPaise })
+            .where(eq(payments.id, payment.id));
+          await recordLedgerEvent({
+            userId,
+            paymentId: payment.id,
+            eventType: "autopay_verification_charged",
+            amountPaise: authPaise,
+            plan,
+            razorpaySubscriptionId: razorpay_subscription_id,
+            razorpayPaymentId: razorpay_payment_id,
+            idempotencyKey: `autopay_verification_charged:${payment.id}`,
+            metadata: {
+              autoRefundedByRazorpay: true,
+              authStatus: authPayment?.status || null,
+              amountRefunded: Number(authPayment?.amount_refunded) || 0,
+            },
+          });
+        }
+      } catch (authErr) {
+        logger.warn(
+          { authErr, userId, razorpay_payment_id },
+          "Could not record Autopay verification charge (non-fatal)",
+        );
+      }
+    }
     if (!isEnableOnly) {
       await recordLedgerEvent({
         userId,
@@ -1407,7 +1444,7 @@ router.post("/confirm-autopay", requireAuth, async (req: any, res: any) => {
     res.json({
       success: true,
       message: isEnableOnly
-        ? "Autopay enabled. Your current plan stays active until period end; renewals charge automatically after that."
+        ? "Autopay enabled. The ₹1 verification debit is refunded automatically. Renewals charge at period end."
         : "Autopay authorized. Your plan is now active.",
       plan: activated.plan,
       isPremium: true,
@@ -2272,6 +2309,13 @@ router.post("/subscription/enable-autopay", requireAuth, async (req: any, res: a
 
     const autopayLive = !!rzpSubId && (rzpSubId.startsWith("mock_") || isMandateReadyStatus(rzpStatus));
     const rzpCancelAtCycleEnd = !!rzpFull?.cancel_at_cycle_end;
+    // Only trust "Razorpay is still renewing" when the FULL subscription was
+    // fetched and it EXPLICITLY reports cancel_at_cycle_end === false. If the
+    // fetch failed or the field is missing, the mandate may be scheduled to die
+    // at period end — re-registering a fresh mandate is the only safe path,
+    // otherwise we lose the ability to collect at renewal.
+    const rzpConfirmedRenewing =
+      !!rzpFull && (rzpFull.cancel_at_cycle_end === false || rzpFull.cancel_at_cycle_end === 0);
 
     // Already renewing and not cancelled → nothing to do.
     if (autopayLive && !access.cancelAtPeriodEnd && !rzpCancelAtCycleEnd) {
@@ -2283,9 +2327,10 @@ router.post("/subscription/enable-autopay", requireAuth, async (req: any, res: a
       });
     }
 
-    // Desync: local cancel flag set but Razorpay never got cancel_at_cycle_end
-    // (cancel API failed / webhook lag). Restore renewals without a new mandate.
-    if (access.cancelAtPeriodEnd && autopayLive && rzpSubId && !rzpCancelAtCycleEnd && !rzpSubId.startsWith("mock_")) {
+    // Desync: local cancel flag set but Razorpay POSITIVELY confirmed the
+    // subscription never got cancel_at_cycle_end (cancel API failed / webhook
+    // lag). Only then restore renewals without a new mandate.
+    if (access.cancelAtPeriodEnd && autopayLive && rzpSubId && rzpConfirmedRenewing && !rzpSubId.startsWith("mock_")) {
       await setCancelAtPeriodEnd(userId, false);
       await recordLedgerEvent({
         userId,
@@ -2478,7 +2523,7 @@ router.post("/subscription/enable-autopay", requireAuth, async (req: any, res: a
       currency: "INR",
       expiresAt: state.expiresAt,
       firstChargeAt: new Date(startAt * 1000).toISOString(),
-      message: `Authorize Autopay now. Your ${plan} plan stays free until ${new Date(state.expiresAt).toLocaleDateString("en-IN")}; then Razorpay charges the renewal automatically.`,
+      message: `Authorize Autopay now — ₹1 is debited to verify your payment method and refunded automatically. Your ${plan} plan stays paid until ${new Date(state.expiresAt).toLocaleDateString("en-IN")}; then Razorpay charges the renewal automatically.`,
     });
   } catch (error) {
     logger.error({ error, userId }, "Failed to enable Autopay");
@@ -2848,6 +2893,37 @@ router.post("/webhook", async (req: any, res: any) => {
         await markWebhookProcessed(claimed.rowId, "processed");
         return res.json({ received: true });
       }
+    }
+
+    // ---- Refund confirmations (verification debits, TTL refunds, manual) ----
+    if (event === "refund.processed" || event === "refund.created") {
+      const refundEntity = req.body?.payload?.refund?.entity;
+      const refundedPaymentId = refundEntity?.payment_id as string | undefined;
+      if (refundedPaymentId) {
+        const [row] = await db
+          .select()
+          .from(payments)
+          .where(eq(payments.razorpayPaymentId, refundedPaymentId))
+          .limit(1);
+        if (row) {
+          await recordLedgerEvent({
+            userId: row.userId,
+            paymentId: row.id,
+            eventType:
+              row.kind === "subscription_enable"
+                ? "autopay_verification_refunded"
+                : "payment_refund_processed",
+            amountPaise: Number(refundEntity?.amount) || 0,
+            plan: row.plan,
+            razorpayPaymentId: refundedPaymentId,
+            razorpayRefundId: (refundEntity?.id as string) || null,
+            idempotencyKey: `refund_event:${refundEntity?.id || refundedPaymentId}:${event}`,
+            metadata: { via: "webhook", event, speed: refundEntity?.speed_processed || null },
+          });
+        }
+      }
+      await markWebhookProcessed(claimed.rowId, "processed");
+      return res.json({ received: true });
     }
 
     // ---- One-time order payments (Student+, fallback orders) ----
@@ -3372,6 +3448,16 @@ router.post("/jobs/daily", async (req: any, res: any) => {
           notes: { reason: "awaiting_mandate_ttl" },
         } as any);
         return refund?.id ? { id: refund.id as string } : null;
+      },
+      fetchPayment: async (paymentId) => {
+        if (!razorpay || paymentId.startsWith("mock_")) return null;
+        const p: any = await razorpay.payments.fetch(paymentId);
+        if (!p) return null;
+        return {
+          amountPaise: Number(p.amount) || 0,
+          amountRefundedPaise: Number(p.amount_refunded) || 0,
+          status: String(p.status || ""),
+        };
       },
     });
     res.json(result);

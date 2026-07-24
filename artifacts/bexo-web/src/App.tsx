@@ -17,6 +17,7 @@ import Step6Review from './pages/step-6';
 import Step7Theme from './pages/step-7';
 import Step8Publish from './pages/step-8';
 import Step9Plan from './pages/step-9';
+import BillingPage from './pages/billing';
 import CheckoutPage from './pages/checkout';
 
 import Login from './pages/login';
@@ -288,21 +289,7 @@ function Router() {
         )}
       </Route>
       <Route path="/billing">
-        {hasToken ? (
-          <div className="min-h-[100dvh] bg-slate-50 px-4 py-8">
-            <div className="mx-auto mb-6 flex w-full max-w-lg items-center justify-between">
-              <button
-                type="button"
-                onClick={() => window.location.href = '/dashboard'}
-                className="text-xs font-bold uppercase tracking-wider text-slate-500 hover:text-slate-900"
-              >
-                Back to dashboard
-              </button>
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Billing</span>
-            </div>
-            <Step9Plan />
-          </div>
-        ) : <Redirect to="/login" />}
+        {hasToken ? <BillingPage /> : <Redirect to="/login" />}
       </Route>
       <Route path="/checkout">
         {hasToken ? <CheckoutPage /> : <Redirect to="/login" />}

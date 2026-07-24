@@ -4,7 +4,7 @@ import { logger } from "./logger";
 import { enqueueEmail } from "./emailOutbox";
 import { expireGraceWindows } from "./siteAccess";
 import { rollupPortfolioStats } from "./analytics";
-import { expireStaleAwaitingMandates } from "./billingEngine";
+import { expireStaleAwaitingMandates, sweepUnrefundedAutopayVerifications } from "./billingEngine";
 import { appOrigin } from "./platform";
 import { purgeAbandonedPhoneOnlyUsers } from "./userRetention";
 
@@ -42,6 +42,9 @@ export type DailyJobHooks = {
     paymentId: string,
     amountPaise: number,
   ) => Promise<{ id: string } | null>;
+  fetchPayment?: (
+    paymentId: string,
+  ) => Promise<{ amountPaise: number; amountRefundedPaise: number; status: string } | null>;
 };
 
 /**
@@ -57,6 +60,15 @@ export async function runDailyBillingAndAnalyticsJob(hooks: DailyJobHooks = {}) 
     cancelSubscription: hooks.cancelSubscription || (async () => undefined),
     refundPayment: hooks.refundPayment || (async () => null),
   });
+
+  // Guarantee the ₹1 Autopay verification debit is always returned.
+  const verificationSweep = hooks.fetchPayment && hooks.refundPayment
+    ? await sweepUnrefundedAutopayVerifications({
+        fetchPayment: hooks.fetchPayment,
+        refundPayment: hooks.refundPayment,
+        limit: 50,
+      })
+    : { checked: 0, refunded: 0, errors: 0 };
 
   const phoneOnlyPurge = await purgeAbandonedPhoneOnlyUsers({ olderThanDays: 7, limit: 200 });
 
@@ -80,8 +92,8 @@ export async function runDailyBillingAndAnalyticsJob(hooks: DailyJobHooks = {}) 
   }
 
   logger.info(
-    { expired, rolled, dunning, mandateSweep, phoneOnlyPurge },
+    { expired, rolled, dunning, mandateSweep, verificationSweep, phoneOnlyPurge },
     "Daily billing/analytics job completed",
   );
-  return { ok: true as const, expired, rolled, dunning, mandateSweep, phoneOnlyPurge };
+  return { ok: true as const, expired, rolled, dunning, mandateSweep, verificationSweep, phoneOnlyPurge };
 }

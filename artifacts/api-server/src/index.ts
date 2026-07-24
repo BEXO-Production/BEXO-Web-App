@@ -118,6 +118,16 @@ const buildDailyHooks = async () => {
       } as any);
       return refund?.id ? { id: refund.id as string } : null;
     },
+    fetchPayment: async (paymentId: string) => {
+      if (!razorpay || paymentId.startsWith("mock_")) return null;
+      const p: any = await razorpay.payments.fetch(paymentId);
+      if (!p) return null;
+      return {
+        amountPaise: Number(p.amount) || 0,
+        amountRefundedPaise: Number(p.amount_refunded) || 0,
+        status: String(p.status || ""),
+      };
+    },
   };
 };
 
