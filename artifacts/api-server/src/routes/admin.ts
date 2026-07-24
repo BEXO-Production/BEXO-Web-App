@@ -45,6 +45,7 @@ import {
 } from "../lib/adminOps";
 import { generateAndStoreInvoice } from "../lib/invoiceStore";
 import { logger } from "../lib/logger";
+import { issueStaffInvite } from "../lib/staffInvite";
 import Razorpay from "razorpay";
 import { registerAdminExtras } from "./adminExtras";
 import { registerAdminSupport } from "./adminSupport";
@@ -228,13 +229,9 @@ router.post("/auth/accept-invite", async (req, res: Response) => {
       .where(eq(staffUsers.email, email))
       .limit(1);
 
-    if (existing?.isActive) {
-      res.status(409).json({
-        error:
-          "An active staff account already exists for this email. Sign in instead, or ask a super_admin to deactivate and re-invite.",
-      });
-      return;
-    }
+    // Pre-provisioned accounts (auto password emailed) may already be active —
+    // accepting the invite confirms onboarding and optionally sets a new password.
+    // Only block if there is NO open invite claim path (handled by atomic update below).
 
     // Atomic claim — only one acceptor wins; already-used / expired → no row.
     const [invite] = await db
@@ -266,7 +263,7 @@ router.post("/auth/accept-invite", async (req, res: Response) => {
 
     let staff = existing;
     if (staff) {
-      // Deactivated account: reactivate with invite role + new password (via claimed invite only).
+      // Existing account (often pre-created with temporary password): confirm + set chosen password.
       const [updated] = await db
         .update(staffUsers)
         .set({
@@ -1835,50 +1832,46 @@ router.post(
         res.status(400).json({ error: "email required" });
         return;
       }
-      const raw = randomBytes(24).toString("hex");
-      const [invite] = await db
-        .insert(staffInvites)
-        .values({
-          email,
-          name,
-          phone,
-          role,
-          tokenHash: hashToken(raw),
-          invitedBy: req.staff?.id,
-          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-        })
-        .returning();
 
-      const [linked] = await db
-        .select({ id: users.id })
-        .from(users)
-        .where(eq(users.email, email))
-        .limit(1);
+      const issued = await issueStaffInvite({
+        email,
+        name,
+        phone,
+        role,
+        invitedBy: req.staff?.id,
+      });
 
-      await audit(req, "staff.invite", "staff_invite", invite.id, {
+      await audit(req, "staff.invite", "staff_invite", issued.invite.id, {
         email,
         role,
         name,
         phone,
-        linkedUserId: linked?.id || null,
+        emailSent: issued.emailSent,
+        expiresAt: issued.expiresAt.toISOString(),
       });
-      const adminOrigin = process.env.ADMIN_URL || "https://bexo.acedigital.cc";
-      const inviteUrl = `${adminOrigin.replace(/\/$/, "")}/invite?token=${raw}`;
+
       res.json({
         invite: {
-          id: invite.id,
+          id: issued.invite.id,
           email,
           name,
           phone,
           role,
-          expiresAt: invite.expiresAt,
-          linkedUserId: linked?.id || null,
+          expiresAt: issued.expiresAt,
         },
-        acceptToken: raw,
-        inviteUrl,
+        acceptToken: undefined,
+        inviteUrl: issued.inviteUrl,
+        loginUrl: issued.loginUrl,
+        temporaryPassword: issued.temporaryPassword,
+        emailSent: issued.emailSent,
+        emailError: issued.emailError || null,
+        message: issued.emailSent
+          ? "Invite created and email sent with temporary password (expires in 7 days)."
+          : `Invite created (expires in 7 days). Email not sent: ${issued.emailError || "unknown error"}. Share the link and password manually.`,
       });
-    } catch (err) {
-      res.status(500).json({ error: (err as Error).message });
+    } catch (err: any) {
+      const status = Number(err?.status) || 500;
+      res.status(status).json({ error: err?.message || "Failed to create invite", code: err?.code });
     }
   },
 );

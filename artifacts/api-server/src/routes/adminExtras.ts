@@ -21,6 +21,11 @@ import { logger } from "../lib/logger";
 import { appOrigin } from "../lib/platform";
 import { loadGcpCloudRunAnalytics } from "../lib/gcpMonitoring";
 import { loadRazorpayAnalytics } from "../lib/razorpayAnalytics";
+import {
+  issueStaffInvite,
+  inviteStatus,
+  reissueStaffInviteById,
+} from "../lib/staffInvite";
 
 const AUTOPAY_MANUAL_CAP_INR = 2000;
 const ADMIN_ORIGIN = process.env.ADMIN_URL || "https://bexo.acedigital.cc";
@@ -195,7 +200,14 @@ export function registerAdminExtras(router: IRouter) {
           return;
         }
 
-        const created: { email: string; inviteUrl: string; role: string }[] = [];
+        const created: {
+          email: string;
+          inviteUrl: string;
+          role: string;
+          temporaryPassword: string;
+          emailSent: boolean;
+          expiresAt: string;
+        }[] = [];
         const errors: { email: string; error: string }[] = [];
 
         for (const row of rows) {
@@ -204,20 +216,20 @@ export function registerAdminExtras(router: IRouter) {
             continue;
           }
           try {
-            const raw = randomBytes(24).toString("hex");
-            await db.insert(staffInvites).values({
+            const issued = await issueStaffInvite({
               email: row.email,
               name: row.name || null,
               phone: row.phone || null,
               role: row.role,
-              tokenHash: hashToken(raw),
               invitedBy: req.staff?.id,
-              expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
             });
             created.push({
               email: row.email,
               role: row.role,
-              inviteUrl: `${ADMIN_ORIGIN.replace(/\/$/, "")}/invite?token=${raw}`,
+              inviteUrl: issued.inviteUrl,
+              temporaryPassword: issued.temporaryPassword,
+              emailSent: issued.emailSent,
+              expiresAt: issued.expiresAt.toISOString(),
             });
           } catch (e) {
             errors.push({ email: row.email, error: (e as Error).message });
@@ -227,6 +239,7 @@ export function registerAdminExtras(router: IRouter) {
         await audit(req, "staff.invite_bulk", "staff_invite", null, {
           created: created.length,
           errors: errors.length,
+          emailed: created.filter((c) => c.emailSent).length,
         });
         res.json({ created, errors, count: created.length });
       } catch (err) {
@@ -250,8 +263,57 @@ export function registerAdminExtras(router: IRouter) {
       .from(staffInvites)
       .orderBy(desc(staffInvites.createdAt))
       .limit(200);
-    res.json({ invites: rows });
+    res.json({
+      invites: rows.map((r) => ({
+        ...r,
+        status: inviteStatus(r),
+        canReinvite: true,
+      })),
+    });
   });
+
+  /** Reinvite anytime — new token, new password, fresh 7-day expiry, resend email. */
+  router.post(
+    "/staff/invites/:inviteId/reinvite",
+    staffGuard(["super_admin"]),
+    async (req: StaffRequest, res: Response) => {
+      try {
+        const inviteId = String(req.params.inviteId || "");
+        if (!inviteId) {
+          res.status(400).json({ error: "inviteId required" });
+          return;
+        }
+        const issued = await reissueStaffInviteById(inviteId, req.staff?.id);
+        await audit(req, "staff.reinvite", "staff_invite", issued.invite.id, {
+          email: issued.invite.email,
+          previousInviteId: inviteId,
+          emailSent: issued.emailSent,
+          expiresAt: issued.expiresAt.toISOString(),
+        });
+        res.json({
+          invite: {
+            id: issued.invite.id,
+            email: issued.invite.email,
+            name: issued.invite.name,
+            phone: issued.invite.phone,
+            role: issued.invite.role,
+            expiresAt: issued.expiresAt,
+          },
+          inviteUrl: issued.inviteUrl,
+          loginUrl: issued.loginUrl,
+          temporaryPassword: issued.temporaryPassword,
+          emailSent: issued.emailSent,
+          emailError: issued.emailError || null,
+          message: issued.emailSent
+            ? "Reinvite sent — new temporary password emailed (valid 7 days)."
+            : `Reinvite created but email failed: ${issued.emailError || "unknown"}. Share link and password manually.`,
+        });
+      } catch (err: any) {
+        const status = Number(err?.status) || 500;
+        res.status(status).json({ error: err?.message || "Failed to reinvite" });
+      }
+    },
+  );
 
   // Peek invite (public) for accept page
   router.get("/auth/invite-preview", async (req, res: Response) => {

@@ -21,6 +21,7 @@ import {
   getSupportTicketCreatedEmail,
   getSupportTicketUpdatedEmail,
   getSupportTicketReplyEmail,
+  getStaffInviteEmail,
 } from "./templates";
 import { generateInvoicePDF } from "./invoice";
 import { uploadToR2 } from "./r2";
@@ -280,6 +281,21 @@ async function renderEmail(row: typeof emailDeliveries.$inferSelect) {
         ),
         attachments: undefined,
         replyTo: "support@acedigital.cc",
+      };
+    case "staff_invite":
+      return {
+        html: getStaffInviteEmail({
+          userName: name,
+          email: payload.email || row.recipient,
+          role: payload.role || "support",
+          temporaryPassword: payload.temporaryPassword || "",
+          inviteUrl: payload.inviteUrl || "",
+          loginUrl: payload.loginUrl || "",
+          expiresLabel: payload.expiresLabel || "",
+          isReinvite: !!payload.isReinvite,
+        }),
+        attachments: undefined,
+        replyTo: undefined,
       };
     default:
       throw new Error(`No HTML template registered for email eventType=${row.eventType}`);
