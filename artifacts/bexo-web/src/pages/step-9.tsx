@@ -177,7 +177,17 @@ export default function Step9Plan() {
         } as any);
         const mandatePending = !!(result.needsMandateSetup || result.subscription?.needsMandateSetup);
         setNeedsMandateSetup(mandatePending);
-        setPendingMandateSubId(result.subscription?.razorpaySubscriptionId || null);
+        // Only keep a pending Checkout id when mandate setup is actually required.
+        // Never stash the live plan subscription id — classic sub_* mandates cap at plan price (₹234.82).
+        const pendingSub =
+          mandatePending
+            ? result.pendingCheckout?.subscriptionId ||
+              result.pendingCheckout?.orderId ||
+              null
+            : null;
+        setPendingMandateSubId(
+          pendingSub && String(pendingSub).startsWith('sub_') ? null : pendingSub,
+        );
         setPendingMandateKey(result.razorpayKey || null);
         setBillingProfile(result.billingProfile || null);
         setCanEnableAutopay(!!result.canEnableAutopay);
@@ -201,10 +211,29 @@ export default function Step9Plan() {
       toast({ title: 'Error', description: 'Razorpay SDK failed to load. Refresh and try again.', variant: 'destructive' });
       return;
     }
+
+    // Never reopen a classic Razorpay Subscription (mandate max = plan price, e.g. ₹234.82).
+    // Enable Autopay must use the UPI token path (ceiling ₹2000).
+    const classicPending =
+      !!pendingMandateSubId &&
+      (pendingMandateSubId.startsWith('sub_') || pendingMandateSubId.startsWith('mock_sub'));
+    if (classicPending || canEnableAutopay) {
+      setPendingMandateSubId(null);
+      await handleEnableAutopay();
+      return;
+    }
+
     setIsConfirmingMandate(true);
     try {
       let subscriptionId = pendingMandateSubId;
       let key = pendingMandateKey;
+      let upiResume: {
+        orderId: string;
+        customerId: string;
+        amount?: number;
+        maxAmountPaise?: number;
+      } | null = null;
+
       if (!subscriptionId) {
         const resumeRes = await fetch(apiUrl('/api/payments/resume-autopay-setup'), {
           method: 'POST',
@@ -223,13 +252,103 @@ export default function Step9Plan() {
           setIsConfirmingMandate(false);
           return;
         }
-        subscriptionId = resumeData.subscriptionId;
-        key = resumeData.key || key;
-        setPendingMandateSubId(subscriptionId);
-        setPendingMandateKey(key);
-        setNeedsMandateSetup(true);
+        if (resumeData.mode === 'upi_autopay' && resumeData.orderId && resumeData.customerId) {
+          upiResume = {
+            orderId: resumeData.orderId,
+            customerId: resumeData.customerId,
+            amount: resumeData.amount,
+            maxAmountPaise: resumeData.maxAmountPaise,
+          };
+          key = resumeData.key || key;
+          setPendingMandateKey(key);
+          setNeedsMandateSetup(true);
+        } else if (
+          resumeData.subscriptionId &&
+          String(resumeData.subscriptionId).startsWith('sub_')
+        ) {
+          // Stale classic resume — force UPI enable instead.
+          setIsConfirmingMandate(false);
+          setPendingMandateSubId(null);
+          await handleEnableAutopay();
+          return;
+        } else {
+          subscriptionId = resumeData.subscriptionId;
+          key = resumeData.key || key;
+          setPendingMandateSubId(subscriptionId);
+          setPendingMandateKey(key);
+          setNeedsMandateSetup(true);
+        }
       }
+
+      if (upiResume) {
+        const verifyPaise = typeof upiResume.amount === 'number' ? upiResume.amount : 500;
+        const maxPaise = typeof upiResume.maxAmountPaise === 'number' ? upiResume.maxAmountPaise : 200000;
+        const rzp = new window.Razorpay({
+          key,
+          name: 'Bexo',
+          description: `Authorize Autopay — ₹${(verifyPaise / 100).toFixed(0)} verification (refunded), renewals up to ₹${(maxPaise / 100).toFixed(0)}`,
+          order_id: upiResume.orderId,
+          customer_id: upiResume.customerId,
+          recurring: 1,
+          amount: verifyPaise,
+          prefill: {
+            name: data.name,
+            email: data.contactData?.email || '',
+            contact: data.phone || '',
+          },
+          theme: { color: '#4f46e5' },
+          handler: async (response: any) => {
+            try {
+              const res = await fetch(apiUrl('/api/payments/upi-autopay/verify'), {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                  razorpay_order_id: response.razorpay_order_id || upiResume.orderId,
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_signature: response.razorpay_signature,
+                }),
+              });
+              const result = await res.json().catch(() => ({}));
+              if (!res.ok) throw new Error(result.error || 'Autopay confirmation failed');
+              updateData({ autopay: true, cancelAtPeriodEnd: false } as any);
+              setNeedsMandateSetup(false);
+              setPendingMandateSubId(null);
+              toast({
+                title: 'Autopay enabled',
+                description: 'Renewals will charge automatically — mandate ceiling ₹2000.',
+              });
+            } catch (err: any) {
+              toast({ title: 'Autopay failed', description: err.message || 'Try again.', variant: 'destructive' });
+            } finally {
+              setIsConfirmingMandate(false);
+            }
+          },
+          modal: {
+            ondismiss: () => setIsConfirmingMandate(false),
+          },
+        });
+        rzp.on('payment.failed', (response: any) => {
+          toast({
+            title: 'Autopay failed',
+            description: response.error?.description || 'Authorization failed',
+            variant: 'destructive',
+          });
+          setIsConfirmingMandate(false);
+        });
+        rzp.open();
+        return;
+      }
+
       if (!subscriptionId) throw new Error('Missing Autopay subscription');
+      if (String(subscriptionId).startsWith('sub_')) {
+        setIsConfirmingMandate(false);
+        setPendingMandateSubId(null);
+        await handleEnableAutopay();
+        return;
+      }
 
       const rzp = new window.Razorpay({
         key,
@@ -496,9 +615,97 @@ export default function Step9Plan() {
         return;
       }
 
+      // UPI Autopay token model: ₹5 verify + mandate ceiling ₹2000 (not plan price).
+      if (result.mode === 'upi_autopay' && result.orderId && result.customerId && result.key) {
+        const verifyPaise = typeof result.amount === 'number' ? result.amount : 500;
+        const maxPaise = typeof result.maxAmountPaise === 'number' ? result.maxAmountPaise : 200000;
+        setPendingMandateKey(result.key);
+        setNeedsMandateSetup(true);
+        setPendingMandateSubId(null);
+
+        const rzp = new window.Razorpay({
+          key: result.key,
+          name: 'Bexo',
+          description: `Authorize Autopay — ₹${(verifyPaise / 100).toFixed(0)} verification (refunded), renewals up to ₹${(maxPaise / 100).toFixed(0)}`,
+          order_id: result.orderId,
+          customer_id: result.customerId,
+          recurring: 1,
+          amount: verifyPaise,
+          prefill: {
+            name: billingProfile.fullName || data.name,
+            email: billingProfile.email || data.contactData?.email || '',
+            contact: billingProfile.phone || data.phone || '',
+          },
+          theme: { color: '#4f46e5' },
+          handler: async (response: any) => {
+            try {
+              const confirmRes = await fetch(apiUrl('/api/payments/upi-autopay/verify'), {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                  razorpay_order_id: response.razorpay_order_id || result.orderId,
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_signature: response.razorpay_signature,
+                }),
+              });
+              const confirmData = await confirmRes.json().catch(() => ({}));
+              if (!confirmRes.ok) throw new Error(confirmData.error || 'Could not confirm Autopay');
+              updateData({
+                autopay: true,
+                cancelAtPeriodEnd: false,
+                expiresAt: confirmData.expiresAt || data.expiresAt,
+              } as any);
+              setCanEnableAutopay(false);
+              setActivatedViaKey(false);
+              setNeedsMandateSetup(false);
+              setPendingMandateSubId(null);
+              toast({
+                title: 'Autopay enabled',
+                description:
+                  confirmData.message ||
+                  `Your ${currentPlanLabel} plan renews automatically after ${expiryLabel || 'this period'} (up to ₹${(maxPaise / 100).toFixed(0)}).`,
+              });
+            } catch (err: any) {
+              toast({ title: 'Autopay not confirmed', description: err.message, variant: 'destructive' });
+            }
+          },
+          modal: {
+            ondismiss: () => {
+              toast({
+                title: 'Authorization incomplete',
+                description: 'Autopay was not enabled. You can try again anytime from Billing.',
+              });
+            },
+          },
+        });
+        rzp.on('payment.failed', (response: any) => {
+          toast({
+            title: 'Autopay failed',
+            description: response.error?.description || 'Authorization failed',
+            variant: 'destructive',
+          });
+        });
+        rzp.open();
+        toast({
+          title: 'Authorize Autopay',
+          description:
+            result.message ||
+            `₹${(verifyPaise / 100).toFixed(0)} is debited to verify and refunded. Renewals up to ₹${(maxPaise / 100).toFixed(0)}.`,
+        });
+        return;
+      }
+
       const subscriptionId = result.subscriptionId as string | undefined;
       const key = result.key as string | undefined;
       if (!subscriptionId || !key) throw new Error('Missing Autopay subscription details');
+
+      // Last-resort classic path (UPI Autopay disabled). Do not use when UPI mode is available.
+      if (result.mode === 'upi_autopay') {
+        throw new Error('Autopay setup incomplete — missing UPI order. Refresh and try again.');
+      }
 
       setPendingMandateSubId(subscriptionId);
       setPendingMandateKey(key);
@@ -941,23 +1148,56 @@ export default function Step9Plan() {
             <div className="min-w-0">
               <h3 className="font-bold text-slate-900 text-base">Finish Autopay to activate</h3>
               <p className="text-sm text-slate-600 mt-1">
-                Your first invoice is on hold. Authorize Razorpay Autopay to activate the plan. Closing without authorizing triggers a refund.
+                Authorize UPI Autopay (renewals up to ₹2000). Closing without authorizing may hold or refund the first invoice.
               </p>
             </div>
             <Button
               type="button"
               size="sm"
               className="h-9 text-xs shrink-0"
-              disabled={isConfirmingMandate || !pendingMandateSubId}
-              onClick={completeAutopaySetup}
+              disabled={isConfirmingMandate || isEnablingAutopay}
+              onClick={() => {
+                // Always prefer Enable Autopay (UPI ₹2000). Never reopen classic plan-priced subs.
+                if (canEnableAutopay) {
+                  void handleEnableAutopay();
+                } else {
+                  void completeAutopaySetup();
+                }
+              }}
             >
-              {isConfirmingMandate ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Authorize Autopay'}
+              {isConfirmingMandate || isEnablingAutopay ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                'Authorize Autopay'
+              )}
             </Button>
           </Card>
         )}
 
-        {/* Balanced multi-column card flow — fills the width instead of one tall stack */}
-        <div className="lg:columns-2 xl:columns-3 lg:gap-5 [&>*]:break-inside-avoid [&>*]:mb-5">
+        {/* When Autopay is off but plan is paid — primary CTA (UPI ₹2000 ceiling) */}
+        {!isLifetimePlan && !needsMandateSetup && canEnableAutopay && (data.cancelAtPeriodEnd || !data.autopay) && (
+          <Card className="p-5 sm:p-6 bg-amber-50 border border-amber-200 shadow-sm mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <h3 className="font-bold text-slate-900 text-base">Authorize Autopay</h3>
+              <p className="text-sm text-slate-600 mt-1">
+                Turn on renewals with a ₹5 verification (refunded). Mandate ceiling ₹2000 — not your plan price.
+              </p>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              className="h-9 text-xs shrink-0"
+              disabled={isEnablingAutopay}
+              onClick={() => void handleEnableAutopay()}
+            >
+              {isEnablingAutopay ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Authorize Autopay'}
+            </Button>
+          </Card>
+        )}
+
+        {/* Explicit columns — CSS `columns-*` left a dead gap above Storage */}
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 xl:grid-cols-3 xl:items-start">
+          <div className="flex flex-col gap-5">
           <Card className="p-6 bg-white border border-slate-200 shadow-sm">
             <div className="flex items-start justify-between gap-3 mb-4">
               <h3 className="text-xs font-bold tracking-[0.12em] text-slate-900 uppercase">
@@ -1116,8 +1356,8 @@ export default function Step9Plan() {
                       type="button"
                       size="sm"
                       className="h-9 text-xs"
-                      disabled={isEnablingAutopay || needsMandateSetup}
-                      onClick={handleEnableAutopay}
+                      disabled={isEnablingAutopay}
+                      onClick={() => void handleEnableAutopay()}
                     >
                       {isEnablingAutopay ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -1213,46 +1453,10 @@ export default function Step9Plan() {
               )}
             </Card>
           )}
+          </div>
 
-          {/* Upgrade path — Identity → Essential / Growth */}
-          {!isLifetimePlan && (
-            <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-3">
-              <h3 className="font-bold text-slate-900 text-base">Upgrade plan</h3>
-              <p className="text-sm text-slate-500">
-                You are on <span className="font-semibold text-slate-700">{currentPlanLabel}</span>.
-                Higher tiers unlock more updates, storage, and visitor analytics.
-              </p>
-              <div className="grid gap-2">
-                {upgradeTargets.map((id) => {
-                    const meta = planById(id);
-                    const price = meta?.priceInrExGst ?? (id === 'growth' ? 999 : 199);
-                    return (
-                      <button
-                        key={id}
-                        type="button"
-                        onClick={() => startUpgradeCheckout(id)}
-                        className="flex items-center justify-between gap-3 rounded-xl border border-indigo-100 bg-indigo-50/50 px-4 py-3 text-left hover:border-indigo-300 transition-colors"
-                      >
-                        <div>
-                          <p className="text-sm font-bold text-slate-900">Upgrade to {PLAN_LABELS[id] || id}</p>
-                          <p className="text-[11px] text-slate-500">
-                            {id === 'growth' ? 'Yearly · analytics + leads inbox' : 'Monthly · analytics + leads inbox'}
-                          </p>
-                        </div>
-                        <span className="text-xs font-bold text-indigo-700">
-                          ₹{fmtINR(price)}{id === 'growth' ? '/yr' : '/mo'} →
-                        </span>
-                      </button>
-                    );
-                  })}
-                {upgradeTargets.length === 0 && (
-                  <p className="text-xs text-slate-400">You're on the highest available upgrade path.</p>
-                )}
-              </div>
-            </Card>
-          )}
-
-          {/* Storage add-on */}
+          <div className="flex flex-col gap-5">
+          {/* Storage add-on — top of middle column (no dead space above) */}
           <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-4">
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
@@ -1347,7 +1551,48 @@ export default function Step9Plan() {
             )}
           </Card>
 
+          {/* Upgrade path — Identity → Essential / Growth */}
+          {!isLifetimePlan && (
+            <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-3">
+              <h3 className="font-bold text-slate-900 text-base">Upgrade plan</h3>
+              <p className="text-sm text-slate-500">
+                You are on <span className="font-semibold text-slate-700">{currentPlanLabel}</span>.
+                Higher tiers unlock more updates, storage, and visitor analytics.
+              </p>
+              <div className="grid gap-2">
+                {upgradeTargets.map((id) => {
+                    const meta = planById(id);
+                    const price = meta?.priceInrExGst ?? (id === 'growth' ? 999 : 199);
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => startUpgradeCheckout(id)}
+                        className="flex items-center justify-between gap-3 rounded-xl border border-indigo-100 bg-indigo-50/50 px-4 py-3 text-left hover:border-indigo-300 transition-colors"
+                      >
+                        <div>
+                          <p className="text-sm font-bold text-slate-900">Upgrade to {PLAN_LABELS[id] || id}</p>
+                          <p className="text-[11px] text-slate-500">
+                            {id === 'growth' ? 'Yearly · analytics + leads inbox' : 'Monthly · analytics + leads inbox'}
+                          </p>
+                        </div>
+                        <span className="text-xs font-bold text-indigo-700">
+                          ₹{fmtINR(price)}{id === 'growth' ? '/yr' : '/mo'} →
+                        </span>
+                      </button>
+                    );
+                  })}
+                {upgradeTargets.length === 0 && (
+                  <p className="text-xs text-slate-400">You're on the highest available upgrade path.</p>
+                )}
+              </div>
+            </Card>
+          )}
+          </div>
+
+          <div className="flex flex-col gap-5 lg:col-span-2 xl:col-span-1">
           <ContactSupportCard />
+          </div>
         </div>
       </div>
     );

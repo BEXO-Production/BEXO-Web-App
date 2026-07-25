@@ -450,12 +450,48 @@ router.get("/status", requireAuth, async (req: any, res: any) => {
     // Keeping razorpaySubscriptionId after cancel_at_cycle_end must NOT show "Autopay on".
     const willAutoRenew = autopayLive && !access.cancelAtPeriodEnd;
 
-    const [heldMandate] = await db
-      .select()
-      .from(payments)
-      .where(and(eq(payments.userId, userId), eq(payments.status, "awaiting_mandate")))
-      .orderBy(desc(payments.createdAt))
-      .limit(1);
+    let heldMandate: typeof payments.$inferSelect | null =
+      (
+        await db
+          .select()
+          .from(payments)
+          .where(and(eq(payments.userId, userId), eq(payments.status, "awaiting_mandate")))
+          .orderBy(desc(payments.createdAt))
+          .limit(1)
+      )[0] || null;
+
+    // Classic Razorpay Subscriptions pin Autopay max to plan price (e.g. ₹234.82).
+    // When UPI Autopay is on, abandon stale subscription_enable rows so Billing
+    // never re-opens that plan-priced mandate — Enable Autopay creates a ₹2000 UPI token instead.
+    {
+      const { isUpiAutopayEnabled } = await import("../lib/upiAutopay");
+      if (
+        isUpiAutopayEnabled() &&
+        heldMandate?.kind === "subscription_enable" &&
+        heldMandate.razorpaySubscriptionId &&
+        !heldMandate.razorpayOrderId
+      ) {
+        await db
+          .update(payments)
+          .set({ status: "abandoned" })
+          .where(eq(payments.id, heldMandate.id));
+        if (razorpay && !heldMandate.razorpaySubscriptionId.startsWith("mock_")) {
+          try {
+            await razorpay.subscriptions.cancel(heldMandate.razorpaySubscriptionId, false);
+          } catch (cancelErr) {
+            logger.warn(
+              { err: cancelErr, subscriptionId: heldMandate.razorpaySubscriptionId },
+              "status: could not cancel stale classic enable subscription",
+            );
+          }
+        }
+        logger.info(
+          { userId, paymentId: heldMandate.id, subscriptionId: heldMandate.razorpaySubscriptionId },
+          "status: abandoned classic subscription_enable (UPI Autopay uses ₹2000 ceiling)",
+        );
+        heldMandate = null;
+      }
+    }
 
     const needsMandateSetup =
       !upiAutopayLive &&
@@ -551,7 +587,9 @@ router.get("/status", requireAuth, async (req: any, res: any) => {
             paymentId: heldMandate.id,
             plan: heldMandate.plan,
             amount: heldMandate.amount,
+            kind: heldMandate.kind,
             subscriptionId: heldMandate.razorpaySubscriptionId,
+            orderId: heldMandate.razorpayOrderId,
             status: heldMandate.status,
           }
         : null,
@@ -803,7 +841,11 @@ router.post("/create-subscription", requireAuth, async (req: any, res: any) => {
             });
           }
         }
-        const checkout = await createAuthorizationCheckout({ userId, plan, couponCode });
+        const checkout = await createAuthorizationCheckout({
+          userId,
+          plan,
+          couponCode,
+        });
         return res.json(checkout);
       }
     }
@@ -1718,6 +1760,69 @@ router.post("/resume-autopay-setup", requireAuth, async (req: any, res: any) => 
 
     if (held?.kind === "subscription_enable") {
       const plan = (normalizePlanId(held.plan) || "essential") as PaidPlan;
+      const { isUpiAutopayEnabled, isUpiAutopayPlan, createEnableAutopayCheckout, getMandateSummary } =
+        await import("../lib/upiAutopay");
+
+      // Prefer UPI resume / recreate so mandate ceiling stays ₹2000.
+      if (isUpiAutopayEnabled() && isUpiAutopayPlan(plan)) {
+        if (held.razorpayOrderId) {
+          const mandate = await getMandateSummary(userId).catch(() => null);
+          if (
+            mandate &&
+            mandate.status === "pending_authorization" &&
+            mandate.authOrderId === held.razorpayOrderId
+          ) {
+            return res.json({
+              success: true,
+              needsMandateSetup: true,
+              mode: "upi_autopay",
+              purpose: "enable",
+              orderId: held.razorpayOrderId,
+              customerId: mandate.razorpayCustomerId,
+              key: razorpayKeyId,
+              amount: held.amount,
+              maxAmountPaise: mandate.maxAmountPaise,
+              recurring: 1,
+              plan,
+              enableOnly: true,
+              message: "Authorize Autopay — small verification refunded; renewals up to ₹2000.",
+            });
+          }
+        }
+        // Stale classic sub or expired UPI order — create a fresh enable checkout.
+        if (held.razorpaySubscriptionId || held.razorpayOrderId) {
+          await db.update(payments).set({ status: "abandoned" }).where(eq(payments.id, held.id));
+        }
+        try {
+          const checkout = await createEnableAutopayCheckout({
+            userId,
+            plan,
+          });
+          return res.json({
+            success: true,
+            needsMandateSetup: true,
+            mode: "upi_autopay",
+            purpose: "enable",
+            orderId: checkout.orderId,
+            customerId: checkout.customerId,
+            key: checkout.key,
+            amount: checkout.amount,
+            maxAmountPaise: checkout.maxAmountPaise,
+            recurring: 1,
+            plan: checkout.plan,
+            expiresAt: checkout.expiresAt,
+            enableOnly: true,
+            message: checkout.message,
+          });
+        } catch (upiErr: any) {
+          const status = Number(upiErr?.status) || 500;
+          return res.status(status >= 400 && status < 600 ? status : 500).json({
+            error: upiErr?.message || "Unable to resume Autopay setup.",
+            code: upiErr?.code || "AUTOPAY_RESUME_FAILED",
+          });
+        }
+      }
+
       const subscriptionId = held.razorpaySubscriptionId;
       const status = await fetchRazorpaySubscriptionStatus(subscriptionId);
       if (!subscriptionId || status === "cancelled" || status === "completed" || status === "expired") {
@@ -2500,6 +2605,93 @@ router.post("/subscription/enable-autopay", requireAuth, async (req: any, res: a
       )
       .orderBy(desc(payments.createdAt))
       .limit(1);
+
+    {
+      const { isUpiAutopayEnabled, isUpiAutopayPlan, createEnableAutopayCheckout } = await import(
+        "../lib/upiAutopay"
+      );
+      if (isUpiAutopayEnabled() && isUpiAutopayPlan(plan)) {
+        // Drop classic plan-priced mandates (₹234.82 etc.) — UPI uses ₹2000 ceiling.
+        if (pendingEnable?.razorpaySubscriptionId) {
+          await db
+            .update(payments)
+            .set({ status: "abandoned" })
+            .where(eq(payments.id, pendingEnable.id));
+          if (razorpay && !pendingEnable.razorpaySubscriptionId.startsWith("mock_")) {
+            try {
+              await razorpay.subscriptions.cancel(pendingEnable.razorpaySubscriptionId, false);
+            } catch (cancelErr) {
+              logger.warn(
+                { err: cancelErr, subscriptionId: pendingEnable.razorpaySubscriptionId },
+                "Could not cancel stale classic enable subscription",
+              );
+            }
+          }
+        }
+
+        try {
+          const checkout = await createEnableAutopayCheckout({
+            userId,
+            plan,
+          });
+          await recordLedgerEvent({
+            userId,
+            eventType: "autopay_enable_started",
+            amountPaise: checkout.amount,
+            plan,
+            razorpayOrderId: checkout.orderId,
+            idempotencyKey: `autopay_enable_upi:${userId}:${checkout.orderId}`,
+            metadata: {
+              mode: "upi_autopay",
+              maxAmountPaise: checkout.maxAmountPaise,
+              verifyPaise: checkout.amount,
+              cancelAtPeriodEnd: access.cancelAtPeriodEnd,
+              rzpCancelAtCycleEnd,
+            },
+          }).catch(() => undefined);
+
+          logger.info(
+            {
+              userId,
+              plan,
+              orderId: checkout.orderId,
+              maxAmountPaise: checkout.maxAmountPaise,
+              verifyPaise: checkout.amount,
+            },
+            "UPI Autopay enable checkout created (mandate ≤ ₹2000)",
+          );
+
+          return res.json({
+            success: true,
+            needsMandateSetup: true,
+            mode: "upi_autopay",
+            purpose: "enable",
+            orderId: checkout.orderId,
+            customerId: checkout.customerId,
+            key: checkout.key,
+            amount: checkout.amount,
+            maxAmountPaise: checkout.maxAmountPaise,
+            recurring: 1,
+            plan: checkout.plan,
+            expiresAt: checkout.expiresAt,
+            message: checkout.message,
+          });
+        } catch (upiErr: any) {
+          const status = Number(upiErr?.status) || 500;
+          if (status === 409 || status === 400) {
+            return res.status(status).json({
+              error: upiErr?.message || "Unable to enable Autopay.",
+              code: upiErr?.code || "AUTOPAY_ENABLE_FAILED",
+            });
+          }
+          logger.error({ err: upiErr, userId, plan }, "UPI Autopay enable checkout failed");
+          return res.status(502).json({
+            error: razorpayErrorMessage(upiErr, "Unable to enable Autopay right now."),
+            code: "UPI_AUTOPAY_ENABLE_FAILED",
+          });
+        }
+      }
+    }
 
     if (pendingEnable?.razorpaySubscriptionId) {
       const pendingStatus = await fetchRazorpaySubscriptionStatus(pendingEnable.razorpaySubscriptionId);
@@ -3573,7 +3765,7 @@ async function enqueueDunningEmail(userId: string, graceUntil: Date, dayBucket: 
     userId,
     payload: {
       userName: user.name || "there",
-      billingUrl: `${process.env.FRONTEND_URL || process.env.WEB_URL || "https://dash.mybexo.cyou"}/billing`,
+      billingUrl: `${process.env.FRONTEND_URL || process.env.WEB_URL || "https://dash.mybexo.com"}/billing`,
       pauseDate,
       dayBucket,
     },

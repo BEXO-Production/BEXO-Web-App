@@ -13,7 +13,7 @@ import type { StaffRole } from "../middlewares/staffAuth";
 export const STAFF_INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 const ADMIN_ORIGIN = () =>
-  (process.env.ADMIN_URL || "https://bexo.acedigital.cc").replace(/\/$/, "");
+  (process.env.ADMIN_URL || "https://admin.mybexo.com").replace(/\/$/, "");
 
 export function hashStaffPassword(password: string): string {
   const salt = randomBytes(16).toString("hex");

@@ -108,14 +108,15 @@ export function marketingOrigin(): string {
 /**
  * Apex origin for free path portfolios.
  * Dev: https://mybexo.cyou/{handle}
- * Prod: https://atbexo.com/{handle}
+ * Prod: https://mybexo.com/{handle} (marketing free-path rewrite)
  * Never dash.* — that host is the app only.
+ * Never bare atbexo.com paths — apex redirects to marketing; free sites live on mybexo.com.
  */
 export function pathPortfolioOrigin(): string {
   return (
     process.env.PATH_PORTFOLIO_ORIGIN ||
     process.env.PORTFOLIO_PATH_ORIGIN ||
-    `https://${PLATFORM_DOMAIN}`
+    (PLATFORM_DOMAIN === "atbexo.com" ? marketingOrigin() : `https://${PLATFORM_DOMAIN}`)
   ).replace(/\/$/, "");
 }
 

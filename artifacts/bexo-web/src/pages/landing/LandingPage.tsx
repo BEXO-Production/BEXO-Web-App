@@ -238,13 +238,13 @@ export default function LandingPage({
 
   usePageSeo({
     title: "BEXO workspace — continue to your portfolio",
-    description: `Sign in to create or edit your BEXO portfolio. Discover the product at mybexo.cyou — live sites publish on yourname.${PLATFORM_DOMAIN}.`,
+    description: `Sign in to create or edit your BEXO portfolio. Discover the product at mybexo.com — live sites publish on yourname.${PLATFORM_DOMAIN}.`,
     noindex: true,
     canonical:
       typeof window !== "undefined"
         ? `${window.location.origin.replace(/\/$/, "")}/`
-        : `https://dash.mybexo.cyou/`,
-    ogImage: "https://mybexo.cyou/assets/og-default.jpg",
+        : `https://dash.mybexo.com/`,
+    ogImage: "https://mybexo.com/assets/og-default.jpg",
   });
 
   return (

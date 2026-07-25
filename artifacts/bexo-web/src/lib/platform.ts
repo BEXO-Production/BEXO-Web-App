@@ -226,18 +226,24 @@ export function portfolioPublicUrl(handle: string, hostname?: string): string {
   return `https://${portfolioHostname(handle, hostname)}`;
 }
 
-/** Free-tier public URL on the platform apex path: https://mybexo.cyou/{handle} (prod: atbexo.com/{handle}). */
+/** Free-tier public URL on the marketing path: https://mybexo.com/{handle} (dev: mybexo.cyou/{handle}). */
 export function pathPortfolioUrl(handle: string, hostname?: string): string {
   const safe = String(handle || "")
     .toLowerCase()
     .trim();
   const domain = resolvePlatformDomain(hostname);
-  const origin =
-    domain === "localhost"
-      ? typeof window !== "undefined"
+  let origin: string;
+  if (domain === "localhost") {
+    origin =
+      typeof window !== "undefined"
         ? window.location.origin.replace(/\/$/, "")
-        : "http://localhost:5173"
-      : `https://${domain}`;
+        : "http://localhost:5173";
+  } else if (domain === "atbexo.com") {
+    // Production free path lives on marketing — atbexo.com apex redirects away.
+    origin = resolveMarketingOrigin(hostname);
+  } else {
+    origin = `https://${domain}`;
+  }
   if (!safe) return origin;
   return `${origin}/${encodeURIComponent(safe)}`;
 }

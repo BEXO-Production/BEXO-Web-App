@@ -68,7 +68,7 @@ export function registerSitemapRoutes(app: Express) {
   });
 
   app.get("/robots.txt", (_req, res) => {
-    const body = `Sitemap: https://dash.mybexo.cyou/sitemap.xml
+    const body = `Sitemap: https://dash.mybexo.com/sitemap.xml
 
 User-agent: *
 Allow: /

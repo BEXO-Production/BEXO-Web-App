@@ -325,13 +325,13 @@ export async function createAuthorizationCheckout(opts: {
 
   const expireAt = Math.floor(Date.now() / 1000) + TOKEN_EXPIRY_YEARS * 365 * 24 * 60 * 60;
 
-  // Authorization order: debit today's net amount + register a variable
-  // (`as_presented`) mandate up to ₹2000 for future renewals / storage.
+  // Authorization order: debit today's net + register as_presented mandate ≤ ₹2000.
   const order: any = await razorpay.orders.create({
     amount: chargeNowPaise,
     currency: "INR",
     customer_id: customerId,
     method: "upi",
+    payment_capture: true,
     receipt: `upi_auth_${userId.slice(0, 8)}_${Date.now()}`.slice(0, 40),
     token: {
       max_amount: maxPaise,
@@ -417,6 +417,156 @@ export async function createAuthorizationCheckout(opts: {
 }
 
 /**
+ * Enable Autopay for an ALREADY-PAID period (Billing → Authorize Autopay).
+ * Authorizes a ₹2000 variable UPI mandate with a small refundable verification
+ * debit (₹5). Does NOT charge the plan again — renewals debit later at expiry.
+ */
+export async function createEnableAutopayCheckout(opts: {
+  userId: string;
+  plan: PaidPlan;
+}): Promise<{
+  mode: "upi_autopay";
+  purpose: "enable";
+  orderId: string;
+  customerId: string;
+  key: string;
+  amount: number;
+  maxAmountPaise: number;
+  recurring: 1;
+  plan: PaidPlan;
+  expiresAt: Date | null;
+  message: string;
+}> {
+  if (!razorpay) throw new Error("Razorpay not configured");
+  const { userId, plan } = opts;
+
+  const state = await resolveSubscriptionState(userId);
+  if (!state.isPremium || state.plan !== plan) {
+    throw Object.assign(new Error("Activate this plan first, then enable Autopay."), {
+      code: "NO_ACTIVE_PLAN",
+      status: 400,
+    });
+  }
+
+  const maxPaise = mandateMaxAmountPaise();
+  // Small verification debit (NPCI/Razorpay need a non-zero auth amount). Refunded after token is stored.
+  const verifyPaise = Math.max(
+    100,
+    Math.min(
+      500,
+      Number(process.env.UPI_AUTOPAY_ENABLE_VERIFY_PAISE || 500) || 500,
+    ),
+  );
+
+  const [existing] = await db
+    .select()
+    .from(autopayMandates)
+    .where(eq(autopayMandates.userId, userId))
+    .limit(1);
+
+  if (existing?.status === "active" && existing.razorpayTokenId) {
+    throw Object.assign(new Error("Auto-renew is already on for your plan."), {
+      code: "AUTOPAY_ALREADY_ON",
+      status: 409,
+    });
+  }
+
+  const customerId = await ensureRazorpayCustomer(userId, existing?.razorpayCustomerId);
+  const expireAt = Math.floor(Date.now() / 1000) + TOKEN_EXPIRY_YEARS * 365 * 24 * 60 * 60;
+
+  const order: any = await razorpay.orders.create({
+    amount: verifyPaise,
+    currency: "INR",
+    customer_id: customerId,
+    method: "upi",
+    payment_capture: true,
+    receipt: `upi_en_${userId.slice(0, 8)}_${Date.now()}`.slice(0, 40),
+    token: {
+      max_amount: maxPaise,
+      expire_at: expireAt,
+      frequency: "as_presented",
+    },
+    notes: {
+      userId,
+      plan,
+      kind: "upi_autopay_enable",
+      verifyPaise: String(verifyPaise),
+      maxAmountPaise: String(maxPaise),
+      purpose: "enable_renewals",
+    },
+  } as any);
+
+  if (existing) {
+    await db
+      .update(autopayMandates)
+      .set({
+        plan,
+        method: "upi",
+        razorpayCustomerId: customerId,
+        authOrderId: order.id,
+        maxAmountPaise: maxPaise,
+        status: "pending_authorization",
+        couponCode: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(autopayMandates.id, existing.id));
+  } else {
+    await db.insert(autopayMandates).values({
+      userId,
+      plan,
+      method: "upi",
+      razorpayCustomerId: customerId,
+      authOrderId: order.id,
+      maxAmountPaise: maxPaise,
+      status: "pending_authorization",
+    });
+  }
+
+  // Abandon any in-flight classic-subscription enable rows so Billing doesn't
+  // keep opening a plan-priced mandate (₹234.82) instead of the ₹2000 ceiling.
+  await db
+    .update(payments)
+    .set({ status: "abandoned" })
+    .where(
+      and(
+        eq(payments.userId, userId),
+        eq(payments.status, "awaiting_mandate"),
+        eq(payments.kind, "subscription_enable"),
+      ),
+    );
+
+  await db.insert(payments).values({
+    userId,
+    razorpayOrderId: order.id,
+    amount: verifyPaise,
+    status: "awaiting_mandate",
+    plan,
+    kind: "subscription_enable",
+    couponCode: null,
+  });
+
+  logger.info(
+    { userId, plan, orderId: order.id, maxPaise, verifyPaise },
+    "upiAutopay: enable checkout created (₹5 verify, mandate ≤ ₹2000)",
+  );
+
+  const expiresAt = state.subscription?.expiresAt || null;
+  return {
+    mode: "upi_autopay",
+    purpose: "enable",
+    orderId: order.id,
+    customerId,
+    key: razorpayKeyId,
+    amount: verifyPaise,
+    maxAmountPaise: maxPaise,
+    recurring: 1,
+    plan,
+    expiresAt,
+    message: `Authorize Autopay — ₹${(verifyPaise / 100).toFixed(0)} verification (refunded), renewals up to ₹${(maxPaise / 100).toFixed(0)}.`,
+  };
+}
+
+/**
  * Verify the authorization payment, store the recurring token, activate the
  * plan, refund any coupon discount, and schedule the next auto-debit.
  */
@@ -447,10 +597,33 @@ export async function verifyAuthorization(opts: {
   }
   const chargedPaise = Number(payment?.amount) || 0;
 
-  const plan = mandate.plan as PaidPlan;
-  const expiresAt = await getRenewalExpiry(userId, plan);
+  const [payRow] = await db
+    .select()
+    .from(payments)
+    .where(and(eq(payments.razorpayOrderId, razorpay_order_id), eq(payments.userId, userId)))
+    .limit(1);
 
-  await activatePaidPlan(userId, plan, expiresAt, { subscriptionId: null, planId: null });
+  // Billing → Authorize Autopay: already-paid period, only attach a ₹2000 mandate.
+  const isEnableOnly =
+    payRow?.kind === "subscription_enable" ||
+    String(payment?.notes?.kind || "") === "upi_autopay_enable" ||
+    String(payment?.notes?.purpose || "") === "enable_renewals";
+
+  const plan = mandate.plan as PaidPlan;
+  let expiresAt: Date | null;
+
+  if (isEnableOnly) {
+    const state = await resolveSubscriptionState(userId);
+    // Keep the paid-through date — do not extend the period or re-bill the plan.
+    expiresAt =
+      state.subscription?.expiresAt && state.subscription.expiresAt.getTime() > Date.now()
+        ? state.subscription.expiresAt
+        : await getRenewalExpiry(userId, plan);
+    await activatePaidPlan(userId, plan, expiresAt, { subscriptionId: null, planId: null });
+  } else {
+    expiresAt = await getRenewalExpiry(userId, plan);
+    await activatePaidPlan(userId, plan, expiresAt, { subscriptionId: null, planId: null });
+  }
 
   const period = planBillingPeriod(plan);
   const nextChargeAt = period === "lifetime" ? null : expiresAt;
@@ -465,8 +638,9 @@ export async function verifyAuthorization(opts: {
       currentPeriodEnd: expiresAt,
       nextChargeAt,
       tokenExpiresAt: null,
-      lastChargeAt: new Date(),
-      lastChargeStatus: "success",
+      // Enable-only: verification debit is not a plan charge.
+      lastChargeAt: isEnableOnly ? null : new Date(),
+      lastChargeStatus: isEnableOnly ? null : "success",
       failureCount: 0,
       updatedAt: new Date(),
     })
@@ -479,24 +653,50 @@ export async function verifyAuthorization(opts: {
 
   await recordLedger({
     userId,
-    eventType: "upi_autopay_authorized",
+    eventType: isEnableOnly ? "upi_autopay_enable_authorized" : "upi_autopay_authorized",
     amountPaise: chargedPaise,
     plan,
     razorpayPaymentId: razorpay_payment_id,
     razorpayOrderId: razorpay_order_id,
     idempotencyKey: `upi_auth:${razorpay_payment_id}`,
-    metadata: { tokenId, maxAmountPaise: mandate.maxAmountPaise },
+    metadata: {
+      tokenId,
+      maxAmountPaise: mandate.maxAmountPaise,
+      purpose: isEnableOnly ? "enable" : "purchase",
+    },
   });
 
-  // Auth order already charged today's net (coupon) amount — no refund dance.
-  if (mandate.couponCode) {
+  // Enable-only: refund the ₹5 verification so the user is not charged to turn renewals on.
+  if (isEnableOnly && chargedPaise > 0) {
+    try {
+      await razorpay.payments.refund(razorpay_payment_id, {
+        amount: chargedPaise,
+        notes: {
+          reason: "upi_autopay_enable_verify_refund",
+          userId,
+          plan,
+        },
+      } as any);
+      await recordLedger({
+        userId,
+        eventType: "upi_autopay_enable_verify_refunded",
+        amountPaise: -chargedPaise,
+        plan,
+        razorpayPaymentId: razorpay_payment_id,
+        razorpayOrderId: razorpay_order_id,
+        idempotencyKey: `upi_enable_refund:${razorpay_payment_id}`,
+        metadata: { tokenId },
+      });
+      logger.info({ userId, razorpay_payment_id, chargedPaise }, "upiAutopay: enable verify refunded");
+    } catch (err) {
+      logger.error({ err, userId, razorpay_payment_id }, "upiAutopay: enable verify refund failed");
+    }
+  }
+
+  // Purchase path: auth order already charged today's net (coupon) amount.
+  if (!isEnableOnly && mandate.couponCode) {
     try {
       const { recordCouponRedemption } = await import("./pricingCatalog");
-      const [payRow] = await db
-        .select({ id: payments.id })
-        .from(payments)
-        .where(and(eq(payments.razorpayOrderId, razorpay_order_id), eq(payments.userId, userId)))
-        .limit(1);
       await recordCouponRedemption(mandate.couponCode, { userId, paymentId: payRow?.id || null });
     } catch (err) {
       logger.warn({ err, userId }, "upiAutopay: coupon redemption record failed");
@@ -505,23 +705,28 @@ export async function verifyAuthorization(opts: {
 
   // Publish the portfolio: subdomainRouter treats missing onboardingCompletedAt
   // as "unclaimed" even when the handle + paid plan are already live.
-  try {
-    const { markOnboardingComplete } = await import("./lifecycleEmails");
-    await markOnboardingComplete(userId);
-  } catch (err) {
-    logger.warn({ err, userId }, "upiAutopay: markOnboardingComplete failed");
-  }
+  if (!isEnableOnly) {
+    try {
+      const { markOnboardingComplete } = await import("./lifecycleEmails");
+      await markOnboardingComplete(userId);
+    } catch (err) {
+      logger.warn({ err, userId }, "upiAutopay: markOnboardingComplete failed");
+    }
 
-  try {
-    await sendBillingReceipts(userId, plan, chargedPaise / 100, razorpay_payment_id);
-  } catch (err) {
-    logger.warn({ err, userId }, "upiAutopay: receipt enqueue failed");
+    try {
+      await sendBillingReceipts(userId, plan, chargedPaise / 100, razorpay_payment_id);
+    } catch (err) {
+      logger.warn({ err, userId }, "upiAutopay: receipt enqueue failed");
+    }
   }
 
   // Pre-create the next scheduled charge so we can send the 24h reminder.
   if (nextChargeAt) await ensureScheduledCharge(mandate.id, userId, plan, nextChargeAt);
 
-  logger.info({ userId, plan, tokenId, expiresAt, chargedPaise }, "upiAutopay: mandate active");
+  logger.info(
+    { userId, plan, tokenId, expiresAt, chargedPaise, isEnableOnly },
+    "upiAutopay: mandate active",
+  );
   return { ok: true, plan, expiresAt };
 }
 
@@ -921,6 +1126,8 @@ export async function getMandateSummary(userId: string) {
     plan: mandate.plan,
     maxAmountPaise: mandate.maxAmountPaise,
     nextChargeAt: mandate.nextChargeAt,
+    authOrderId: mandate.authOrderId,
+    razorpayCustomerId: mandate.razorpayCustomerId,
     upcomingCharge: next
       ? { amountPaise: next.totalPaise, storagePaise: next.storagePaise, scheduledFor: next.scheduledFor }
       : null,

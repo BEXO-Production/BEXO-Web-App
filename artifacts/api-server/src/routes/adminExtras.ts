@@ -28,7 +28,7 @@ import {
 } from "../lib/staffInvite";
 
 const AUTOPAY_MANUAL_CAP_INR = 2000;
-const ADMIN_ORIGIN = process.env.ADMIN_URL || "https://bexo.acedigital.cc";
+const ADMIN_ORIGIN = process.env.ADMIN_URL || "https://admin.mybexo.com";
 
 function hashPassword(password: string): string {
   const salt = randomBytes(16).toString("hex");
@@ -842,8 +842,8 @@ export function registerAdminExtras(router: IRouter) {
       },
       surfaces: {
         admin: ADMIN_ORIGIN,
-        dash: process.env.FRONTEND_URL || "https://dash.mybexo.cyou",
-        marketing: process.env.MARKETING_URL || "https://mybexo.cyou",
+        dash: process.env.FRONTEND_URL || "https://dash.mybexo.com",
+        marketing: process.env.MARKETING_URL || "https://mybexo.com",
         firebaseProjects: ["bexo-development (dash+admin)", "mybexo (marketing)"],
         cloudRunService: "bexo-api",
       },

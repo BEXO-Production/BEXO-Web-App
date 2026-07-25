@@ -944,7 +944,7 @@ router.post(
       const dash =
         process.env.FRONTEND_URL ||
         process.env.WEB_URL ||
-        "https://dash.mybexo.cyou";
+        "https://dash.mybexo.com";
       res.json({
         token,
         dashUrl: `${dash.replace(/\/$/, "")}/login?impersonate=1`,
@@ -2257,11 +2257,11 @@ router.get(
 
       res.json({
         surfaces: {
-          marketing: process.env.MARKETING_URL || "https://mybexo.cyou",
-          dash: process.env.FRONTEND_URL || process.env.WEB_URL || "https://dash.mybexo.cyou",
-          admin: "https://bexo.acedigital.cc",
-          api: process.env.PUBLIC_API_URL || "https://bexo-api-5oddipcbcq-el.a.run.app",
-          platformDomain: process.env.PLATFORM_DOMAIN || "mybexo.cyou",
+          marketing: process.env.MARKETING_URL || "https://mybexo.com",
+          dash: process.env.FRONTEND_URL || process.env.WEB_URL || "https://dash.mybexo.com",
+          admin: process.env.ADMIN_URL || "https://admin.mybexo.com",
+          api: process.env.PUBLIC_API_URL || "https://bexo-api-557785925639.asia-south1.run.app",
+          platformDomain: process.env.PLATFORM_DOMAIN || "atbexo.com",
         },
         health: {
           usersTotal,
@@ -2273,9 +2273,9 @@ router.get(
           })),
         },
         notes: [
-          "Free portfolios: mybexo.cyou/{handle} (marketing rewrite + Worker proxy to dash SPA)",
-          "Premium portfolios: {handle}.mybexo.cyou via Worker → Cloud Run",
-          "Marketing: static Firebase site mybexo.web.app",
+          "Free portfolios: mybexo.com/{handle} (marketing free-path rewrite)",
+          "Premium portfolios: {handle}.atbexo.com via Worker → Cloud Run",
+          "Marketing: mybexo.com (Firebase bexo-marketing); atbexo.com apex redirects to marketing",
           "Grant plans & assign templates from Users dossier",
         ],
       });
