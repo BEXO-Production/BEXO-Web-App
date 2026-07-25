@@ -134,10 +134,74 @@ async function loadContact(userId: string): Promise<{ name: string; email: strin
     .from(billingProfiles)
     .where(eq(billingProfiles.userId, userId))
     .limit(1);
+  const rawPhone = bp?.phone || u?.phone || "";
+  // Razorpay recurring expects digits; strip + and spaces.
+  const phone = rawPhone.replace(/[^\d]/g, "");
   return {
     name: bp?.fullName || u?.name || "BEXO Member",
     email: bp?.email || u?.email || "",
-    phone: bp?.phone || u?.phone || "",
+    phone: phone.startsWith("91") && phone.length > 10 ? phone.slice(-10) : phone,
+  };
+}
+
+/**
+ * Create a subsequent-charge order the way Razorpay UPI Autopay docs require:
+ * payment_capture + notification.token_id. NPCI requires ≥24h between the
+ * pre-debit notification and the debit attempt, so payment_after defaults to
+ * now + 25 hours (+1 min buffer).
+ */
+async function createSubsequentOrder(opts: {
+  amountPaise: number;
+  customerId: string;
+  tokenId: string;
+  receipt: string;
+  notes: Record<string, string>;
+  /** UNIX seconds — debit window opens after this. Default: now + 25h. */
+  paymentAfter?: number;
+}): Promise<any> {
+  if (!razorpay) throw new Error("Razorpay not configured");
+  const defaultAfter = Math.floor(Date.now() / 1000) + 25 * 60 * 60 + 60;
+  return razorpay.orders.create({
+    amount: opts.amountPaise,
+    currency: "INR",
+    payment_capture: true,
+    customer_id: opts.customerId,
+    receipt: opts.receipt.slice(0, 40),
+    notification: {
+      token_id: opts.tokenId,
+      payment_after: opts.paymentAfter ?? defaultAfter,
+    },
+    notes: opts.notes,
+  } as any);
+}
+
+/** Charge a confirmed UPI Autopay token against a subsequent order. */
+async function createSubsequentPayment(opts: {
+  email: string;
+  phone: string;
+  amountPaise: number;
+  orderId: string;
+  customerId: string;
+  tokenId: string;
+  notes: Record<string, string>;
+  description?: string;
+}): Promise<{ paymentId: string | null; raw: any }> {
+  if (!razorpay) throw new Error("Razorpay not configured");
+  const result: any = await razorpay.payments.createRecurringPayment({
+    email: opts.email || undefined,
+    contact: opts.phone || undefined,
+    amount: opts.amountPaise,
+    currency: "INR",
+    order_id: opts.orderId,
+    customer_id: opts.customerId,
+    token: opts.tokenId,
+    recurring: true,
+    description: opts.description,
+    notes: opts.notes,
+  } as any);
+  return {
+    paymentId: result?.razorpay_payment_id || result?.payment_id || result?.id || null,
+    raw: result,
   };
 }
 
@@ -505,7 +569,10 @@ function formatDate(d: Date): string {
   return d.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
 }
 
-/** Send the 24h pre-debit reminder (amount + date) for a scheduled charge. */
+/** Send the 24h pre-debit reminder (amount + date) for a scheduled charge.
+ *  Also creates the Razorpay subsequent order + notification (NPCI requires
+ *  ≥24h between pre-debit notice and debit). The order id is stored on the
+ *  scheduled charge so executeCharge can call create/recurring later. */
 async function sendDebitReminder(row: typeof scheduledCharges.$inferSelect): Promise<void> {
   const contact = await loadContact(row.userId);
   if (!contact.email) return;
@@ -528,6 +595,41 @@ async function sendDebitReminder(row: typeof scheduledCharges.$inferSelect): Pro
       billingUrl: `${appOrigin()}/dashboard/settings/billing`,
     },
   });
+
+  if (!row.razorpayOrderId && row.razorpayTokenId && row.totalPaise > 0) {
+    try {
+      const [mandate] = await db
+        .select({ customerId: autopayMandates.razorpayCustomerId, tokenId: autopayMandates.razorpayTokenId })
+        .from(autopayMandates)
+        .where(eq(autopayMandates.id, row.mandateId))
+        .limit(1);
+      if (mandate?.customerId && mandate.tokenId) {
+        const scheduledUnix = Math.floor(new Date(row.scheduledFor).getTime() / 1000);
+        const minAfter = Math.floor(Date.now() / 1000) + 25 * 60 * 60 + 60;
+        const order = await createSubsequentOrder({
+          amountPaise: row.totalPaise,
+          customerId: mandate.customerId,
+          tokenId: mandate.tokenId,
+          receipt: `upi_rec_${row.id.slice(0, 8)}`,
+          paymentAfter: Math.max(scheduledUnix, minAfter),
+          notes: {
+            userId: row.userId,
+            plan: row.plan,
+            kind: "upi_autopay_recurring",
+            scheduledChargeId: row.id,
+          },
+        });
+        await db
+          .update(scheduledCharges)
+          .set({ razorpayOrderId: order.id, updatedAt: new Date() })
+          .where(eq(scheduledCharges.id, row.id));
+        row = { ...row, razorpayOrderId: order.id };
+      }
+    } catch (err) {
+      logger.warn({ err, chargeId: row.id }, "upiAutopay: Razorpay pre-debit order failed (email still sent)");
+    }
+  }
+
   await db
     .update(scheduledCharges)
     .set({ reminderSentAt: new Date(), status: "reminded", updatedAt: new Date() })
@@ -567,18 +669,32 @@ async function executeCharge(row: typeof scheduledCharges.$inferSelect): Promise
   const contact = await loadContact(row.userId);
 
   try {
-    const order: any = await razorpay.orders.create({
-      amount: totalPaise,
-      currency: "INR",
-      customer_id: mandate.razorpayCustomerId || undefined,
-      receipt: `upi_rec_${row.id.slice(0, 8)}_${Date.now()}`.slice(0, 40),
-      notes: { userId: row.userId, plan, kind: "upi_autopay_recurring", scheduledChargeId: row.id },
-    } as any);
+    // Prefer the order created at reminder time (already carries the NPCI
+    // pre-debit notification). Creating a fresh order here would force another
+    // 25h wait and break on-time renewals.
+    let orderId = row.razorpayOrderId;
+    if (!orderId) {
+      const order: any = await createSubsequentOrder({
+        amountPaise: totalPaise,
+        customerId: mandate.razorpayCustomerId as string,
+        tokenId: mandate.razorpayTokenId,
+        receipt: `upi_rec_${row.id.slice(0, 8)}_${Date.now()}`,
+        // Fallback: open the debit window ASAP under Razorpay's 25h rule.
+        paymentAfter: Math.floor(Date.now() / 1000) + 25 * 60 * 60 + 60,
+        notes: {
+          userId: row.userId,
+          plan,
+          kind: "upi_autopay_recurring",
+          scheduledChargeId: row.id,
+        },
+      });
+      orderId = order.id as string;
+    }
 
     await db
       .update(scheduledCharges)
       .set({
-        razorpayOrderId: order.id,
+        razorpayOrderId: orderId,
         basePaise: amount.basePaise,
         storagePaise: amount.storagePaise,
         storageBlocks: amount.storageBlocks,
@@ -587,19 +703,16 @@ async function executeCharge(row: typeof scheduledCharges.$inferSelect): Promise
       })
       .where(eq(scheduledCharges.id, row.id));
 
-    const result: any = await razorpay.payments.createRecurringPayment({
+    const { paymentId } = await createSubsequentPayment({
       email: contact.email,
-      contact: contact.phone,
-      amount: totalPaise,
-      currency: "INR",
-      order_id: order.id,
-      customer_id: mandate.razorpayCustomerId as string,
-      token: mandate.razorpayTokenId,
-      recurring: "1",
+      phone: contact.phone,
+      amountPaise: totalPaise,
+      orderId: orderId as string,
+      customerId: mandate.razorpayCustomerId as string,
+      tokenId: mandate.razorpayTokenId,
       notes: { userId: row.userId, plan, scheduledChargeId: row.id },
-    } as any);
-
-    const paymentId = result?.razorpay_payment_id || null;
+      description: `BEXO ${plan} Autopay renewal`,
+    });
 
     // Success is confirmed asynchronously via webhook (payment.captured), but we
     // optimistically extend so entitlements never lapse; webhook reconciles.
@@ -629,7 +742,7 @@ async function executeCharge(row: typeof scheduledCharges.$inferSelect): Promise
 
     await db.insert(payments).values({
       userId: row.userId,
-      razorpayOrderId: order.id,
+      razorpayOrderId: orderId,
       razorpayPaymentId: paymentId,
       amount: totalPaise,
       status: "success",
@@ -643,13 +756,13 @@ async function executeCharge(row: typeof scheduledCharges.$inferSelect): Promise
       amountPaise: totalPaise,
       plan,
       razorpayPaymentId: paymentId,
-      razorpayOrderId: order.id,
+      razorpayOrderId: orderId,
       idempotencyKey: `upi_charge:${row.id}`,
       metadata: { basePaise: amount.basePaise, storagePaise: amount.storagePaise, blocks: amount.storageBlocks },
     });
 
     try {
-      await sendBillingReceipts(row.userId, plan, totalPaise / 100, paymentId || order.id);
+      await sendBillingReceipts(row.userId, plan, totalPaise / 100, paymentId || orderId);
     } catch (err) {
       logger.warn({ err, userId: row.userId }, "upiAutopay: recurring receipt failed");
     }
@@ -858,37 +971,45 @@ export async function runTestRecurringCharge(opts: {
   }
 
   const stamp = Date.now();
-  const order: any = await razorpay.orders.create({
-    amount: amountPaise,
-    currency: "INR",
-    customer_id: mandate.razorpayCustomerId,
-    receipt: `upi_test_${stamp}`.slice(0, 40),
-    notes: {
-      userId: opts.userId,
-      plan: mandate.plan,
-      kind: "upi_autopay_test",
-      note: (opts.note || "manual ₹1 Autopay engine test").slice(0, 200),
-    },
-  } as any);
+  let order: any;
+  try {
+    order = await createSubsequentOrder({
+      amountPaise,
+      customerId: mandate.razorpayCustomerId,
+      tokenId: mandate.razorpayTokenId,
+      receipt: `upi_test_${stamp}`,
+      notes: {
+        userId: opts.userId,
+        plan: mandate.plan,
+        kind: "upi_autopay_test",
+        note: (opts.note || "manual ₹1 Autopay engine test").slice(0, 200),
+      },
+    });
+  } catch (err: any) {
+    const desc = String(err?.error?.description || err?.message || err).slice(0, 500);
+    logger.error({ err, userId: opts.userId }, "upiAutopay: test order create failed");
+    return { ok: false, error: desc || "Could not create Autopay order", code: "ORDER_FAILED" };
+  }
 
   let paymentId: string | null = null;
+  let raw: any = null;
   try {
-    const result: any = await razorpay.payments.createRecurringPayment({
-      email: contact.email || undefined,
-      contact: contact.phone || undefined,
-      amount: amountPaise,
-      currency: "INR",
-      order_id: order.id,
-      customer_id: mandate.razorpayCustomerId,
-      token: mandate.razorpayTokenId,
-      recurring: "1",
+    const charged = await createSubsequentPayment({
+      email: contact.email,
+      phone: contact.phone,
+      amountPaise,
+      orderId: order.id,
+      customerId: mandate.razorpayCustomerId,
+      tokenId: mandate.razorpayTokenId,
       notes: {
         userId: opts.userId,
         plan: mandate.plan,
         kind: "upi_autopay_test",
       },
-    } as any);
-    paymentId = result?.razorpay_payment_id || result?.payment_id || null;
+      description: opts.note || "BEXO Autopay engine test ₹1",
+    });
+    paymentId = charged.paymentId;
+    raw = charged.raw;
   } catch (err: any) {
     const desc = String(err?.error?.description || err?.message || err).slice(0, 500);
     logger.error({ err, userId: opts.userId, orderId: order.id }, "upiAutopay: test charge failed");
@@ -904,15 +1025,14 @@ export async function runTestRecurringCharge(opts: {
     return { ok: false, error: desc || "Recurring charge failed", code: "CHARGE_FAILED" };
   }
 
-  // Record only — do not activatePaidPlan / move nextChargeAt (test must not gift a month).
-  // payments.kind is constrained; use subscription + ledger event for the test marker.
+  // Record as pending until webhook confirms capture — banks can take hours.
   try {
     await db.insert(payments).values({
       userId: opts.userId,
       razorpayOrderId: order.id,
       razorpayPaymentId: paymentId,
       amount: amountPaise,
-      status: "success",
+      status: "pending",
       plan: mandate.plan,
       kind: "subscription",
     });
@@ -924,7 +1044,7 @@ export async function runTestRecurringCharge(opts: {
     .update(autopayMandates)
     .set({
       lastChargeAt: new Date(),
-      lastChargeStatus: "test_charged",
+      lastChargeStatus: "test_submitted",
       failureCount: 0,
       updatedAt: new Date(),
     })
@@ -938,14 +1058,12 @@ export async function runTestRecurringCharge(opts: {
     razorpayPaymentId: paymentId,
     razorpayOrderId: order.id,
     idempotencyKey: `upi_test:${order.id}`,
-    metadata: { note: opts.note || "manual test", tokenId: mandate.razorpayTokenId },
+    metadata: {
+      note: opts.note || "manual test",
+      tokenId: mandate.razorpayTokenId,
+      razorpayRaw: raw ? { keys: Object.keys(raw) } : null,
+    },
   });
-
-  try {
-    await sendBillingReceipts(opts.userId, `${mandate.plan} (test)`, amountPaise / 100, paymentId || order.id);
-  } catch (err) {
-    logger.warn({ err, userId: opts.userId }, "upiAutopay: test receipt failed");
-  }
 
   logger.info(
     { userId: opts.userId, amountPaise, orderId: order.id, paymentId },
