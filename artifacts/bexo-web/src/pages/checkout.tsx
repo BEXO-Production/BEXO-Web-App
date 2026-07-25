@@ -600,30 +600,32 @@ export default function CheckoutPage() {
     }
 
     // UPI Autopay (token model): one Checkout authorizes a ₹2000 mandate AND
-    // pays the plan. Storage overage later rides the same mandate — no re-auth.
+    // pays today's net amount (coupon discounted). Renewals later debit full
+    // plan (± storage) up to the ₹2000 ceiling — no re-auth.
     if (subRes.ok && subData.mode === 'upi_autopay') {
-      const netLabel =
-        typeof subData.quotedNetPaise === 'number'
-          ? `₹${(subData.quotedNetPaise / 100).toFixed(2)}`
-          : null;
+      const payNowPaise =
+        typeof subData.amount === 'number'
+          ? subData.amount
+          : typeof subData.quotedNetPaise === 'number'
+            ? subData.quotedNetPaise
+            : null;
+      const netLabel = payNowPaise != null ? `₹${(payNowPaise / 100).toFixed(2)}` : null;
       openRazorpayModal({
         ...baseRazorpayOptions(),
         key: subData.key,
         order_id: subData.orderId,
         customer_id: subData.customerId,
         recurring: 1,
-        description:
-          subData.couponRefund && netLabel
-            ? `${selectedPlan?.displayName || 'Plan'} — pay once, Autopay on (coupon nets ${netLabel})`
-            : `${selectedPlan?.displayName || 'Plan'} — pay once, Autopay included`,
+        amount: payNowPaise ?? undefined,
+        description: netLabel
+          ? `${selectedPlan?.displayName || 'Plan'} — pay ${netLabel} today, Autopay included`
+          : `${selectedPlan?.displayName || 'Plan'} — pay once, Autopay included`,
         handler: async (response: any) => {
           setIsProcessing(true);
           try {
             toast({
               title: 'Processing Payment',
-              description: subData.couponRefund
-                ? 'Activating your plan and Autopay… coupon savings refund shortly.'
-                : 'Activating your plan and Autopay…',
+              description: 'Activating your plan and Autopay…',
             });
             await verifyUpiAutopay(token, {
               razorpay_order_id: response.razorpay_order_id,
@@ -999,9 +1001,10 @@ export default function CheckoutPage() {
                 {discountApplies === 'first_invoice' ? (
                   <>
                     You pay once in Razorpay Checkout — that same payment activates the plan and
-                    turns Autopay on. Checkout may show the full plan price; your coupon savings are
-                    refunded to the same UPI within minutes so you only keep today&apos;s discounted
-                    amount. Renewals charge the full plan price automatically.
+                    turns Autopay on. Today you are charged only the discounted amount shown above.
+                    Autopay is authorized up to ₹2,000 so renewals (full plan price) and any
+                    storage overage can be collected automatically. From the next billing date we
+                    charge the full plan price.
                   </>
                 ) : (
                   <>

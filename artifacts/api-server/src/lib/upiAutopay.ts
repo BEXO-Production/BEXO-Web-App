@@ -234,6 +234,7 @@ export async function createAuthorizationCheckout(opts: {
   quotedNetPaise: number;
   fullPlanPaise: number;
   couponRefund: boolean;
+  hasCouponDiscount: boolean;
 }> {
   if (!razorpay) throw new Error("Razorpay not configured");
   const { userId, plan } = opts;
@@ -243,7 +244,11 @@ export async function createAuthorizationCheckout(opts: {
   const netPricing = couponCode ? await calculatePlanAmount(plan, couponCode, 1) : listPricing;
   const fullPlanPaise = listPricing.totalPaise;
   const quotedNetPaise = netPricing.totalPaise;
-  const couponRefund = quotedNetPaise < fullPlanPaise && !!couponCode;
+  // Charge the amount due TODAY (coupon net). Mandate ceiling stays ₹2000 so
+  // renewals / storage overage can debit up to that later — never charge the
+  // full list price first and refund (that failed testers with low balance).
+  const chargeNowPaise = Math.max(100, quotedNetPaise); // Razorpay UPI min ₹1
+  const hasCouponDiscount = quotedNetPaise < fullPlanPaise && !!couponCode;
   const maxPaise = mandateMaxAmountPaise();
 
   const [existing] = await db
@@ -256,11 +261,10 @@ export async function createAuthorizationCheckout(opts: {
 
   const expireAt = Math.floor(Date.now() / 1000) + TOKEN_EXPIRY_YEARS * 365 * 24 * 60 * 60;
 
-  // Authorization order: charge the full plan now + register a variable
-  // (`as_presented`) mandate up to ₹2000 so future storage overage rides the
-  // same token with no re-authorization.
+  // Authorization order: debit today's net amount + register a variable
+  // (`as_presented`) mandate up to ₹2000 for future renewals / storage.
   const order: any = await razorpay.orders.create({
-    amount: fullPlanPaise,
+    amount: chargeNowPaise,
     currency: "INR",
     customer_id: customerId,
     method: "upi",
@@ -276,6 +280,7 @@ export async function createAuthorizationCheckout(opts: {
       coupon: couponCode || "",
       quotedNetPaise: String(quotedNetPaise),
       fullPlanPaise: String(fullPlanPaise),
+      chargeNowPaise: String(chargeNowPaise),
       kind: "upi_autopay_auth",
     },
   } as any);
@@ -310,7 +315,7 @@ export async function createAuthorizationCheckout(opts: {
   await db.insert(payments).values({
     userId,
     razorpayOrderId: order.id,
-    amount: quotedNetPaise,
+    amount: chargeNowPaise,
     status: "pending",
     plan,
     kind: "subscription",
@@ -318,8 +323,17 @@ export async function createAuthorizationCheckout(opts: {
   });
 
   logger.info(
-    { userId, plan, orderId: order.id, maxPaise, fullPlanPaise, quotedNetPaise, couponRefund },
-    "upiAutopay: authorization checkout created",
+    {
+      userId,
+      plan,
+      orderId: order.id,
+      maxPaise,
+      fullPlanPaise,
+      quotedNetPaise,
+      chargeNowPaise,
+      hasCouponDiscount,
+    },
+    "upiAutopay: authorization checkout created (charge net today, mandate ≤ ₹2000)",
   );
 
   return {
@@ -327,12 +341,14 @@ export async function createAuthorizationCheckout(opts: {
     orderId: order.id,
     customerId,
     key: razorpayKeyId,
-    amount: fullPlanPaise,
+    amount: chargeNowPaise,
     maxAmountPaise: maxPaise,
     recurring: 1,
-    quotedNetPaise,
+    quotedNetPaise: chargeNowPaise,
     fullPlanPaise,
-    couponRefund,
+    // No post-charge refund — Checkout already debits the discounted amount.
+    couponRefund: false,
+    hasCouponDiscount,
   };
 }
 
@@ -408,42 +424,23 @@ export async function verifyAuthorization(opts: {
     metadata: { tokenId, maxAmountPaise: mandate.maxAmountPaise },
   });
 
-  // Coupon: full plan was charged; refund the discount gap so the customer nets
-  // the discounted price (single payment, no second debit).
-  const quotedNetPaise = await (async () => {
-    const [p] = await db
-      .select({ amount: payments.amount })
-      .from(payments)
-      .where(and(eq(payments.razorpayOrderId, razorpay_order_id), eq(payments.userId, userId)))
-      .limit(1);
-    return Number(p?.amount) || chargedPaise;
-  })();
-  if (chargedPaise > quotedNetPaise) {
-    const refundPaise = chargedPaise - quotedNetPaise;
-    if (refundPaise >= 100) {
-      try {
-        const refund: any = await razorpay.payments.refund(razorpay_payment_id, {
-          amount: refundPaise,
-          speed: "optimum",
-          notes: { reason: "coupon_discount_refund", userId, plan },
-        } as any);
-        await recordLedger({
-          userId,
-          eventType: "coupon_discount_refunded",
-          amountPaise: refundPaise,
-          plan,
-          razorpayPaymentId: razorpay_payment_id,
-          idempotencyKey: `upi_coupon_refund:${razorpay_payment_id}`,
-          metadata: { refundId: refund?.id || null },
-        });
-      } catch (err) {
-        logger.error({ err, userId, razorpay_payment_id }, "upiAutopay: coupon refund failed");
-      }
+  // Auth order already charged today's net (coupon) amount — no refund dance.
+  if (mandate.couponCode) {
+    try {
+      const { recordCouponRedemption } = await import("./pricingCatalog");
+      const [payRow] = await db
+        .select({ id: payments.id })
+        .from(payments)
+        .where(and(eq(payments.razorpayOrderId, razorpay_order_id), eq(payments.userId, userId)))
+        .limit(1);
+      await recordCouponRedemption(mandate.couponCode, { userId, paymentId: payRow?.id || null });
+    } catch (err) {
+      logger.warn({ err, userId }, "upiAutopay: coupon redemption record failed");
     }
   }
 
   try {
-    await sendBillingReceipts(userId, plan, Math.min(chargedPaise, quotedNetPaise) / 100, razorpay_payment_id);
+    await sendBillingReceipts(userId, plan, chargedPaise / 100, razorpay_payment_id);
   } catch (err) {
     logger.warn({ err, userId }, "upiAutopay: receipt enqueue failed");
   }
@@ -451,7 +448,7 @@ export async function verifyAuthorization(opts: {
   // Pre-create the next scheduled charge so we can send the 24h reminder.
   if (nextChargeAt) await ensureScheduledCharge(mandate.id, userId, plan, nextChargeAt);
 
-  logger.info({ userId, plan, tokenId, expiresAt }, "upiAutopay: mandate active");
+  logger.info({ userId, plan, tokenId, expiresAt, chargedPaise }, "upiAutopay: mandate active");
   return { ok: true, plan, expiresAt };
 }
 

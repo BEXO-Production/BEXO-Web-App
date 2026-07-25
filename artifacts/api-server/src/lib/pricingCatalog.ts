@@ -394,7 +394,7 @@ export async function buildCheckoutQuote(
   let message: string | null = null;
   if (discountApplies === "first_invoice") {
     message =
-      "Coupon applies to your first charge only. One Checkout payment sets up Autopay; coupon savings are refunded to the same account so you net the discounted price. From the next billing date we collect the full plan price.";
+      "Coupon applies to your first charge only. You pay the discounted amount today in Checkout — that same payment turns Autopay on (limit ₹2,000). From the next billing date we collect the full plan price.";
   }
 
   return {
