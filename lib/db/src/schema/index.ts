@@ -246,6 +246,64 @@ export const razorpayWebhookEvents = pgTable("razorpay_webhook_events", {
   processedAt: timestamp("processed_at", { withTimezone: true }),
 });
 
+// 10c. UPI Autopay Mandates (Orders + recurring-token model).
+// One high-ceiling mandate per user (max_amount up to ₹2000) that funds the base
+// plan AND usage-based storage overage in a single monthly debit — no re-auth.
+// Kept separate from `subscriptions` so the legacy Razorpay Subscriptions flow
+// remains untouched when UPI_AUTOPAY_ENABLED is off.
+export const autopayMandates = pgTable("autopay_mandates", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).unique().notNull(),
+  plan: text("plan").notNull(), // base plan this mandate funds: identity | essential | growth
+  method: text("method").notNull().default("upi"),
+  razorpayCustomerId: text("razorpay_customer_id"),
+  razorpayTokenId: text("razorpay_token_id").unique(), // recurring token used for subsequent debits
+  authOrderId: text("auth_order_id"), // authorization order shown at Checkout
+  authPaymentId: text("auth_payment_id"), // first payment that created the token
+  maxAmountPaise: integer("max_amount_paise").notNull().default(200000), // ₹2000 ceiling
+  // pending_authorization | active | paused | revoked | expired | halted
+  status: text("status").notNull().default("pending_authorization"),
+  currentPeriodStart: timestamp("current_period_start", { withTimezone: true }),
+  currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
+  nextChargeAt: timestamp("next_charge_at", { withTimezone: true }),
+  tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
+  lastChargeAt: timestamp("last_charge_at", { withTimezone: true }),
+  lastChargeStatus: text("last_charge_status"),
+  failureCount: integer("failure_count").notNull().default(0),
+  couponCode: text("coupon_code"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
+// 10d. Scheduled Charges — the merchant-run billing loop for UPI Autopay.
+// Each row is one upcoming auto-debit (base plan + storage overage). Rows are
+// created ahead of the debit date so we can send the 24h pre-debit reminder,
+// then charged via payments.createRecurringPayment against the mandate token.
+export const scheduledCharges = pgTable("scheduled_charges", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  mandateId: uuid("mandate_id").references(() => autopayMandates.id, { onDelete: "cascade" }).notNull(),
+  razorpayTokenId: text("razorpay_token_id"),
+  plan: text("plan").notNull(),
+  kind: text("kind").notNull().default("renewal"), // renewal | storage_overage | combined
+  basePaise: integer("base_paise").notNull().default(0),
+  storagePaise: integer("storage_paise").notNull().default(0),
+  storageBlocks: integer("storage_blocks").notNull().default(0),
+  totalPaise: integer("total_paise").notNull(),
+  scheduledFor: timestamp("scheduled_for", { withTimezone: true }).notNull(),
+  reminderSentAt: timestamp("reminder_sent_at", { withTimezone: true }),
+  // scheduled | reminded | charging | success | failed | skipped | cancelled
+  status: text("status").notNull().default("scheduled"),
+  attemptCount: integer("attempt_count").notNull().default(0),
+  razorpayOrderId: text("razorpay_order_id"),
+  razorpayPaymentId: text("razorpay_payment_id"),
+  claimedAt: timestamp("claimed_at", { withTimezone: true }),
+  lastError: text("last_error"),
+  idempotencyKey: text("idempotency_key").unique(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
 // 11. Contact Submissions (portfolio enquiry form)
 export const contactSubmissions = pgTable("contact_submissions", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -306,16 +364,22 @@ export const leadReplies = pgTable("lead_replies", {
   sentAt: timestamp("sent_at", { withTimezone: true }),
 });
 
-// 13. Resume Parse Attempts (entitlement + abuse audit)
+// 13. Resume Parse Attempts (async parse queue + entitlement/abuse audit)
 export const resumeParseAttempts = pgTable("resume_parse_attempts", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: uuid("user_id").references(() => users.id).notNull(),
-  status: text("status").default("started").notNull(), // started | succeeded | failed | timed_out
+  status: text("status").default("started").notNull(), // queued | processing | succeeded | failed | timed_out
   fileHash: text("file_hash"),
   fileName: text("file_name"),
   fileSizeBytes: integer("file_size_bytes"),
   model: text("model"),
   errorMessage: text("error_message"),
+  errorCode: text("error_code"),
+  resumeText: text("resume_text"),
+  resumeUrl: text("resume_url"),
+  result: jsonb("result"),
+  claimedAt: timestamp("claimed_at", { withTimezone: true }),
+  retryCount: integer("retry_count").default(0).notNull(),
   consumedQuota: boolean("consumed_quota").default(false).notNull(),
   duringOnboarding: boolean("during_onboarding").default(true).notNull(),
   ipHash: text("ip_hash"),

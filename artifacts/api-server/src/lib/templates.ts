@@ -468,6 +468,47 @@ export const getRenewalReminderEmail = (
   });
 };
 
+export const getUpcomingDebitReminderEmail = (
+  userName: string,
+  amountLabel: string,
+  dateLabel: string,
+  planLabel: string,
+  billingUrl: string,
+  baseLabel = "",
+  storageLabel = "",
+  storageBlocks = 0,
+) => {
+  const breakdown =
+    storageLabel && storageBlocks > 0
+      ? `${bodyParagraph(
+          `Breakdown: <strong style="color:${INK};">${escapeHtml(baseLabel)}</strong> plan + <strong style="color:${INK};">${escapeHtml(
+            storageLabel,
+          )}</strong> for ${storageBlocks} extra storage block${storageBlocks === 1 ? "" : "s"}.`,
+        )}`
+      : "";
+  return wrapHtml({
+    title: "Upcoming auto-payment",
+    preheader: `${amountLabel} will be auto-debited on ${dateLabel}.`,
+    eyebrow: "Payment reminder",
+    headline: "Heads up — your Autopay debit is coming up.",
+    accent: "blue",
+    ctaLabel: "View billing",
+    ctaUrl: billingUrl,
+    bodyHtml: `
+      ${greeting(userName)}
+      ${bodyParagraph(
+        `This is a friendly reminder that <strong style="color:${INK};">${escapeHtml(
+          amountLabel,
+        )}</strong> for your ${escapeHtml(planLabel)} plan will be automatically debited on <strong style="color:${INK};">${escapeHtml(
+          dateLabel,
+        )}</strong> via UPI Autopay.`,
+      )}
+      ${breakdown}
+      ${bodyParagraph("No action is needed — the payment happens automatically. If you'd like to cancel or change your plan, you can manage Autopay any time before the debit date.")}
+    `,
+  });
+};
+
 export const getPaymentFailedEmail = (
   userName: string,
   billingUrl: string,

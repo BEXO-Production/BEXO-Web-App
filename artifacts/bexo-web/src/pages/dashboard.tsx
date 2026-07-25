@@ -154,6 +154,35 @@ type BillingStatus = {
   pricing?: any;
 };
 
+/** Shown whenever parsing could not complete. Never surface provider errors. */
+const RESUME_PARSE_BUSY_MESSAGE =
+  'We could not finish reading your resume right now. Please try again in about 10 minutes — your file is safe and nothing was lost.';
+
+/**
+ * Resume parsing runs as a background job; poll the attempt until it resolves so
+ * a busy queue never looks like a failure to the user.
+ */
+async function pollResumeParse(attemptId: string, token: string | null): Promise<any> {
+  const deadline = Date.now() + 4 * 60 * 1000;
+
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+
+    const res = await fetch(apiUrl(`/api/profile/resume/status/${attemptId}`), {
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    });
+    if (!res.ok) continue;
+
+    const body = await res.json().catch(() => null);
+    if (!body) continue;
+
+    if (body.status === 'succeeded') return body;
+    if (body.status === 'failed') throw new Error(RESUME_PARSE_BUSY_MESSAGE);
+  }
+
+  throw new Error(RESUME_PARSE_BUSY_MESSAGE);
+}
+
 export default function Dashboard() {
   const { data, updateData, setToken, refreshProfile, saveStatus } = useOnboarding();
   const { toast } = useToast();
@@ -1458,22 +1487,34 @@ export default function Dashboard() {
       const formData = new FormData();
       formData.append('resume', file);
       setResumeStatus('parsing');
-      const res = await fetch('/api/profile/resume', {
+      const res = await fetch(apiUrl('/api/profile/resume'), {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(payload.error || 'Resume parsing failed');
+        const actionable = ['UPGRADE_REQUIRED', 'LIMIT_REACHED', 'PDF_UNREADABLE', 'PARSE_IN_PROGRESS', 'PARSE_COOLDOWN'];
+        throw new Error(
+          actionable.includes(payload?.code) && payload?.error ? payload.error : RESUME_PARSE_BUSY_MESSAGE,
+        );
       }
+
+      // Parsing runs in the background — poll until the job resolves.
+      const finished = payload?.status === 'succeeded'
+        ? payload
+        : await pollResumeParse(String(payload?.attemptId || ''), token);
+
       setResumeStatus('success');
       updateData({
         resumeFileName: file.name,
         resumeFileSize: file.size,
-        resumeUrl: payload.resumeUrl || data.resumeUrl,
-        name: payload.data?.name || data.name,
+        resumeUrl: finished?.resumeUrl || payload?.resumeUrl || data.resumeUrl,
+        name: finished?.data?.name || data.name,
       });
+      if (typeof refreshProfile === 'function') {
+        await refreshProfile(true);
+      }
       toast({
         title: 'Resume Parsed',
         description: 'Your profile has been updated with information from your resume.',
@@ -1482,7 +1523,7 @@ export default function Dashboard() {
       setResumeStatus(data.resumeFileName ? 'success' : 'idle');
       toast({
         title: 'Resume parse failed',
-        description: err?.message || 'Unable to parse resume right now.',
+        description: err?.message || RESUME_PARSE_BUSY_MESSAGE,
         variant: 'destructive',
       });
     }
@@ -1519,16 +1560,35 @@ export default function Dashboard() {
     }
   };
 
-  // General Settings inputs
-  const [settingsName, setSettingsName] = useState(data.name || '');
+  // General Settings inputs (Personal Details)
+  const splitFullName = (full: string) => {
+    const parts = (full || '').trim().split(/\s+/).filter(Boolean);
+    return { first: parts[0] || '', last: parts.slice(1).join(' ') };
+  };
+  const initialNameParts = splitFullName(data.name || '');
+  const [settingsFirstName, setSettingsFirstName] = useState(data.firstName || initialNameParts.first);
+  const [settingsLastName, setSettingsLastName] = useState(data.lastName || initialNameParts.last);
   const [settingsPronouns, setSettingsPronouns] = useState(data.pronouns || '');
   const [settingsNationality, setSettingsNationality] = useState(data.nationality || '');
+  const [settingsDirty, setSettingsDirty] = useState(false);
+  const [isSettingsSaving, setIsSettingsSaving] = useState(false);
 
-  useEffect(() => {
-    setSettingsName(data.name || '');
+  const hydratePersonalSettings = useCallback(() => {
+    const parts = splitFullName(data.name || '');
+    setSettingsFirstName((data.firstName || parts.first || '').trim());
+    setSettingsLastName((data.lastName || parts.last || '').trim());
     setSettingsPronouns(data.pronouns || '');
     setSettingsNationality(data.nationality || '');
-  }, [data, currentView]);
+    setSettingsDirty(false);
+  }, [data.name, data.firstName, data.lastName, data.pronouns, data.nationality]);
+
+  // Hydrate when opening Personal Details — but never clobber in-progress edits
+  // (soft refresh every 15s was resetting pronouns mid-edit).
+  useEffect(() => {
+    if (currentView === 'settings' && settingsSubTab === 'profile' && !settingsDirty) {
+      hydratePersonalSettings();
+    }
+  }, [currentView, settingsSubTab, hydratePersonalSettings, settingsDirty]);
 
   const verifiedPhone = data.phone || '';
   const phoneIsVerified = !!(data.phoneVerifiedAt || verifiedPhone);
@@ -1544,16 +1604,48 @@ export default function Dashboard() {
   };
 
   const handleSaveSettings = async () => {
-    const ok = await updateData({
-      name: settingsName,
-      pronouns: settingsPronouns,
-      nationality: settingsNationality,
-    });
-    if (!ok) return;
-    toast({
-      title: 'Settings Saved',
-      description: 'Personal details updated successfully.',
-    });
+    const first = settingsFirstName.trim();
+    const last = settingsLastName.trim();
+    const pronouns = settingsPronouns.trim();
+    if (!first || !last) {
+      toast({
+        title: 'Name required',
+        description: 'Enter both first and last name.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    if (!pronouns) {
+      toast({
+        title: 'Pronouns required',
+        description: 'Select your pronouns before saving.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsSettingsSaving(true);
+    try {
+      const fullName = `${first} ${last}`.trim();
+      const ok = await updateData({
+        firstName: first,
+        lastName: last,
+        name: fullName,
+        pronouns,
+        nationality: settingsNationality.trim(),
+      });
+      if (!ok) return;
+      setSettingsDirty(false);
+      if (typeof refreshProfile === 'function') {
+        await refreshProfile(true);
+      }
+      toast({
+        title: 'Settings Saved',
+        description: 'Personal details updated successfully.',
+      });
+    } finally {
+      setIsSettingsSaving(false);
+    }
   };
 
   const [handleDraft, setHandleDraft] = useState(data.handle || '');
@@ -4752,45 +4844,69 @@ export default function Dashboard() {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-1.5">
-                        <Label className="text-xs font-semibold text-slate-500">Full Name</Label>
-                        <Input value={settingsName} onChange={e => setSettingsName(e.target.value)} />
+                        <Label className="text-xs font-semibold text-slate-500">First name</Label>
+                        <Input
+                          value={settingsFirstName}
+                          onChange={(e) => {
+                            setSettingsFirstName(e.target.value);
+                            setSettingsDirty(true);
+                          }}
+                          placeholder="First name"
+                        />
                       </div>
                       <div className="space-y-1.5">
-                        <Label className="text-xs font-semibold text-slate-500">Pronouns</Label>
-                        <select
-                          value={['She/Her', 'He/Him', 'They/Them', 'Prefer not to say'].includes(settingsPronouns) ? settingsPronouns : (settingsPronouns ? 'Custom' : '')}
-                          onChange={e => {
-                            const val = e.target.value;
-                            if (val === 'Custom') {
-                              setSettingsPronouns('');
-                            } else {
-                              setSettingsPronouns(val);
-                            }
+                        <Label className="text-xs font-semibold text-slate-500">Last name</Label>
+                        <Input
+                          value={settingsLastName}
+                          onChange={(e) => {
+                            setSettingsLastName(e.target.value);
+                            setSettingsDirty(true);
                           }}
-                          className="flex h-12 w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
-                        >
-                          <option value="" disabled>Select Pronouns</option>
-                          <option value="She/Her">She/Her</option>
-                          <option value="He/Him">He/Him</option>
-                          <option value="They/Them">They/Them</option>
-                          <option value="Prefer not to say">Prefer not to say</option>
-                          <option value="Custom">Custom (Type manually)</option>
-                        </select>
-                        {(!['She/Her', 'He/Him', 'They/Them', 'Prefer not to say'].includes(settingsPronouns) || settingsPronouns === '') && (
-                          <Input
-                            placeholder="Enter custom pronouns"
-                            value={settingsPronouns}
-                            onChange={e => setSettingsPronouns(e.target.value)}
-                            className="mt-2"
-                          />
-                        )}
+                          placeholder="Last name"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-xs font-semibold text-slate-500">Pronouns</Label>
+                      <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
+                        {['She/Her', 'He/Him', 'They/Them', 'Prefer not to say'].map((option) => (
+                          <button
+                            key={option}
+                            type="button"
+                            onClick={() => {
+                              setSettingsPronouns(option);
+                              setSettingsDirty(true);
+                            }}
+                            className={cn(
+                              'flex items-center justify-center sm:justify-start gap-1.5 px-3 sm:px-4 py-2 rounded-full border text-xs transition-all font-medium',
+                              settingsPronouns === option
+                                ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
+                                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300',
+                            )}
+                          >
+                            <CheckCircle2
+                              className={cn(
+                                'w-3.5 h-3.5 shrink-0',
+                                settingsPronouns === option ? 'text-white' : 'text-slate-300',
+                              )}
+                            />
+                            {option}
+                          </button>
+                        ))}
                       </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-1.5">
                         <Label className="text-xs font-semibold text-slate-500">Nationality</Label>
-                        <Input value={settingsNationality} onChange={e => setSettingsNationality(e.target.value)} />
+                        <Input
+                          value={settingsNationality}
+                          onChange={(e) => {
+                            setSettingsNationality(e.target.value);
+                            setSettingsDirty(true);
+                          }}
+                        />
                       </div>
                       <div className="space-y-1.5">
                         <div className="flex items-center justify-between gap-2">
@@ -4857,8 +4973,19 @@ export default function Dashboard() {
                       </p>
                     </div>
 
-                    <Button onClick={handleSaveSettings} className="h-10 text-xs px-4">
-                      Save Settings
+                    <Button
+                      onClick={handleSaveSettings}
+                      disabled={isSettingsSaving || !settingsDirty}
+                      className="h-10 text-xs px-4"
+                    >
+                      {isSettingsSaving ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+                          Saving…
+                        </>
+                      ) : (
+                        'Save Settings'
+                      )}
                     </Button>
                   </Card>
 

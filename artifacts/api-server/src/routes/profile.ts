@@ -21,7 +21,13 @@ import multer from "multer";
 import { createRequire } from "module";
 import { uploadToR2, deleteFromR2 } from "../lib/r2";
 import { generateATSResume } from "../lib/resumeEngine";
-import { executeResilientResumeParsing } from "../lib/aiResilienceEngine";
+import { getOrCreateProfile } from "../lib/profileStore";
+import {
+  PARSE_BUSY_MESSAGE,
+  getParseCooldownRemainingMs,
+  kickResumeParseQueue,
+  runResumeParseWorkerTick,
+} from "../lib/resumeParseQueue";
 import { resolveSubscriptionState, syncStorageQuota, recomputeUserQuota } from "../lib/subscriptions";
 import { resolveSiteAccess } from "../lib/siteAccess";
 import {
@@ -94,33 +100,8 @@ async function loadSkillEntries(profileId: string): Promise<unknown[]> {
   return loadSectionEntries(profileId, "skills");
 }
 
-// Helper to get or create profile
-async function getOrCreateProfile(userId: string): Promise<typeof profiles.$inferSelect> {
-  let profileList = await db.select().from(profiles).where(eq(profiles.userId, userId)).limit(1);
-  let profile = profileList[0];
-
-  if (!profile) {
-    try {
-      const inserted = await db.insert(profiles).values({
-        userId,
-        headline: "",
-        careerGoal: "",
-        bio: "",
-        completionPct: 0
-      }).returning();
-      profile = inserted[0];
-      logger.info({ userId, profileId: profile.id }, "Created new empty profile");
-    } catch (err: any) {
-      profileList = await db.select().from(profiles).where(eq(profiles.userId, userId)).limit(1);
-      if (profileList[0]) {
-        profile = profileList[0];
-      } else {
-        throw err;
-      }
-    }
-  }
-  return profile;
-}
+// Profile row helper lives in lib/profileStore so the background resume parse
+// worker can reuse it without importing this route module.
 
 /**
  * Replace the user's uploaded resume: upload the new file, remove the old
@@ -931,94 +912,6 @@ router.patch("/sections/:type", requireAuth, async (req: AuthenticatedRequest, r
     res.status(500).json({ error: "Internal server error" });
   }
 });
-function normalizeParsedData(raw: any): any {
-  const data = raw || {};
-  const res: any = {
-    name: typeof data.name === "string" ? data.name : "",
-    headline: typeof data.headline === "string" ? data.headline : "",
-    bio: typeof data.bio === "string" ? data.bio : "",
-    email: typeof data.email === "string" ? data.email : "",
-    phone: typeof data.phone === "string" ? data.phone : "",
-    pronouns: typeof data.pronouns === "string" ? data.pronouns : "He/Him",
-    links: [],
-    education: [],
-    experience: [],
-    projects: [],
-    certificates: [],
-    achievements: [],
-    skills: [],
-  };
-
-  // Links normalization
-  if (Array.isArray(data.links)) {
-    res.links = data.links.map((l: any) => {
-      if (typeof l === "string") return { name: "Link", url: l };
-      if (l && typeof l === "object") {
-        return { name: String(l.name || l.title || "Link"), url: String(l.url || l.href || "") };
-      }
-      return null;
-    }).filter(Boolean);
-  } else if (data.links && typeof data.links === "object") {
-    res.links = Object.entries(data.links).map(([name, url]) => ({
-      name,
-      url: typeof url === "string" ? url : ""
-    }));
-  }
-
-  // Education normalization
-  if (Array.isArray(data.education)) {
-    res.education = data.education.filter((edu: any) => edu && typeof edu === "object");
-  } else if (data.education && typeof data.education === "object") {
-    res.education = [data.education];
-  }
-
-  // Experience normalization
-  if (Array.isArray(data.experience)) {
-    res.experience = data.experience.filter((exp: any) => exp && typeof exp === "object");
-  } else if (data.experience && typeof data.experience === "object") {
-    res.experience = [data.experience];
-  }
-
-  // Projects normalization
-  if (Array.isArray(data.projects)) {
-    res.projects = data.projects.filter((proj: any) => proj && typeof proj === "object");
-  } else if (data.projects && typeof data.projects === "object") {
-    res.projects = [data.projects];
-  }
-
-  // Certificates normalization
-  if (Array.isArray(data.certificates)) {
-    res.certificates = data.certificates.filter((cert: any) => cert && typeof cert === "object");
-  } else if (data.certificates && typeof data.certificates === "object") {
-    res.certificates = [data.certificates];
-  }
-
-  // Achievements normalization
-  if (Array.isArray(data.achievements)) {
-    res.achievements = data.achievements.filter((ach: any) => ach && typeof ach === "object");
-  } else if (data.achievements && typeof data.achievements === "object") {
-    res.achievements = [data.achievements];
-  }
-
-  // Skills — AI list + tech strings from projects as fallback
-  const skillSeed: unknown[] = Array.isArray(data.skills) ? [...data.skills] : [];
-  if (typeof data.skills === "string" && data.skills.trim()) {
-    skillSeed.push(...data.skills.split(/[,|;/]/).map((s: string) => s.trim()).filter(Boolean));
-  }
-  for (const proj of res.projects) {
-    const tech = typeof proj.tech === "string" ? proj.tech : typeof proj.techStack === "string" ? proj.techStack : "";
-    if (tech) {
-      for (const part of tech.split(/[,|;/]/)) {
-        const t = part.trim();
-        if (t) skillSeed.push({ name: t, category: "technical" });
-      }
-    }
-  }
-  res.skills = normalizeSkills(skillSeed);
-
-  return res;
-}
-
 // POST /profile/resume
 router.post("/resume", requireAuth, upload.single("resume"), async (req: AuthenticatedRequest, res): Promise<void> => {
   const userId = req.user!.id;
@@ -1045,7 +938,6 @@ router.post("/resume", requireAuth, upload.single("resume"), async (req: Authent
     return;
   }
 
-  const now = new Date();
   const duringOnboarding = !user.onboardingCompletedAt;
   const fileHash = crypto.createHash("sha256").update(file.buffer).digest("hex");
   const ipHash = crypto
@@ -1056,12 +948,33 @@ router.post("/resume", requireAuth, upload.single("resume"), async (req: Authent
 
   // One in-flight parse per user
   const [inflight] = await db
-    .select()
+    .select({ id: resumeParseAttempts.id })
     .from(resumeParseAttempts)
-    .where(and(eq(resumeParseAttempts.userId, userId), eq(resumeParseAttempts.status, "started")))
+    .where(
+      and(
+        eq(resumeParseAttempts.userId, userId),
+        inArray(resumeParseAttempts.status, ["queued", "processing"]),
+      ),
+    )
     .limit(1);
   if (inflight) {
-    res.status(429).json({ error: "A resume parse is already in progress. Please wait for it to finish." });
+    res.status(429).json({
+      error: "We are still reading your last resume. Give it a moment and try again.",
+      code: "PARSE_IN_PROGRESS",
+      attemptId: inflight.id,
+    });
+    return;
+  }
+
+  // Every AI provider was down recently — hold the user off instead of burning
+  // another attempt against the same outage.
+  const cooldownMs = await getParseCooldownRemainingMs(userId);
+  if (cooldownMs > 0) {
+    res.status(429).json({
+      error: PARSE_BUSY_MESSAGE,
+      code: "PARSE_COOLDOWN",
+      retryAfterMs: cooldownMs,
+    });
     return;
   }
 
@@ -1120,300 +1033,142 @@ router.post("/resume", requireAuth, upload.single("resume"), async (req: Authent
     }
   }
 
+  // Storage quota guard (same spirit as /upload)
+  const quota = subscriptionState.storageQuotaBytes;
+  const currentUsed = Number(user.storageUsedBytes) || 0;
+  if (user.onboardingCompletedAt && currentUsed + file.size > quota) {
+    res.status(403).json({ error: "Storage limit exceeded. Free up space or upgrade your plan." });
+    return;
+  }
+
+  let resumeUrl = "";
+  let resumeText = "";
+
+  try {
+    await markOnboardingActivity(userId);
+
+    try {
+      resumeUrl = await replaceUploadedResume(userId, user, file);
+    } catch (r2Err) {
+      logger.error({ r2Err, userId }, "Failed to upload resume to R2");
+    }
+
+    const parsedPdf = await pdf(file.buffer);
+    resumeText = parsedPdf.text || "";
+  } catch (err: any) {
+    logger.error({ err: err?.message || err, userId }, "Failed to read uploaded resume PDF");
+    res.status(400).json({
+      error: "We could not read that PDF. Please upload a text-based PDF (not a scan or photo).",
+      code: "PDF_UNREADABLE",
+    });
+    return;
+  }
+
+  if (!resumeText.trim()) {
+    res.status(400).json({
+      error: "We could not read any text in that PDF. Please upload a text-based PDF (not a scan or photo).",
+      code: "PDF_UNREADABLE",
+    });
+    return;
+  }
+
+  // Identical file already parsed successfully — replay it instead of spending
+  // another AI call or another credit.
+  if (cached?.result) {
+    res.json({
+      success: true,
+      status: "succeeded",
+      attemptId: cached.id,
+      data: cached.result,
+      resumeUrl: resumeUrl || undefined,
+      cached: true,
+    });
+    return;
+  }
+
   const [attempt] = await db
     .insert(resumeParseAttempts)
     .values({
       userId,
-      status: "started",
+      status: "queued",
       fileHash,
       fileName: file.originalname,
       fileSizeBytes: file.size,
       duringOnboarding,
       ipHash,
+      resumeText,
+      resumeUrl: resumeUrl || null,
     })
     .returning();
 
-  // Upload resume to R2 inside a wrapper variable
-  let resumeUrl = "";
+  logger.info({ userId, attemptId: attempt.id, fileName: file.originalname }, "Resume parse job queued");
+
+  // Start immediately when there is capacity; the cron tick is the safety net.
+  kickResumeParseQueue();
+
+  res.status(202).json({
+    success: true,
+    status: "queued",
+    attemptId: attempt.id,
+    resumeUrl: resumeUrl || undefined,
+  });
+});
+
+/** Poll target for the async parse. Owner-scoped; never leaks provider errors. */
+router.get("/resume/status/:attemptId", requireAuth, async (req: AuthenticatedRequest, res): Promise<void> => {
+  const userId = req.user!.id;
+  const attemptId = String(req.params.attemptId || "");
+
+  const [attempt] = await db
+    .select()
+    .from(resumeParseAttempts)
+    .where(and(eq(resumeParseAttempts.id, attemptId), eq(resumeParseAttempts.userId, userId)))
+    .limit(1);
+
+  if (!attempt) {
+    res.status(404).json({ error: "Parse job not found" });
+    return;
+  }
+
+  if (attempt.status === "succeeded") {
+    res.json({
+      status: "succeeded",
+      data: attempt.result || null,
+      resumeUrl: attempt.resumeUrl || undefined,
+    });
+    return;
+  }
+
+  if (attempt.status === "failed" || attempt.status === "timed_out") {
+    const retryAfterMs = await getParseCooldownRemainingMs(userId);
+    res.json({
+      status: "failed",
+      error: PARSE_BUSY_MESSAGE,
+      retryAfterMs,
+    });
+    return;
+  }
+
+  // A queued job may be waiting on the global cap — nudge the local pool.
+  kickResumeParseQueue();
+  res.json({ status: attempt.status === "processing" ? "processing" : "queued" });
+});
+
+/** Cron: reclaim orphaned jobs and drain the resume parse queue. */
+router.post("/jobs/resume-parse-worker", async (req, res): Promise<void> => {
+  const secret = process.env.CRON_SECRET || process.env.INTERNAL_JOB_SECRET;
+  const provided = req.get("x-cron-secret") || req.query.secret;
+  if (!secret || provided !== secret) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
 
   try {
-    logger.info({ userId, fileName: file.originalname, attemptId: attempt.id }, "Starting resume processing");
-    await markOnboardingActivity(userId);
-
-    // Storage quota guard (same spirit as /upload)
-    const quota = subscriptionState.storageQuotaBytes;
-    const currentUsed = Number(user.storageUsedBytes) || 0;
-    if (user.onboardingCompletedAt && currentUsed + file.size > quota) {
-      await db
-        .update(resumeParseAttempts)
-        .set({ status: "failed", errorMessage: "Storage quota exceeded", completedAt: new Date() })
-        .where(eq(resumeParseAttempts.id, attempt.id));
-      res.status(403).json({ error: "Storage limit exceeded. Free up space or upgrade your plan." });
-      return;
-    }
-
-    try {
-      resumeUrl = await replaceUploadedResume(userId, user, file);
-      logger.info({ userId, resumeUrl }, "Successfully uploaded resume to R2 and updated user record");
-    } catch (r2Err) {
-      logger.error({ r2Err, userId }, "Failed to upload resume to R2");
-    }
-
-    // 1. Extract text from PDF
-    const parsedPdf = await pdf(file.buffer);
-    const resumeText = parsedPdf.text || "";
-
-    if (!resumeText.trim()) {
-      res.status(400).json({ error: "Could not extract any text from the PDF resume" });
-      return;
-    }
-
-    // 2. Parse text with resilient AI engine (OpenRouter -> Grok -> Gemini -> Offline Rule Engine)
-    const { data: rawParsed, winningProvider } = await executeResilientResumeParsing(resumeText);
-    const parsedData = normalizeParsedData(rawParsed);
-    logger.info({ userId, winningProvider }, "Resume parsing completed via AI Resilience Engine");
-
-    const profile = await getOrCreateProfile(userId);
-    
-    // Save user name and email
-    if (parsedData.name) {
-      try {
-        await db.update(users).set({ 
-          name: parsedData.name, 
-          email: parsedData.email || undefined 
-        }).where(eq(users.id, userId));
-      } catch (dbErr: any) {
-        logger.warn({ err: dbErr.message, userId, email: parsedData.email }, "Failed to update user name/email, trying name only");
-        try {
-          await db.update(users).set({ 
-            name: parsedData.name 
-          }).where(eq(users.id, userId));
-        } catch (nameErr: any) {
-          logger.error({ err: nameErr.message, userId }, "Failed to update name only");
-        }
-      }
-    }
-
-    await db.update(profiles).set({
-      headline: parsedData.headline || "",
-      bio: parsedData.bio || ""
-    }).where(eq(profiles.id, profile.id));
-
-    // Construct contactData
-    const contactLinks = parsedData.links || [];
-    const linkedin = contactLinks.find((l: any) => l.name?.toLowerCase().includes("linkedin"))?.url || "";
-    const github = contactLinks.find((l: any) => l.name?.toLowerCase().includes("github"))?.url || "";
-    const portfolio = contactLinks.find((l: any) => !l.name?.toLowerCase().includes("linkedin") && !l.name?.toLowerCase().includes("github"))?.url || "";
-
-    const contactData = {
-      email: parsedData.email || "",
-      phone: parsedData.phone || "",
-      linkedin,
-      github,
-      portfolio,
-      customLinks: contactLinks
-    };
-
-    const defaultAssets = { mode: "images", images: [], pdfs: [], links: [] };
-
-    const latestEdu = parsedData.education && parsedData.education.length > 0 ? `${parsedData.education[0].degree} at ${parsedData.education[0].institution}` : '';
-    const latestExp = parsedData.experience && parsedData.experience.length > 0 ? `${parsedData.experience[0].role} at ${parsedData.experience[0].company}` : '';
-    const currentStatus = latestExp || latestEdu || '';
-
-    const sectionsToSave = [
-      { type: "about", entries: [{ id: "1", title: parsedData.headline || "Software Engineer Intern", description: parsedData.bio || "", currentStatus }] },
-      {
-        type: "education",
-        entries: (parsedData.education || []).map((edu: any, idx: number) => {
-          let startYear = "";
-          let endYear = "";
-          const yr = edu.year || "";
-          if (yr.includes("-")) {
-            const parts = yr.split("-");
-            startYear = parts[0]?.trim() || "";
-            endYear = parts[1]?.trim() || "";
-          } else {
-            endYear = yr;
-          }
-          return {
-            id: edu.id || String(idx + 1),
-            institution: edu.institution || "",
-            degree: edu.degree || "",
-            startYear,
-            endYear,
-            year: yr,
-            grade: edu.grade || ""
-          };
-        })
-      },
-      {
-        type: "experience",
-        entries: (parsedData.experience || []).map((exp: any, idx: number) => {
-          let startYear = "";
-          let endYear = "";
-          const dur = exp.duration || "";
-          if (dur.includes("-")) {
-            const parts = dur.split("-");
-            startYear = parts[0]?.trim() || "";
-            endYear = parts[1]?.trim() || "";
-          } else {
-            endYear = dur;
-          }
-          return {
-            id: exp.id || String(idx + 1),
-            company: exp.company || "",
-            role: exp.role || "",
-            startYear,
-            endYear,
-            duration: dur,
-            description: exp.description || ""
-          };
-        })
-      },
-      {
-        type: "projects",
-        entries: (parsedData.projects || []).map((proj: any, idx: number) => ({
-          id: proj.id || String(idx + 1),
-          title: proj.title || "",
-          description: proj.description || "",
-          tech: proj.tech || "",
-          link: proj.link || "",
-          assets: proj.assets || defaultAssets
-        }))
-      },
-      {
-        type: "certificates",
-        entries: (parsedData.certificates || []).map((cert: any, idx: number) => ({
-          id: cert.id || String(idx + 1),
-          title: cert.title || "",
-          issuer: cert.issuer || "",
-          date: cert.date || "",
-          assets: cert.assets || defaultAssets
-        }))
-      },
-      {
-        type: "achievements",
-        entries: (parsedData.achievements || []).map((ach: any, idx: number) => ({
-          id: ach.id || String(idx + 1),
-          title: ach.title || "",
-          organization: ach.organization || "",
-          date: ach.date || "",
-          assets: ach.assets || defaultAssets
-        }))
-      },
-      {
-        type: "skills",
-        entries: normalizeSkills(parsedData.skills || []).slice(0, MAX_SKILLS),
-      },
-      { type: "contact", entries: contactData }
-    ];
-
-    // Fetch existing profile sections to merge data
-    const existingSections = await db.select().from(profileSections).where(eq(profileSections.profileId, profile.id));
-
-    for (const sec of sectionsToSave) {
-      const existingSec = existingSections.find(s => s.type === sec.type);
-      let mergedEntries: any = sec.entries;
-
-      if (existingSec && Array.isArray(existingSec.entries)) {
-        const existingEntries = existingSec.entries;
-
-        if (sec.type === "about") {
-          // Merge "about" fields, preserving existing if filled
-          const existingAbout = existingEntries[0] || {};
-          const newAbout = sec.entries[0] || {};
-          mergedEntries = [{
-            id: "1",
-            title: existingAbout.title || newAbout.title || "",
-            description: existingAbout.description || newAbout.description || "",
-            currentStatus: existingAbout.currentStatus || newAbout.currentStatus || ""
-          }];
-        } else if (sec.type === "contact") {
-          // Merge "contact" fields
-          const existingContact = existingEntries as any;
-          const newContact = sec.entries as any;
-          mergedEntries = {
-            email: existingContact.email || newContact.email || "",
-            phone: existingContact.phone || newContact.phone || "",
-            linkedin: existingContact.linkedin || newContact.linkedin || "",
-            github: existingContact.github || newContact.github || "",
-            portfolio: existingContact.portfolio || newContact.portfolio || "",
-            customLinks: Array.isArray(newContact.customLinks) ? newContact.customLinks : (Array.isArray(existingContact.customLinks) ? existingContact.customLinks : [])
-          };
-        } else {
-          // For list-based sections (education, experience, projects, certificates, achievements)
-          // Overwrite existing data with newly parsed data, removing old data completely
-          const incomingEntries = sec.entries || [];
-          let nextIdIdx = 1;
-          const updatedIncoming = incomingEntries.map((item: any) => ({
-            ...item,
-            id: String(nextIdIdx++)
-          }));
-
-          mergedEntries = updatedIncoming;
-        }
-      }
-
-      await db.insert(profileSections).values({
-        profileId: profile.id,
-        type: sec.type,
-        entries: mergedEntries,
-        reviewedAt: new Date()
-      }).onConflictDoUpdate({
-        target: [profileSections.profileId, profileSections.type],
-        set: { entries: mergedEntries, reviewedAt: new Date() }
-      });
-    }
-
-    // Only successful parses consume entitlement
-    if (duringOnboarding) {
-      await db
-        .update(users)
-        .set({
-          onboardingSuccessfulParses: sql`coalesce(${users.onboardingSuccessfulParses}, 0) + 1`,
-          lastOnboardingActivityAt: new Date(),
-        })
-        .where(eq(users.id, userId));
-    } else {
-      await db
-        .update(users)
-        .set({
-          resumeParsesThisMonth: sql`coalesce(${users.resumeParsesThisMonth}, 0) + 1`,
-        })
-        .where(eq(users.id, userId));
-    }
-
-    await db
-      .update(resumeParseAttempts)
-      .set({
-        status: "succeeded",
-        consumedQuota: true,
-        completedAt: new Date(),
-        model: "openrouter",
-      })
-      .where(eq(resumeParseAttempts.id, attempt.id));
-
-    res.json({
-      success: true,
-      message: "Resume processed and profile updated successfully",
-      data: parsedData,
-      resumeUrl: resumeUrl || undefined,
-      cached: false,
-    });
+    const result = await runResumeParseWorkerTick();
+    res.json(result);
   } catch (err: any) {
-    logger.error({ err, userId }, "Error processing resume");
-    if (attempt?.id) {
-      const timedOut = String(err?.message || "").toLowerCase().includes("timed out");
-      await db
-        .update(resumeParseAttempts)
-        .set({
-          status: timedOut ? "timed_out" : "failed",
-          errorMessage: err?.message || "Failed to process resume",
-          completedAt: new Date(),
-        })
-        .where(eq(resumeParseAttempts.id, attempt.id));
-    }
-    res.status(500).json({ error: err.message || "Failed to process resume" });
+    logger.error({ err: err?.message || err }, "Resume parse worker tick failed");
+    res.status(500).json({ error: "Job failed" });
   }
 });
 

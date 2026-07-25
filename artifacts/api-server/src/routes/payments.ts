@@ -193,6 +193,91 @@ async function scheduleBootstrapAutopay(opts: {
   return { subscriptionId: subscription.id as string, planId };
 }
 
+/**
+ * After a coupon subscription is verified, refund the gap between what Razorpay
+ * charged (full plan) and the coupon net due. The customer only keeps the
+ * discounted amount, but Autopay was set in the SAME Checkout as the charge —
+ * never open a second mandate window for coupons.
+ */
+async function refundCouponDiscountIfNeeded(opts: {
+  userId: string;
+  paymentId: string;
+  plan: PaidPlan;
+  couponCode: string | null | undefined;
+  razorpayPaymentId: string;
+  quotedNetPaise: number;
+}): Promise<{ refundedPaise: number; refundId: string | null }> {
+  if (!razorpay || !opts.couponCode || opts.razorpayPaymentId.startsWith("mock_")) {
+    return { refundedPaise: 0, refundId: null };
+  }
+
+  let chargedPaise = 0;
+  let alreadyRefunded = 0;
+  try {
+    const captured: any = await razorpay.payments.fetch(opts.razorpayPaymentId);
+    chargedPaise = Number(captured?.amount) || 0;
+    alreadyRefunded = Number(captured?.amount_refunded) || 0;
+  } catch (err) {
+    logger.warn({ err, paymentId: opts.paymentId }, "Could not fetch payment for coupon refund");
+    return { refundedPaise: 0, refundId: null };
+  }
+
+  const targetRefund = Math.max(0, chargedPaise - Math.max(0, opts.quotedNetPaise));
+  const refundPaise = Math.max(0, targetRefund - alreadyRefunded);
+  if (refundPaise < 100) {
+    // Already refunded, or below Razorpay's ₹1 minimum.
+    return { refundedPaise: alreadyRefunded > 0 ? targetRefund : 0, refundId: null };
+  }
+
+  try {
+    const refund: any = await razorpay.payments.refund(opts.razorpayPaymentId, {
+      amount: refundPaise,
+      notes: {
+        reason: "coupon_first_invoice_discount",
+        coupon: opts.couponCode,
+        userId: opts.userId,
+        quotedNetPaise: String(opts.quotedNetPaise),
+      },
+    } as any);
+    const refundId = typeof refund?.id === "string" ? refund.id : null;
+    await recordLedgerEvent({
+      userId: opts.userId,
+      paymentId: opts.paymentId,
+      eventType: "payment_refunded",
+      amountPaise: refundPaise,
+      plan: opts.plan,
+      razorpayPaymentId: opts.razorpayPaymentId,
+      razorpayRefundId: refundId,
+      idempotencyKey: `coupon_discount_refund:${opts.paymentId}`,
+      metadata: {
+        reason: "coupon_first_invoice_discount",
+        coupon: opts.couponCode,
+        chargedPaise,
+        quotedNetPaise: opts.quotedNetPaise,
+      },
+    }).catch(() => undefined);
+    logger.info(
+      {
+        userId: opts.userId,
+        paymentId: opts.paymentId,
+        coupon: opts.couponCode,
+        chargedPaise,
+        quotedNetPaise: opts.quotedNetPaise,
+        refundPaise,
+        refundId,
+      },
+      "Refunded coupon discount after single-checkout Autopay",
+    );
+    return { refundedPaise: refundPaise, refundId };
+  } catch (err) {
+    logger.error(
+      { err, paymentId: opts.paymentId, refundPaise },
+      "Coupon discount refund failed — support must reconcile",
+    );
+    return { refundedPaise: 0, refundId: null };
+  }
+}
+
 const parsePlanParam = (value: unknown): PaidPlan | null => {
   const normalized = normalizePlanId(typeof value === "string" ? value : null);
   return normalized && normalized !== "free" ? (normalized as PaidPlan) : null;
@@ -682,6 +767,31 @@ router.post("/create-subscription", requireAuth, async (req: any, res: any) => {
       });
     }
 
+    // UPI Autopay (token model): when enabled, authorize a single ₹2000 mandate
+    // and charge the plan in ONE Checkout. Storage overage later rides the same
+    // mandate with no re-auth. Falls back to Subscriptions when the flag is off.
+    {
+      const { isUpiAutopayEnabled, isUpiAutopayPlan, createAuthorizationCheckout } = await import(
+        "../lib/upiAutopay"
+      );
+      if (isUpiAutopayEnabled() && isUpiAutopayPlan(plan)) {
+        if (couponCode) {
+          const couponRow = await findActiveCoupon(couponCode);
+          if (!couponRow) {
+            return res.status(400).json({ error: "This coupon is invalid or expired." });
+          }
+          if (await hasUserRedeemedCoupon(userId, couponRow.id)) {
+            return res.status(409).json({
+              error: "You have already used this coupon on this account.",
+              code: "COUPON_ALREADY_USED",
+            });
+          }
+        }
+        const checkout = await createAuthorizationCheckout({ userId, plan, couponCode });
+        return res.json(checkout);
+      }
+    }
+
     const quote = await buildCheckoutQuote(plan, couponCode);
     const listPricing = quote.list;
     const firstPricing = quote.first;
@@ -708,63 +818,16 @@ router.post("/create-subscription", requireAuth, async (req: any, res: any) => {
       }
       const rzpPlanId = planReady.planId;
 
-      const planRow = await getPlanById(plan);
-      void planRow; // reserved for future display metadata on bootstrap receipts
-      // Coupon / discounted first invoice: ALWAYS charge coupon via order now,
-      // then Autopay full list price next cycle. Do not use Razorpay Offers or
-      // an immediate subscription charge (that double-billed testers).
-      if (firstPricing.totalPaise < fullPlanPaise) {
-        logger.info(
-          { plan, couponCode, firstPaise: amountInPaise, renewalPaise: fullPlanPaise },
-          "Discounted first invoice — subscription_bootstrap (coupon now, full price next cycle)",
-        );
+      // ONE Checkout for every plan purchase (coupon or not).
+      // Razorpay Plans are fixed at list price, so Checkout charges the plan
+      // amount and authorizes Autopay in the same window. When a coupon applies
+      // we immediately refund the discount gap after verify — the customer nets
+      // the coupon price, with no second "set up Autopay" debit (that caused the
+      // ₹1.18 + ₹5 double charge for BEXODEV testers).
+      const couponCodeNormalized = firstPricing.coupon || null;
+      const quotedNetPaise = firstPricing.totalPaise;
+      const hasCouponDiscount = quotedNetPaise < fullPlanPaise && !!couponCodeNormalized;
 
-        const orderOptions = {
-          amount: amountInPaise,
-          currency: "INR",
-          receipt: `bexo_boot_${userId.slice(0, 8)}_${Date.now()}`.slice(0, 40),
-          notes: {
-            userId,
-            plan,
-            coupon: firstPricing.coupon || "",
-            mode: "subscription_bootstrap",
-            renewalPaise: String(fullPlanPaise),
-            upgradeFrom: upgrading && current.plan ? current.plan : "",
-            previousSubscriptionId: upgrading ? current.subscription?.razorpaySubscriptionId || "" : "",
-          },
-        };
-        const razorpayOrder = await razorpay.orders.create(orderOptions);
-        await db.insert(payments).values({
-          userId,
-          razorpayOrderId: razorpayOrder.id,
-          amount: Number(razorpayOrder.amount),
-          status: "pending",
-          plan,
-          kind: "subscription_bootstrap",
-          couponCode: firstPricing.coupon || null,
-        });
-
-        return res.json({
-          mode: "subscription_bootstrap",
-          orderId: razorpayOrder.id,
-          amount: Number(razorpayOrder.amount),
-          currency: razorpayOrder.currency || "INR",
-          key: razorpayKeyId,
-          mock: false,
-          pricing: firstPricing,
-          list: listPricing,
-          first: firstPricing,
-          discountApplies: quote.discountApplies,
-          renewalLabel: quote.renewalLabel,
-          message: quote.message,
-          offerApplied: false,
-          plan,
-          renewalMode: current.renewalMode,
-          canBuy: current.canBuy,
-        });
-      }
-
-      // Full-price Autopay (no coupon): charge plan amount on first subscription invoice.
       const totalCount = planBillingPeriod(plan) === "monthly" ? 100 : 10;
       const subscriptionPayload: Record<string, unknown> = {
         plan_id: rzpPlanId,
@@ -774,11 +837,13 @@ router.post("/create-subscription", requireAuth, async (req: any, res: any) => {
         notes: {
           userId,
           plan,
-          coupon: "",
-          upgradeFrom: upgrading && current.plan ? current.plan : "",
-          previousSubscriptionId: upgrading ? current.subscription?.razorpaySubscriptionId || "" : "",
+          coupon: couponCodeNormalized || "",
+          quotedNetPaise: String(quotedNetPaise),
           firstInvoicePaise: String(fullPlanPaise),
           renewalPaise: String(fullPlanPaise),
+          couponDiscount: hasCouponDiscount ? "1" : "0",
+          upgradeFrom: upgrading && current.plan ? current.plan : "",
+          previousSubscriptionId: upgrading ? current.subscription?.razorpaySubscriptionId || "" : "",
         },
       };
 
@@ -787,12 +852,27 @@ router.post("/create-subscription", requireAuth, async (req: any, res: any) => {
       await db.insert(payments).values({
         userId,
         razorpaySubscriptionId: subscription.id,
-        amount: fullPlanPaise,
+        // NET amount the customer should keep after any coupon refund.
+        // Razorpay still charges fullPlanPaise; verify-subscription refunds the gap.
+        amount: quotedNetPaise,
         status: "pending",
         plan,
         kind: "subscription",
-        couponCode: null,
+        couponCode: couponCodeNormalized,
       });
+
+      if (hasCouponDiscount) {
+        logger.info(
+          {
+            plan,
+            couponCode: couponCodeNormalized,
+            quotedNetPaise,
+            chargedPaise: fullPlanPaise,
+            subscriptionId: subscription.id,
+          },
+          "Coupon checkout: single subscription Checkout (full charge + instant discount refund)",
+        );
+      }
 
       return res.json({
         subscriptionId: subscription.id,
@@ -800,13 +880,17 @@ router.post("/create-subscription", requireAuth, async (req: any, res: any) => {
         currency: "INR",
         key: razorpayKeyId,
         mock: false,
-        pricing: listPricing,
+        pricing: firstPricing,
         list: listPricing,
-        first: listPricing,
+        first: firstPricing,
         discountApplies: quote.discountApplies,
         renewalLabel: quote.renewalLabel,
-        message: quote.message,
+        message: hasCouponDiscount
+          ? `One payment sets up Autopay. Checkout shows the plan price; your coupon savings (net ₹${(quotedNetPaise / 100).toFixed(2)}) are refunded to the same account within minutes.`
+          : quote.message,
         offerApplied: false,
+        couponRefund: hasCouponDiscount,
+        quotedNetPaise,
         plan,
         renewalMode: current.renewalMode,
         canBuy: current.canBuy,
@@ -940,6 +1024,18 @@ router.post("/verify-subscription", requireAuth, async (req: any, res: any) => {
       payment.couponCode ||
       undefined;
     await recordCouponRedemption(couponCode, { userId, paymentId: payment.id });
+
+    // Coupon: Razorpay charged full plan in this same Checkout; refund the gap
+    // so the customer nets the quoted coupon price. Autopay is already live.
+    const couponRefund = await refundCouponDiscountIfNeeded({
+      userId,
+      paymentId: payment.id,
+      plan,
+      couponCode,
+      razorpayPaymentId: razorpay_payment_id,
+      quotedNetPaise: Number(payment.amount) || 0,
+    });
+
     await generateAndStoreInvoice(payment.id);
     await sendBillingReceipts(userId, plan, payment.amount / 100, razorpay_payment_id);
     await markOnboardingComplete(userId).catch((err) =>
@@ -948,7 +1044,9 @@ router.post("/verify-subscription", requireAuth, async (req: any, res: any) => {
 
     res.json({
       success: true,
-      message: "Subscription activated successfully",
+      message: couponRefund.refundedPaise > 0
+        ? `Subscription activated. Coupon savings of ₹${(couponRefund.refundedPaise / 100).toFixed(2)} are being refunded to the same account.`
+        : "Subscription activated successfully",
       plan: activated.plan,
       isPremium: true,
       expiresAt: activated.expiresAt,
@@ -957,6 +1055,7 @@ router.post("/verify-subscription", requireAuth, async (req: any, res: any) => {
       stacked: activated.stacked,
       renewalMode: activated.renewalMode,
       autopay: true,
+      couponRefundPaise: couponRefund.refundedPaise,
     });
   } catch (error) {
     logger.error({ error, userId }, "Failed to verify Razorpay subscription");
@@ -2930,6 +3029,15 @@ router.post("/webhook", async (req: any, res: any) => {
     if (event === "payment.captured" && paymentEntity?.order_id) {
       const orderId = paymentEntity.order_id as string;
       const paymentId = paymentEntity.id as string;
+
+      // UPI Autopay (token model) orders are reconciled synchronously by the
+      // token engine (auth verify + recurring charge loop). Just acknowledge.
+      const upiKind = String(paymentEntity?.notes?.kind || "");
+      if (upiKind.startsWith("upi_autopay")) {
+        await markWebhookProcessed(claimed.rowId, "processed");
+        return res.json({ received: true, upiAutopay: true });
+      }
+
       const [payment] = await db
         .select()
         .from(payments)
@@ -3233,8 +3341,20 @@ router.post("/webhook", async (req: any, res: any) => {
 
       if (isFirstActivation) {
         const couponNote =
-          typeof subscriptionEntity.notes?.coupon === "string" ? subscriptionEntity.notes.coupon : undefined;
+          (typeof subscriptionEntity.notes?.coupon === "string" ? subscriptionEntity.notes.coupon : undefined) ||
+          linkedPayment?.couponCode ||
+          undefined;
         await recordCouponRedemption(couponNote, { userId, paymentId: invoicePaymentId || null });
+        if (chargePaymentId && invoicePaymentId && couponNote) {
+          await refundCouponDiscountIfNeeded({
+            userId,
+            paymentId: invoicePaymentId,
+            plan,
+            couponCode: couponNote,
+            razorpayPaymentId: chargePaymentId,
+            quotedNetPaise: Number(linkedPayment?.amount) || 0,
+          });
+        }
         await markOnboardingComplete(userId).catch(() => undefined);
       }
       if (invoicePaymentId) {

@@ -13,6 +13,7 @@ import {
   getWelcomeEmail,
   getRecoveryEmail,
   getRenewalReminderEmail,
+  getUpcomingDebitReminderEmail,
   getPaymentFailedEmail,
   getPlanPriceChangeEmail,
   getPremiumTrialStartedEmail,
@@ -102,6 +103,21 @@ async function renderEmail(row: typeof emailDeliveries.$inferSelect) {
           name,
           payload.renewUrl || `${origin}/billing`,
           payload.expiresLabel || "",
+        ),
+        attachments: undefined,
+        replyTo: undefined,
+      };
+    case "upcoming_debit_reminder":
+      return {
+        html: getUpcomingDebitReminderEmail(
+          name,
+          payload.amountLabel || "",
+          payload.dateLabel || "",
+          payload.planLabel || payload.plan || "your plan",
+          payload.billingUrl || `${origin}/dashboard/settings/billing`,
+          payload.baseLabel || "",
+          payload.storageLabel || "",
+          Number(payload.storageBlocks) || 0,
         ),
         attachments: undefined,
         replyTo: undefined,

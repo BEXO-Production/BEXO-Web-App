@@ -354,6 +354,25 @@ export default function CheckoutPage() {
     setLocation('/welcome');
   };
 
+  const verifyUpiAutopay = async (token: string | null, payload: any) => {
+    const verifyRes = await fetch('/api/payments/upi-autopay/verify', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+    const verifyData = await verifyRes.json();
+    if (!verifyRes.ok) throw new Error(verifyData.error || 'Autopay verification failed');
+    await finishPremiumActivation(verifyData.plan || plan, {
+      expiresAt: verifyData.expiresAt,
+      autopay: true,
+      addonHasAutopay: data.addonHasAutopay,
+    });
+    track('checkout_success', { plan: verifyData.plan || plan, kind: 'upi_autopay' });
+  };
+
   const verifySubscription = async (token: string | null, payload: any) => {
     const verifyRes = await fetch('/api/payments/verify-subscription', {
       method: 'POST',
@@ -572,16 +591,50 @@ export default function CheckoutPage() {
     });
     const subData = await subRes.json().catch(() => ({}));
 
-    // Coupon first-invoice when Razorpay Offers are unavailable: pay discounted
-    // order now, Autopay starts at the next billing date.
-    if (subRes.ok && subData.mode === 'subscription_bootstrap' && subData.orderId) {
-      await startOrderCheckout(token, {
-        orderId: subData.orderId,
-        amount: subData.amount,
-        currency: subData.currency,
+    // Legacy dual-checkout (order + mandate) is retired — it caused a second
+    // Autopay debit after the coupon invoice. Refuse it instead of opening it.
+    if (subRes.ok && subData.mode === 'subscription_bootstrap') {
+      throw new Error(
+        'Checkout needs a refresh. Please reload and pay once — Autopay is included in that payment.',
+      );
+    }
+
+    // UPI Autopay (token model): one Checkout authorizes a ₹2000 mandate AND
+    // pays the plan. Storage overage later rides the same mandate — no re-auth.
+    if (subRes.ok && subData.mode === 'upi_autopay') {
+      const netLabel =
+        typeof subData.quotedNetPaise === 'number'
+          ? `₹${(subData.quotedNetPaise / 100).toFixed(2)}`
+          : null;
+      openRazorpayModal({
+        ...baseRazorpayOptions(),
         key: subData.key,
-        mock: !!subData.mock,
-        bootstrap: true,
+        order_id: subData.orderId,
+        customer_id: subData.customerId,
+        recurring: 1,
+        description:
+          subData.couponRefund && netLabel
+            ? `${selectedPlan?.displayName || 'Plan'} — pay once, Autopay on (coupon nets ${netLabel})`
+            : `${selectedPlan?.displayName || 'Plan'} — pay once, Autopay included`,
+        handler: async (response: any) => {
+          setIsProcessing(true);
+          try {
+            toast({
+              title: 'Processing Payment',
+              description: subData.couponRefund
+                ? 'Activating your plan and Autopay… coupon savings refund shortly.'
+                : 'Activating your plan and Autopay…',
+            });
+            await verifyUpiAutopay(token, {
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+            });
+          } catch (err: any) {
+            toast({ title: 'Verification Failed', description: err.message, variant: 'destructive' });
+            setIsProcessing(false);
+          }
+        },
       });
       return;
     }
@@ -613,15 +666,26 @@ export default function CheckoutPage() {
       return;
     }
 
+    const netLabel =
+      typeof subData.quotedNetPaise === 'number'
+        ? `₹${(subData.quotedNetPaise / 100).toFixed(2)}`
+        : null;
     openRazorpayModal({
       ...baseRazorpayOptions(),
       key: subData.key,
       subscription_id: subData.subscriptionId,
-      description: `${selectedPlan?.displayName || 'Plan'} — auto-renews via Razorpay Autopay`,
+      description: subData.couponRefund && netLabel
+        ? `${selectedPlan?.displayName || 'Plan'} — pay once, Autopay on (coupon nets ${netLabel})`
+        : `${selectedPlan?.displayName || 'Plan'} — pay once, Autopay included`,
       handler: async (response: any) => {
         setIsProcessing(true);
         try {
-          toast({ title: 'Processing Payment', description: 'Activating your subscription…' });
+          toast({
+            title: 'Processing Payment',
+            description: subData.couponRefund
+              ? 'Activating your plan and Autopay… coupon savings refund shortly.'
+              : 'Activating your subscription…',
+          });
           await verifySubscription(token, response);
         } catch (err: any) {
           toast({ title: 'Verification Failed', description: err.message, variant: 'destructive' });
@@ -930,12 +994,22 @@ export default function CheckoutPage() {
           <div className="p-3.5 sm:p-4 bg-emerald-50 border border-emerald-200/80 rounded-2xl mb-5 sm:mb-6 flex items-start gap-3">
             <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
             <div className="text-xs text-emerald-950">
-              <p className="font-bold mb-0.5">Autopay Mandate</p>
+              <p className="font-bold mb-0.5">One payment, Autopay included</p>
               <p className="text-emerald-800 leading-snug">
-                You authorize Razorpay Autopay. We debit the plan amount each cycle
-                {discountApplies === 'first_invoice'
-                  ? ' — your coupon only reduces today’s charge.'
-                  : '.'}
+                {discountApplies === 'first_invoice' ? (
+                  <>
+                    You pay once in Razorpay Checkout — that same payment activates the plan and
+                    turns Autopay on. Checkout may show the full plan price; your coupon savings are
+                    refunded to the same UPI within minutes so you only keep today&apos;s discounted
+                    amount. Renewals charge the full plan price automatically.
+                  </>
+                ) : (
+                  <>
+                    Your payment today activates the plan and sets up Razorpay Autopay in the same
+                    window — there is no second charge. We debit the plan amount each cycle until you
+                    cancel.
+                  </>
+                )}
               </p>
             </div>
           </div>

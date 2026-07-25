@@ -7,15 +7,24 @@ import { apiUrl } from '../lib/api';
 
 const PARSING_STEPS = [
   "Uploading your resume secure file...",
-  "Initializing Gemma 2B Parser model...",
-  "Analyzing text layouts and segments...",
+  "Reading text layouts and segments...",
   "Extracting contact info & links...",
   "Reading your school & university details...",
   "Structuring experience & durations...",
   "Identifying project skills & achievements...",
-  "Creating profile summary & headlines...",
+  "Writing your profile summary & headline...",
   "Compiling your portfolio database..."
 ];
+
+/** Shown whenever parsing could not complete. Never surface provider errors. */
+const PARSE_BUSY_MESSAGE =
+  "We could not finish reading your resume right now. Please try again in about 10 minutes — your file is safe and nothing was lost.";
+
+const POLL_INTERVAL_MS = 2000;
+/** Generous ceiling: queued jobs still finish well inside this during spikes. */
+const POLL_TIMEOUT_MS = 4 * 60 * 1000;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const PORTFOLIO_TIPS = [
   {
@@ -86,6 +95,32 @@ export default function Step5Resume() {
     }
   };
 
+  /**
+   * Parsing runs as a background job. Poll until it finishes so a busy queue or
+   * a slow AI provider never turns into a request timeout for the user.
+   */
+  const waitForParseResult = async (attemptId: string, token: string | null) => {
+    const deadline = Date.now() + POLL_TIMEOUT_MS;
+
+    while (Date.now() < deadline) {
+      await sleep(POLL_INTERVAL_MS);
+
+      const res = await fetch(apiUrl(`/api/profile/resume/status/${attemptId}`), {
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      });
+
+      if (!res.ok) continue;
+
+      const body = await res.json().catch(() => null);
+      if (!body) continue;
+
+      if (body.status === 'succeeded') return body;
+      if (body.status === 'failed') throw new Error(PARSE_BUSY_MESSAGE);
+    }
+
+    throw new Error(PARSE_BUSY_MESSAGE);
+  };
+
   const processFile = async (selectedFile: File) => {
     setStatus('uploading');
     setErrorMsg(null);
@@ -104,20 +139,37 @@ export default function Step5Resume() {
         body: formData
       });
 
+      const uploadBody = await res.json().catch(() => null);
+
       if (!res.ok) {
-        let errMsg = 'Failed to process resume';
-        try {
-          const errData = await res.json();
-          errMsg = errData.error || errMsg;
-        } catch (e) {
-          errMsg = `Server error (${res.status}): ${res.statusText || 'Gateway Timeout or API Error'}`;
-        }
-        throw new Error(errMsg);
+        // Quota, plan and file-format problems are actionable, so show them.
+        // Anything else is an infrastructure issue the user cannot act on.
+        const actionableCodes = [
+          'UPGRADE_REQUIRED',
+          'LIMIT_REACHED',
+          'PDF_UNREADABLE',
+          'PARSE_IN_PROGRESS',
+          'PARSE_COOLDOWN',
+        ];
+        const code = uploadBody?.code;
+        const message =
+          code && actionableCodes.includes(code) && uploadBody?.error
+            ? uploadBody.error
+            : res.status === 429 && uploadBody?.error
+              ? uploadBody.error
+              : PARSE_BUSY_MESSAGE;
+        throw new Error(message);
       }
 
       setStatus('parsing');
-      const result = await res.json();
-      const parsed = result.data;
+
+      // A repeat upload of the same file replays the stored result immediately.
+      const result = uploadBody?.status === 'succeeded'
+        ? uploadBody
+        : await waitForParseResult(String(uploadBody?.attemptId || ''), token);
+
+      const parsed = result?.data;
+      if (!parsed) throw new Error(PARSE_BUSY_MESSAGE);
 
       const defaultAssets = { mode: 'images' as const, images: [], pdfs: [], links: [] };
 
@@ -248,7 +300,7 @@ export default function Step5Resume() {
     } catch (err: any) {
       setStatus('idle');
       setFile(null);
-      setErrorMsg(err.message || 'Failed to process resume. Please try again.');
+      setErrorMsg(err?.message || PARSE_BUSY_MESSAGE);
     }
   };
 
@@ -294,7 +346,11 @@ export default function Step5Resume() {
             </div>
             <h3 className="text-lg font-semibold text-slate-900 mb-1">Click to upload PDF</h3>
             <p className="text-slate-500 text-sm mb-3">PDF formats only, up to 15MB.</p>
-            {errorMsg && <p className="text-red-500 text-sm font-medium">{errorMsg}</p>}
+            {errorMsg && (
+              <p className="max-w-sm rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-left text-xs leading-relaxed font-medium text-amber-800">
+                {errorMsg}
+              </p>
+            )}
           </div>
         )}
 

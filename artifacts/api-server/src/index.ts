@@ -34,6 +34,7 @@ import { verifyMailer } from "./lib/mailer";
 import { startEmailOutboxWorker, processEmailOutbox } from "./lib/emailOutbox";
 import { scheduleLifecycleEmails } from "./lib/lifecycleEmails";
 import { runDailyBillingAndAnalyticsJob } from "./lib/dailyJobs";
+import { runResumeParseWorkerTick } from "./lib/resumeParseQueue";
 import { assertEnvHealthAtBoot } from "./lib/envHealth";
 
 assertEnvHealthAtBoot();
@@ -88,11 +89,36 @@ if (!process.env.REDIS_URL) {
 
 await verifyMailer().catch(() => false);
 startEmailOutboxWorker();
+
+// Resume parse queue: every instance drains the shared Postgres queue. Claims use
+// SKIP LOCKED and a Redis semaphore caps total in-flight AI calls, so adding
+// instances adds throughput without duplicating work or overrunning AI quotas.
+const RESUME_PARSE_TICK_MS = Number(process.env.RESUME_PARSE_TICK_MS || 15_000);
+setInterval(() => {
+  runResumeParseWorkerTick().catch((err) => logger.error({ err }, "Resume parse worker tick failed"));
+}, RESUME_PARSE_TICK_MS).unref?.();
+runResumeParseWorkerTick().catch(() => undefined);
 setInterval(() => {
   scheduleLifecycleEmails().catch((err) => logger.error({ err }, "Lifecycle email scheduler failed"));
 }, 60 * 60 * 1000);
 scheduleLifecycleEmails().catch(() => undefined);
 processEmailOutbox().catch(() => undefined);
+
+// UPI Autopay engine (token model): merchant-run billing loop that sends 24h
+// pre-debit reminders and charges due mandates (base plan + storage overage in
+// one debit ≤ ₹2000). No-ops unless UPI_AUTOPAY_ENABLED is set. Rows are claimed
+// with SKIP LOCKED so every instance can run this concurrently at scale.
+{
+  const { isUpiAutopayEnabled, runUpiAutopayTick } = await import("./lib/upiAutopay");
+  if (isUpiAutopayEnabled() && process.env.DISABLE_INPROCESS_DAILY_JOB !== "1") {
+    const UPI_TICK_MS = Number(process.env.UPI_AUTOPAY_TICK_MS || 5 * 60 * 1000);
+    setInterval(() => {
+      runUpiAutopayTick().catch((err) => logger.error({ err }, "UPI Autopay tick failed"));
+    }, UPI_TICK_MS).unref?.();
+    runUpiAutopayTick().catch(() => undefined);
+    logger.info("UPI Autopay engine enabled — billing loop scheduled");
+  }
+}
 
 // Daily billing/dunning/analytics — always pass Razorpay hooks so mandate TTL
 // refunds/cancels are real. Set DISABLE_INPROCESS_DAILY_JOB=1 when Cloud Scheduler
