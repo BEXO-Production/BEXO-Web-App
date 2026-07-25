@@ -2337,7 +2337,7 @@ export default function Dashboard() {
   );
 
   return (
-    <div className="relative min-h-[100dvh] w-full overflow-x-hidden flex flex-col transition-colors duration-300 text-slate-800 bexo-mobile-shell bexo-app-shell">
+    <div className="relative min-h-[100dvh] w-full overflow-x-clip flex flex-col transition-colors duration-300 text-slate-800 bexo-mobile-shell bexo-app-shell">
       <AppAtmosphere />
       <div className="relative z-10 flex min-h-[100dvh] w-full flex-col">
       {/* Premium custom top-right "Successfully Logged In" toast */}
@@ -2362,7 +2362,7 @@ export default function Dashboard() {
       )}
 
       {/* Navigation bar */}
-      <header className="bexo-header-glass px-3 py-2.5 sm:px-6 sm:py-4 flex items-center justify-between sticky top-0 z-20 transition-colors duration-300 w-full pt-[max(0.625rem,env(safe-area-inset-top))]">
+      <header className="bexo-header-glass px-3.5 py-2.5 sm:px-6 sm:py-4 flex items-center justify-between sticky top-0 z-20 transition-colors duration-300 w-full pt-[max(0.7rem,env(safe-area-inset-top))]">
         <div className="flex items-center gap-2 cursor-pointer min-w-0 min-h-11" onClick={() => goView('overview')}>
           <BrandLogo size="sm" className="sm:hidden" />
           <BrandLogo size="md" className="hidden sm:inline-flex" />
@@ -2479,13 +2479,13 @@ export default function Dashboard() {
 
       <main
         className={cn(
-          "mx-auto w-full min-w-0 px-3 pt-5 pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:px-4 sm:pt-8 md:px-6 md:py-12",
+          "mx-auto w-full min-w-0 px-3.5 pt-4 pb-[calc(6rem+env(safe-area-inset-bottom))] sm:px-4 sm:pt-8 md:px-6 md:py-12",
           currentView === "settings" ? "max-w-[min(100%,96rem)]" : "max-w-5xl xl:max-w-7xl",
         )}
       >
         {/* Main Dashboard Overview */}
         {currentView === 'overview' && (
-          <div className="space-y-5 sm:space-y-8 dash-stagger">
+          <div className="space-y-4 sm:space-y-8 dash-stagger">
             {(data.isInPaymentGrace || data.siteStatus === 'grace') && (
               <Card className="p-4 border-amber-200 bg-amber-50 text-amber-950">
                 <p className="text-sm font-bold">Autopay payment failed</p>
@@ -2520,22 +2520,22 @@ export default function Dashboard() {
             <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3.5 sm:gap-4">
               <div className="min-w-0">
                 <div className="flex items-center gap-2 mb-1.5 sm:mb-2">
-                  <span className="inline-flex items-center gap-1.5 rounded-md border border-[rgba(47,107,255,0.18)] bg-white/70 px-2.5 py-1 text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.14em] text-[#2558e0] shadow-sm backdrop-blur-sm">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--bexo-accent)] animate-pulse" />
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(47,107,255,0.16)] bg-white/80 px-2.5 py-1 text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.12em] text-[#2558e0] shadow-sm">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--bexo-accent)]" />
                     Command center
                   </span>
                 </div>
-                <h1 className="font-serif text-[1.75rem] leading-[1.12] sm:text-3xl md:text-[2.65rem] font-normal text-slate-900 tracking-tight break-words text-balance">
+                <h1 className="font-serif text-[1.85rem] leading-[1.08] sm:text-3xl md:text-[2.65rem] font-normal text-slate-900 tracking-tight break-words text-balance">
                   Welcome back, <span className="italic text-slate-800">{data.name?.split(' ')[0] || 'there'}</span>
                 </h1>
                 <p className="text-[13px] sm:text-base text-slate-500 max-w-2xl mt-2 leading-relaxed">Keep your public portfolio ready for applications, recruiters, and campus opportunities.</p>
               </div>
-              <div className="grid grid-cols-2 gap-2 w-full md:w-auto md:flex md:flex-wrap md:items-center">
-                <Button onClick={() => goView('edit-profile')} className="tap-scale h-11 md:h-10 px-3 sm:px-4 text-xs gap-1.5 sm:gap-2 w-full md:w-auto">
+              <div className="grid grid-cols-2 gap-2.5 w-full md:w-auto md:flex md:flex-wrap md:items-center">
+                <Button onClick={() => goView('edit-profile')} className="tap-scale h-12 md:h-10 px-3 sm:px-4 text-xs gap-1.5 sm:gap-2 w-full md:w-auto rounded-xl">
                   <Pencil className="w-4 h-4 shrink-0" /> Edit profile
                 </Button>
                 <a href={correctVisitUrl} target="_blank" rel="noreferrer" className="w-full md:w-auto">
-                  <Button variant="outline" className="tap-scale h-11 md:h-10 px-3 sm:px-4 text-xs gap-1.5 sm:gap-2 w-full">
+                  <Button variant="outline" className="tap-scale h-12 md:h-10 px-3 sm:px-4 text-xs gap-1.5 sm:gap-2 w-full rounded-xl bg-white/80">
                     <ExternalLink className="w-4 h-4 shrink-0" /> View live
                   </Button>
                 </a>
@@ -3204,7 +3204,7 @@ export default function Dashboard() {
           <div className="space-y-6 animate-in slide-in-from-bottom duration-300">
             <button 
               onClick={() => goView('overview')}
-              className="inline-flex items-center gap-1 text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors"
+              className="hidden md:inline-flex items-center gap-1 text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors"
             >
               <ChevronLeft className="w-4 h-4" /> Back to Dashboard
             </button>
@@ -3922,7 +3922,7 @@ export default function Dashboard() {
           <div className="space-y-6 animate-in slide-in-from-bottom duration-300 max-w-2xl mx-auto">
             <button 
               onClick={() => goView('overview')}
-              className="inline-flex items-center gap-1 text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors"
+              className="hidden md:inline-flex items-center gap-1 text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors"
             >
               <ChevronLeft className="w-4 h-4" /> Back to Dashboard
             </button>
@@ -4676,11 +4676,11 @@ export default function Dashboard() {
               <div className="min-w-0">
                 <button 
                   onClick={() => goView('overview')}
-                  className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-slate-800 transition-colors uppercase tracking-wider select-none mb-2"
+                  className="hidden md:inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-slate-800 transition-colors uppercase tracking-wider select-none mb-2"
                 >
                   <ChevronLeft className="w-4 h-4" /> Back to Dashboard
                 </button>
-                <h1 className="text-xl sm:text-2xl md:text-3xl font-serif font-bold text-slate-900 tracking-tight">Appearance &amp; Settings</h1>
+                <h1 className="text-[1.65rem] leading-tight sm:text-2xl md:text-3xl font-serif font-bold text-slate-900 tracking-tight">Appearance &amp; Settings</h1>
                 <p className="text-slate-500 text-sm mt-0.5 leading-relaxed">
                   {settingsSubTab === 'profile' && 'Handle, profile, and resume defaults.'}
                   {settingsSubTab === 'design' && 'Templates, accent color, and live preview.'}
@@ -6011,7 +6011,7 @@ export default function Dashboard() {
         {/* Floating Action Button — sits above mobile tab bar */}
         <div
           ref={fabRef}
-          className="fixed z-50 flex flex-col items-end gap-3 animate-in slide-in-from-bottom-8 fade-in duration-300 right-3 sm:right-6 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] md:bottom-6"
+          className="fixed z-50 flex flex-col items-end gap-3 animate-in slide-in-from-bottom-8 fade-in duration-300 right-4 sm:right-6 bottom-[calc(5.25rem+env(safe-area-inset-bottom))] md:bottom-6"
         >
           {showFabMenu && (
             <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col w-[min(14rem,calc(100vw-1.5rem))] animate-in slide-in-from-bottom-4 fade-in duration-200 origin-bottom-right">

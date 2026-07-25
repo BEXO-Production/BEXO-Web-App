@@ -872,7 +872,7 @@ export default function CheckoutPage() {
         : 'One-time payment — yours forever';
 
   return (
-    <div className="relative min-h-[100dvh] overflow-x-hidden bexo-app-shell px-3 sm:px-4 py-6 sm:py-8 pb-[max(2.5rem,env(safe-area-inset-bottom))]">
+    <div className="relative min-h-[100dvh] overflow-x-clip bexo-app-shell px-3 sm:px-4 py-6 sm:py-8 pb-[max(2.5rem,env(safe-area-inset-bottom))]">
       <AppAtmosphere intensity="soft" />
       <div className="relative z-10 w-full max-w-md lg:max-w-5xl mx-auto pb-8 sm:pb-10 animate-in fade-in slide-in-from-right-4">
         <button

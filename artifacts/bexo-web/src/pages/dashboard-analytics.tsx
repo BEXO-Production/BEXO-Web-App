@@ -89,7 +89,7 @@ export default function DashboardAnalytics() {
   const totals = summary?.totals || {};
 
   return (
-    <div className="relative min-h-[100dvh] overflow-x-hidden bexo-app-shell">
+    <div className="relative min-h-[100dvh] overflow-x-clip bexo-app-shell">
       <AppAtmosphere intensity="soft" />
       <div className="relative z-10">
       <header className="bexo-header-glass sticky top-0 z-20 pt-[env(safe-area-inset-top,0px)]">

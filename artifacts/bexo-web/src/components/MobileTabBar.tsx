@@ -75,7 +75,9 @@ export function MobileTabBar({ visitUrl, onLogout, className }: Props) {
                 )}
                 aria-current={isActive ? 'page' : undefined}
               >
-                <Icon className="bexo-mobile-tab__icon" strokeWidth={isActive ? 2.25 : 1.75} />
+                <span className="bexo-mobile-tab__icon-wrap" aria-hidden>
+                  <Icon className="bexo-mobile-tab__icon" strokeWidth={isActive ? 2.25 : 1.75} />
+                </span>
                 <span className="bexo-mobile-tab__label">{tab.label}</span>
               </button>
             );
@@ -90,10 +92,12 @@ export function MobileTabBar({ visitUrl, onLogout, className }: Props) {
             aria-haspopup="dialog"
             aria-expanded={moreOpen}
           >
-            <MoreHorizontal
-              className="bexo-mobile-tab__icon"
-              strokeWidth={active === 'more' ? 2.25 : 1.75}
-            />
+            <span className="bexo-mobile-tab__icon-wrap" aria-hidden>
+              <MoreHorizontal
+                className="bexo-mobile-tab__icon"
+                strokeWidth={active === 'more' ? 2.25 : 1.75}
+              />
+            </span>
             <span className="bexo-mobile-tab__label">More</span>
           </button>
         </div>
