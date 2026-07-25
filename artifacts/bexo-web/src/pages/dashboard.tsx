@@ -2475,7 +2475,7 @@ export default function Dashboard() {
       <main
         className={cn(
           "mx-auto w-full min-w-0 px-3 pt-5 pb-[calc(6.75rem+env(safe-area-inset-bottom))] sm:px-4 sm:pt-8 md:px-6 md:py-12",
-          currentView === "settings" ? "max-w-[min(100%,96rem)]" : "max-w-5xl",
+          currentView === "settings" ? "max-w-[min(100%,96rem)]" : "max-w-5xl xl:max-w-7xl",
         )}
       >
         {/* Main Dashboard Overview */}
