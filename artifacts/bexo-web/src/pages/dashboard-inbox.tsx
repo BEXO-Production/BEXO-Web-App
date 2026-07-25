@@ -16,10 +16,13 @@ import {
 } from 'lucide-react';
 import { Button } from '../design-system/primitives';
 import { AppAtmosphere } from '../components/AppAtmosphere';
+import { MobileTabBar } from '../components/MobileTabBar';
 import { useToast } from '../hooks/use-toast';
 import { apiUrl } from '../lib/api';
 import { portfolioHostname } from '../lib/platform';
 import { usePageSeo } from '../hooks/use-page-seo';
+import { supabase } from '../lib/supabase';
+import { useOnboarding } from '../context/OnboardingContext';
 
 type Lead = {
   id: string;
@@ -103,12 +106,24 @@ function statusLabel(status: string) {
 export default function DashboardInbox() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const { setToken } = useOnboarding();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [forbidden, setForbidden] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [mobileShowDetail, setMobileShowDetail] = useState(false);
+
+  const handleLogout = useCallback(async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      /* ignore */
+    }
+    localStorage.removeItem('token');
+    setToken(null);
+    window.location.href = '/';
+  }, [setToken]);
 
   const [replies, setReplies] = useState<LeadReply[]>([]);
   const [threadLoading, setThreadLoading] = useState(false);
@@ -294,11 +309,11 @@ export default function DashboardInbox() {
             <button
               type="button"
               onClick={() => setLocation('/dashboard')}
-              className="inline-flex items-center gap-1 text-sm font-medium text-slate-500 hover:text-slate-900"
+              className="hidden md:inline-flex items-center gap-1 text-sm font-medium text-slate-500 hover:text-slate-900 min-h-11"
             >
               <ArrowLeft className="w-4 h-4" /> Dashboard
             </button>
-            <div className="h-4 w-px bg-slate-200" />
+            <div className="hidden md:block h-4 w-px bg-slate-200" />
             <div className="flex items-center gap-2 min-w-0">
               <Inbox className="w-4 h-4 text-indigo-500 shrink-0" />
               <h1 className="text-sm font-bold text-slate-900 truncate">Leads inbox</h1>
@@ -315,7 +330,7 @@ export default function DashboardInbox() {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 py-4 sm:py-6">
+      <main className="max-w-6xl mx-auto px-4 py-4 sm:py-6 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-6">
         {forbidden ? (
           <div className="rounded-2xl border border-dashed border-indigo-200 bg-white p-8 text-center">
             <Lock className="w-10 h-10 text-indigo-400 mx-auto mb-3" />
@@ -607,6 +622,7 @@ export default function DashboardInbox() {
           </div>
         )}
       </main>
+      <MobileTabBar onLogout={handleLogout} />
       </div>
     </div>
   );

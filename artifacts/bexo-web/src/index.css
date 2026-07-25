@@ -329,6 +329,164 @@
   overflow-x: hidden;
 }
 
+/* ── Mobile bottom tab bar (product app, < md) ─────────────────────────── */
+:root {
+  --bexo-mobile-tab-h: 3.5rem;
+  --bexo-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.bexo-mobile-tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 45;
+  pointer-events: none;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background: rgba(255, 255, 255, 0.92);
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 -8px 28px -18px rgba(11, 18, 32, 0.18);
+  -webkit-backdrop-filter: blur(16px) saturate(1.15);
+  backdrop-filter: blur(16px) saturate(1.15);
+}
+
+.bexo-mobile-tabbar__inner {
+  pointer-events: auto;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  height: var(--bexo-mobile-tab-h);
+  max-width: 36rem;
+  margin: 0 auto;
+  padding: 0 0.25rem;
+}
+
+.bexo-mobile-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  min-height: 44px;
+  min-width: 0;
+  padding: 0.35rem 0.15rem;
+  border: 0;
+  background: transparent;
+  color: #64748b;
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition:
+    color 0.18s var(--bexo-ease-out),
+    transform 0.18s var(--bexo-ease-out);
+}
+
+.bexo-mobile-tab:active {
+  transform: scale(0.94);
+}
+
+.bexo-mobile-tab__icon {
+  width: 1.35rem;
+  height: 1.35rem;
+  flex-shrink: 0;
+}
+
+.bexo-mobile-tab__label {
+  font-size: 0.625rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bexo-mobile-tab--active {
+  color: #2558e0;
+}
+
+.bexo-mobile-more-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.75rem;
+  border-radius: 0.875rem;
+  padding: 0.875rem 0.75rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #0f172a;
+  background: transparent;
+  border: 0;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.15s ease, transform 0.15s var(--bexo-ease-out);
+}
+
+.bexo-mobile-more-row:active {
+  background: #f1f5f9;
+  transform: scale(0.985);
+}
+
+html[data-bexo-motion="reduced"] .bexo-mobile-tabbar,
+html[data-bexo-motion="lite"] .bexo-mobile-tabbar {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  background: rgba(255, 255, 255, 0.98);
+}
+
+/* Phones: kill continuous atmosphere motion for smoother scroll / less GPU heat */
+@media (max-width: 767px) {
+  .bexo-app-atmosphere__orb--a,
+  .bexo-app-atmosphere__orb--b,
+  .bexo-app-atmosphere__orb--c {
+    display: none;
+  }
+
+  .bexo-app-atmosphere__grid {
+    opacity: 0.22;
+  }
+
+  .bexo-app-atmosphere__grain {
+    opacity: 0.02;
+  }
+
+  .bexo-header-glass {
+    -webkit-backdrop-filter: blur(10px) saturate(1.05);
+    backdrop-filter: blur(10px) saturate(1.05);
+  }
+
+  html[data-bexo-motion="lite"] .bexo-header-glass,
+  html[data-bexo-motion="reduced"] .bexo-header-glass {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    background: rgba(255, 255, 255, 0.96);
+  }
+
+  /* Faster, snappier press feedback on coarse pointers */
+  .tap-scale {
+    transition: transform 0.16s var(--bexo-ease-out);
+  }
+  .tap-scale:active {
+    transform: scale(0.97);
+  }
+
+  /* Prefer native-like scrolling; avoid scroll chaining jank */
+  .bexo-app-shell,
+  .bexo-mobile-shell {
+    overscroll-behavior-y: contain;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bexo-mobile-tab,
+  .bexo-mobile-tab:active,
+  .bexo-mobile-more-row,
+  .bexo-mobile-more-row:active {
+    transition: none;
+    transform: none;
+  }
+}
+
 /* ── Product app shell atmosphere (dashboard, billing, analytics) ── */
 .bexo-app-shell {
   position: relative;
@@ -794,12 +952,28 @@ html[data-bexo-motion="reduced"] .bexo-app-shell .backdrop-blur-xl {
   .bexo-onboarding-cinematic input,
   .bexo-onboarding-cinematic textarea,
   .bexo-onboarding-cinematic select {
-    font-size: 16px !important;
+    font-size: 16px !important; /* prevents iOS zoom-on-focus */
   }
 
   .bexo-onboarding-cinematic button:not(.inline-flex.h-10):not([aria-label="Logout"]),
   .bexo-onboarding-cinematic [type="submit"] {
     min-height: 48px;
+  }
+
+  .onboarding-cta button,
+  .onboarding-cta [type="submit"] {
+    transition: transform 0.16s var(--bexo-ease-out), opacity 0.16s ease;
+  }
+  .onboarding-cta button:active,
+  .onboarding-cta [type="submit"]:active {
+    transform: scale(0.98);
+  }
+
+  html[data-bexo-motion="lite"] .onboarding-cta,
+  html[data-bexo-motion="reduced"] .onboarding-cta {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    background: rgba(247, 248, 252, 0.98);
   }
 }
 

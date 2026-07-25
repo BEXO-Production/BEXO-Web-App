@@ -54,6 +54,7 @@ import { AssetPreviewModal, PreviewTarget } from '../components/AssetPreviewModa
 import { cn } from '../design-system/primitives';
 import { BrandLogo } from '../components/BrandLogo';
 import { AppAtmosphere } from '../components/AppAtmosphere';
+import { MobileTabBar } from '../components/MobileTabBar';
 import { supabase } from '../lib/supabase';
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { Calendar } from '../components/ui/calendar';
@@ -2478,7 +2479,7 @@ export default function Dashboard() {
 
       <main
         className={cn(
-          "mx-auto w-full min-w-0 px-3 pt-5 pb-[calc(6.75rem+env(safe-area-inset-bottom))] sm:px-4 sm:pt-8 md:px-6 md:py-12",
+          "mx-auto w-full min-w-0 px-3 pt-5 pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:px-4 sm:pt-8 md:px-6 md:py-12",
           currentView === "settings" ? "max-w-[min(100%,96rem)]" : "max-w-5xl xl:max-w-7xl",
         )}
       >
@@ -6007,10 +6008,10 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Floating Action Button */}
+        {/* Floating Action Button — sits above mobile tab bar */}
         <div
           ref={fabRef}
-          className="fixed z-50 flex flex-col items-end gap-3 animate-in slide-in-from-bottom-8 fade-in duration-300 right-3 sm:right-6 bottom-[max(1rem,env(safe-area-inset-bottom))] sm:bottom-6"
+          className="fixed z-50 flex flex-col items-end gap-3 animate-in slide-in-from-bottom-8 fade-in duration-300 right-3 sm:right-6 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] md:bottom-6"
         >
           {showFabMenu && (
             <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col w-[min(14rem,calc(100vw-1.5rem))] animate-in slide-in-from-bottom-4 fade-in duration-200 origin-bottom-right">
@@ -6162,6 +6163,8 @@ export default function Dashboard() {
           document.body
         );
       })()}
+
+      <MobileTabBar visitUrl={correctVisitUrl} onLogout={handleLogout} />
       </div>
     </div>
   );

@@ -11,9 +11,12 @@ import {
 } from 'lucide-react';
 import { Button } from '../design-system/primitives';
 import { AppAtmosphere } from '../components/AppAtmosphere';
+import { MobileTabBar } from '../components/MobileTabBar';
 import { useToast } from '../hooks/use-toast';
 import { apiUrl } from '../lib/api';
 import { usePageSeo } from '../hooks/use-page-seo';
+import { supabase } from '../lib/supabase';
+import { useOnboarding } from '../context/OnboardingContext';
 
 function Sparkline({ values }: { values: number[] }) {
   const w = 320;
@@ -36,9 +39,21 @@ function Sparkline({ values }: { values: number[] }) {
 export default function DashboardAnalytics() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const { setToken } = useOnboarding();
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(30);
+
+  const handleLogout = useCallback(async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      /* ignore */
+    }
+    localStorage.removeItem('token');
+    setToken(null);
+    window.location.href = '/';
+  }, [setToken]);
 
   usePageSeo({
     title: 'Portfolio analytics — BEXO',
@@ -83,11 +98,11 @@ export default function DashboardAnalytics() {
             <button
               type="button"
               onClick={() => setLocation('/dashboard')}
-              className="inline-flex items-center gap-1 text-sm font-medium text-slate-500 hover:text-slate-900"
+              className="hidden md:inline-flex items-center gap-1 text-sm font-medium text-slate-500 hover:text-slate-900 min-h-11"
             >
               <ArrowLeft className="w-4 h-4" /> Dashboard
             </button>
-            <div className="h-4 w-px bg-slate-200" />
+            <div className="hidden md:block h-4 w-px bg-slate-200" />
             <div className="flex items-center gap-2">
               <BarChart3 className="w-4 h-4 text-indigo-500" />
               <h1 className="text-sm font-bold text-slate-900">Portfolio analytics</h1>
@@ -111,7 +126,7 @@ export default function DashboardAnalytics() {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 py-6 space-y-4">
+      <main className="max-w-5xl mx-auto px-4 py-6 space-y-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-6">
         {!unlocked && !loading ? (
           <div className="rounded-2xl border border-dashed border-indigo-200 bg-white p-8 text-center">
             <Lock className="w-10 h-10 text-indigo-400 mx-auto mb-3" />
@@ -204,6 +219,7 @@ export default function DashboardAnalytics() {
           </>
         )}
       </main>
+      <MobileTabBar onLogout={handleLogout} />
       </div>
     </div>
   );

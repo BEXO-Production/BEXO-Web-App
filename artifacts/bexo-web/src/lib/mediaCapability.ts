@@ -153,11 +153,18 @@ function evaluate(): MediaCapability {
     if (memory === null && cores !== null && cores <= 4) {
       return {
         allowVideo: false,
-        allowKenBurns: true,
+        allowKenBurns: false,
         allowHeavyMotion: true,
         reason: "mobile-low-cores",
       };
     }
+    // Default phone path: still UI, no looping video / ken burns (smoother scroll)
+    return {
+      allowVideo: false,
+      allowKenBurns: false,
+      allowHeavyMotion: true,
+      reason: "mobile-lite",
+    };
   }
 
   return {
