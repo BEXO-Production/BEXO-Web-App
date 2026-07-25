@@ -69,6 +69,7 @@ import {
   PORTFOLIO_TEMPLATES,
 } from '../lib/templates';
 import { PLATFORM_DOMAIN, portfolioHostname, portfolioPublicUrl, pathPortfolioUrl } from '../lib/platform';
+import { TemplateThumbPreview } from '../components/TemplateThumbPreview';
 import { apiUrl } from '../lib/api';
 import { dashboardPath, legacyDashboardQueryToPath, parseDashboardPath } from '../lib/dashboard-routes';
 import { track } from '../lib/track';
@@ -5228,17 +5229,26 @@ export default function Dashboard() {
                                   isSelected ? "border-indigo-600 bg-indigo-50/30 shadow-sm" : "border-slate-200 bg-white hover:border-slate-300"
                                 )}
                               >
-                                {/* Mini thumbnail mockup */}
-                                <div className="w-20 h-14 bg-slate-100 rounded-lg overflow-hidden border border-slate-200/60 shrink-0 relative flex flex-col shadow-inner">
-                                  <div className="h-3 bg-slate-200 border-b border-slate-300 flex items-center px-1 gap-0.5 shrink-0">
+                                {/* Live mini preview of the real template */}
+                                <div className="w-[124px] h-[84px] bg-slate-100 rounded-lg overflow-hidden border border-slate-200/60 shrink-0 relative flex flex-col shadow-inner">
+                                  <div className="h-3.5 bg-slate-200 border-b border-slate-300 flex items-center px-1 gap-0.5 shrink-0">
                                     <span className="w-1 h-1 rounded-full bg-red-400" />
                                     <span className="w-1 h-1 rounded-full bg-yellow-400" />
                                     <span className="w-1 h-1 rounded-full bg-green-400" />
                                   </div>
-                                  <div className="flex-1 p-1">
-                                    {tpl.id === 'cura-futuri' && renderCreativeMockup(accentBg)}
-                                    {tpl.id === 'sierra-montana' && renderAcademicMockup(accentBg)}
-                                    {tpl.id === 'nico-palmer' && renderNicoMockup(accentBg)}
+                                  <div className="flex-1 relative">
+                                    <TemplateThumbPreview
+                                      templateId={tpl.id}
+                                      width={124}
+                                      height={70}
+                                      fallback={
+                                        <div className="w-full h-full p-1">
+                                          {tpl.id === 'cura-futuri' && renderCreativeMockup(accentBg)}
+                                          {tpl.id === 'sierra-montana' && renderAcademicMockup(accentBg)}
+                                          {tpl.id === 'nico-palmer' && renderNicoMockup(accentBg)}
+                                        </div>
+                                      }
+                                    />
                                   </div>
                                   {isLocked && (
                                     <div className="absolute inset-0 bg-slate-900/25 flex items-center justify-center">
