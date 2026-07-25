@@ -1,12 +1,35 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useOnboarding } from '../context/OnboardingContext';
 import { Button, cn } from '../design-system/primitives';
-import { Camera, Image as ImageIcon, Crop, ArrowRight, Trash2, ZoomIn, ZoomOut, RefreshCw } from 'lucide-react';
+import { Camera, Image as ImageIcon, Crop, ArrowRight, Trash2, ZoomIn, ZoomOut, RefreshCw, Sparkles, Upload } from 'lucide-react';
+
+/**
+ * OAuth providers hand us an auto-generated letter avatar (e.g. Google's
+ * lh3.googleusercontent.com initial). We never want to present that as the
+ * user's "photo" — they should upload a real headshot, or explicitly skip
+ * (in which case the portfolio falls back to a letter initial on its own).
+ */
+const isProviderDefaultAvatar = (url: string | null | undefined): boolean => {
+  if (!url) return false;
+  return /googleusercontent\.com|gravatar\.com/i.test(url);
+};
 
 export default function Step4Photo() {
   const { data, updateData, nextStep } = useOnboarding();
-  const [photo, setPhoto] = useState<string | null>(data.photoUrl || null);
+  const [photo, setPhoto] = useState<string | null>(
+    data.photoUrl && !isProviderDefaultAvatar(data.photoUrl) ? data.photoUrl : null,
+  );
   const [isCropping, setIsCropping] = useState(false);
+  const [showSkipConfirm, setShowSkipConfirm] = useState(false);
+
+  // Purge an OAuth letter avatar that may have been hydrated into the flow so
+  // the portfolio uses our own letter-initial fallback instead of Google's.
+  useEffect(() => {
+    if (isProviderDefaultAvatar(data.photoUrl)) {
+      updateData({ photoUrl: '' });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   
   // Cropper states
   const [zoom, setZoom] = useState(1);
@@ -243,6 +266,18 @@ export default function Step4Photo() {
     }, 600);
   };
 
+  /** Skip without a photo: the portfolio automatically shows a letter initial. */
+  const handleSkipWithoutPhoto = () => {
+    updateData({ photoUrl: '' });
+    setShowSkipConfirm(false);
+    handleContinue();
+  };
+
+  const handleUploadFromSkip = () => {
+    setShowSkipConfirm(false);
+    fileInputRef.current?.click();
+  };
+
   return (
     <div className="flex flex-col h-full justify-center max-w-2xl w-full mx-auto pb-10">
       {/* Step Indicator */}
@@ -299,9 +334,12 @@ export default function Step4Photo() {
                 } : undefined}
               />
             ) : (
-              <div className="flex flex-col items-center justify-center text-slate-400 p-4 text-center">
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                className="flex flex-col items-center justify-center text-slate-400 p-4 text-center cursor-pointer w-full h-full"
+              >
                 <ImageIcon className="w-12 h-12 mb-2 text-slate-300" />
-                <span className="text-xs font-medium">No photo selected</span>
+                <span className="text-xs font-medium">Upload your photo</span>
               </div>
             )}
 
@@ -427,16 +465,66 @@ export default function Step4Photo() {
             <span className="btn-label">Save & Continue</span>
           </button>
 
-          <p className="text-sm text-slate-500 mt-4">
-            Don't want to upload a photo?{' '}
-            <button 
-              type="button" 
-              onClick={handleContinue} 
-              className="text-indigo-500 font-medium hover:underline cursor-pointer"
+          {!photo && (
+            <p className="text-sm text-slate-500 mt-4">
+              Don't want to upload a photo?{' '}
+              <button
+                type="button"
+                onClick={() => setShowSkipConfirm(true)}
+                className="text-indigo-500 font-medium hover:underline cursor-pointer"
+              >
+                Skip for now
+              </button>
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Skip confirmation — the upload CTA is the star; skipping is deliberately muted */}
+      {showSkipConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={() => setShowSkipConfirm(false)}
+        >
+          <div
+            className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 text-center animate-in zoom-in-95 slide-in-from-bottom-2 duration-300"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-14 h-14 mx-auto mb-5 rounded-2xl bg-indigo-50 flex items-center justify-center">
+              <Sparkles className="w-7 h-7 text-indigo-500" />
+            </div>
+
+            <h2 className="font-serif text-2xl font-bold text-slate-900 mb-3 tracking-tight">
+              A portfolio with a photo stands out
+            </h2>
+            <p className="text-sm text-slate-500 leading-relaxed mb-2">
+              Recruiters spend seconds on a profile — a real face builds instant trust and gets
+              you noticed. Portfolios with a photo attract far more views and opportunities.
+            </p>
+            <p className="text-xs text-slate-400 mb-7">
+              If you skip, we'll show the first letter of your name in place of your photo.
+            </p>
+
+            <button
+              type="button"
+              onClick={handleUploadFromSkip}
+              className="w-full h-14 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-semibold text-base transition-all duration-200 flex items-center justify-center gap-3 cursor-pointer shadow-lg shadow-slate-900/20"
             >
-              Skip for now
+              <div className="w-9 h-9 bg-indigo-500 rounded-xl flex items-center justify-center shrink-0">
+                <Upload className="w-5 h-5 text-white" />
+              </div>
+              Upload a photo
             </button>
-          </p>
+
+            <button
+              type="button"
+              onClick={handleSkipWithoutPhoto}
+              disabled={isSwooshing}
+              className="mt-4 text-xs text-slate-400 hover:text-slate-500 hover:underline cursor-pointer disabled:opacity-50 transition-colors"
+            >
+              I don't want to stand out
+            </button>
+          </div>
         </div>
       )}
     </div>

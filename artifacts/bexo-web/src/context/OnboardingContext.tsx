@@ -334,7 +334,12 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
           name: result.user.name || prev.name,
           dob: result.user.dob || prev.dob,
           phone: result.user.phone || prev.phone,
-          photoUrl: result.user.photoUrl || prev.photoUrl,
+          // Never hydrate OAuth letter avatars (e.g. Google's auto-generated
+          // initial) — users upload a real photo or the portfolio shows our
+          // own letter fallback.
+          photoUrl: /googleusercontent\.com|gravatar\.com/i.test(result.user.photoUrl || '')
+            ? prev.photoUrl
+            : result.user.photoUrl || prev.photoUrl,
           pronouns: result.profile.pronouns ?? prev.pronouns,
           nationality: result.profile.nationality ?? prev.nationality,
           resumeUrl: result.user.resumeUrl || prev.resumeUrl,

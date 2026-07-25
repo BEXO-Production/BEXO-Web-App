@@ -426,7 +426,11 @@ router.post("/link-google", requireAuth, async (req: AuthenticatedRequest, res):
       oauthId,
     };
     if (!current.name && name) userUpdates.name = name;
-    if (!current.photoUrl && photoUrl) userUpdates.photoUrl = photoUrl;
+    // Never adopt provider-generated avatars (Google letter initials etc.) —
+    // users upload their own headshot in Step 4, and skipped profiles fall
+    // back to our own letter-initial rendering.
+    const isProviderAvatar = /googleusercontent\.com|gravatar\.com/i.test(photoUrl || "");
+    if (!current.photoUrl && photoUrl && !isProviderAvatar) userUpdates.photoUrl = photoUrl;
 
     await db.update(users).set(userUpdates).where(eq(users.id, userId));
     await markOnboardingActivity(userId);
