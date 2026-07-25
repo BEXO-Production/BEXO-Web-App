@@ -872,7 +872,7 @@ export default function CheckoutPage() {
 
   return (
     <div className="min-h-[100dvh] overflow-x-hidden bg-slate-50 px-3 sm:px-4 py-6 sm:py-8 pb-[max(2.5rem,env(safe-area-inset-bottom))]">
-      <div className="flex flex-col max-w-md w-full mx-auto pb-8 sm:pb-10 animate-in fade-in slide-in-from-right-4">
+      <div className="w-full max-w-md lg:max-w-5xl mx-auto pb-8 sm:pb-10 animate-in fade-in slide-in-from-right-4">
         <button
           type="button"
           onClick={() => setLocation(backHref)}
@@ -883,7 +883,9 @@ export default function CheckoutPage() {
 
         <h2 className="font-serif text-2xl sm:text-2xl font-bold text-slate-900 mb-5 sm:mb-6">Checkout</h2>
 
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6 mb-5 sm:mb-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 lg:gap-6 lg:items-start">
+          <div className="min-w-0">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6 mb-5 sm:mb-6 lg:mb-0">
           <div className="flex justify-between items-start gap-3 mb-6 pb-6 border-b border-slate-100">
             <div className="min-w-0">
               <h3 className="font-bold text-slate-900 text-lg flex items-center gap-2">
@@ -993,7 +995,7 @@ export default function CheckoutPage() {
         </div>
 
         {(isSubscriptionPlan || isStorage) && (
-          <div className="p-3.5 sm:p-4 bg-emerald-50 border border-emerald-200/80 rounded-2xl mb-5 sm:mb-6 flex items-start gap-3">
+          <div className="p-3.5 sm:p-4 bg-emerald-50 border border-emerald-200/80 rounded-2xl mb-5 sm:mb-6 lg:mt-5 lg:mb-0 flex items-start gap-3">
             <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
             <div className="text-xs text-emerald-950">
               <p className="font-bold mb-0.5">One payment, Autopay included</p>
@@ -1017,8 +1019,10 @@ export default function CheckoutPage() {
             </div>
           </div>
         )}
+          </div>
 
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6 mb-5 sm:mb-6">
+          <div className="min-w-0 lg:sticky lg:top-6 space-y-5 sm:space-y-6">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6 mb-0">
           <div className="flex items-start sm:items-center justify-between gap-2 mb-4">
             <h3 className="text-xs font-bold tracking-[0.12em] text-slate-900 uppercase">
               Billing information
@@ -1173,6 +1177,8 @@ export default function CheckoutPage() {
         <p className="text-center text-[11px] text-slate-400 mt-3 px-2 flex items-center justify-center gap-1 leading-snug">
           <ShieldCheck className="w-3.5 h-3.5 shrink-0" /> Secure checkout · invoices &amp; monthly billing
         </p>
+          </div>
+        </div>
       </div>
     </div>
   );

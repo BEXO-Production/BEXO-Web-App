@@ -439,6 +439,15 @@ export async function verifyAuthorization(opts: {
     }
   }
 
+  // Publish the portfolio: subdomainRouter treats missing onboardingCompletedAt
+  // as "unclaimed" even when the handle + paid plan are already live.
+  try {
+    const { markOnboardingComplete } = await import("./lifecycleEmails");
+    await markOnboardingComplete(userId);
+  } catch (err) {
+    logger.warn({ err, userId }, "upiAutopay: markOnboardingComplete failed");
+  }
+
   try {
     await sendBillingReceipts(userId, plan, chargedPaise / 100, razorpay_payment_id);
   } catch (err) {
