@@ -15,6 +15,7 @@ import {
   X,
 } from 'lucide-react';
 import { Button } from '../design-system/primitives';
+import { AppAtmosphere } from '../components/AppAtmosphere';
 import { useToast } from '../hooks/use-toast';
 import { apiUrl } from '../lib/api';
 import { portfolioHostname } from '../lib/platform';
@@ -284,8 +285,10 @@ export default function DashboardInbox() {
   };
 
   return (
-    <div className="min-h-[100dvh] overflow-x-hidden bg-slate-50">
-      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 pt-[env(safe-area-inset-top,0px)] backdrop-blur">
+    <div className="relative min-h-[100dvh] overflow-x-hidden bexo-app-shell">
+      <AppAtmosphere intensity="soft" />
+      <div className="relative z-10">
+      <header className="bexo-header-glass sticky top-0 z-20 pt-[env(safe-area-inset-top,0px)]">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <button
@@ -604,6 +607,7 @@ export default function DashboardInbox() {
           </div>
         )}
       </main>
+      </div>
     </div>
   );
 }

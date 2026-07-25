@@ -15,6 +15,7 @@ import { track } from '../lib/track';
 import { JUST_ACTIVATED_KEY } from './welcome';
 import { PENDING_TEMPLATE_KEY } from './step-7';
 import { BillingAddressFields } from '../components/BillingAddressFields';
+import { AppAtmosphere } from '../components/AppAtmosphere';
 
 declare global {
   interface Window {
@@ -871,8 +872,9 @@ export default function CheckoutPage() {
         : 'One-time payment — yours forever';
 
   return (
-    <div className="min-h-[100dvh] overflow-x-hidden bg-slate-50 px-3 sm:px-4 py-6 sm:py-8 pb-[max(2.5rem,env(safe-area-inset-bottom))]">
-      <div className="w-full max-w-md lg:max-w-5xl mx-auto pb-8 sm:pb-10 animate-in fade-in slide-in-from-right-4">
+    <div className="relative min-h-[100dvh] overflow-x-hidden bexo-app-shell px-3 sm:px-4 py-6 sm:py-8 pb-[max(2.5rem,env(safe-area-inset-bottom))]">
+      <AppAtmosphere intensity="soft" />
+      <div className="relative z-10 w-full max-w-md lg:max-w-5xl mx-auto pb-8 sm:pb-10 animate-in fade-in slide-in-from-right-4">
         <button
           type="button"
           onClick={() => setLocation(backHref)}
@@ -881,7 +883,7 @@ export default function CheckoutPage() {
           <ArrowLeft className="w-4 h-4 mr-1" /> Back
         </button>
 
-        <h2 className="font-serif text-2xl sm:text-2xl font-bold text-slate-900 mb-5 sm:mb-6">Checkout</h2>
+        <h2 className="font-serif text-2xl sm:text-3xl font-normal text-slate-900 mb-5 sm:mb-6 tracking-tight">Checkout</h2>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 lg:gap-6 lg:items-start">
           <div className="min-w-0">

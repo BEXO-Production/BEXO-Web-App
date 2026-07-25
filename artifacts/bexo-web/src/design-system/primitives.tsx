@@ -11,10 +11,10 @@ export const Button = React.forwardRef<HTMLButtonElement, React.ButtonHTMLAttrib
     const baseStyles = "inline-flex items-center justify-center rounded-xl font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50";
     
     const variants = {
-      primary: "bg-gradient-to-r from-indigo-600 to-indigo-800 text-white shadow hover:from-indigo-700 hover:to-indigo-900 border border-transparent",
-      secondary: "bg-indigo-50 text-indigo-900 hover:bg-indigo-100 border border-transparent",
-      outline: "border border-slate-200 bg-white text-slate-900 hover:bg-slate-50 hover:text-slate-900",
-      ghost: "hover:bg-slate-100 hover:text-slate-900 text-slate-600",
+      primary: "bg-[var(--bexo-accent)] text-white shadow-[0_8px_20px_-8px_rgba(47,107,255,0.55)] hover:bg-[#2558e0] border border-transparent active:scale-[0.98]",
+      secondary: "bg-[var(--bexo-accent-soft)] text-[#1e3a8a] hover:bg-[rgba(47,107,255,0.2)] border border-transparent",
+      outline: "border border-slate-200/90 bg-white/80 text-slate-900 hover:bg-white hover:border-slate-300 backdrop-blur-sm",
+      ghost: "hover:bg-slate-100/80 hover:text-slate-900 text-slate-600",
     };
     
     const sizes = {
@@ -63,7 +63,14 @@ Label.displayName = "Label";
 
 export const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn("rounded-2xl border border-slate-200 bg-white text-slate-950 shadow-sm", className)} {...props} />
+    <div
+      ref={ref}
+      className={cn(
+        "rounded-2xl border border-slate-200/70 bg-white/80 text-slate-950 shadow-[0_1px_2px_rgba(11,18,32,0.04),0_14px_36px_-16px_rgba(11,18,32,0.14)] backdrop-blur-sm",
+        className,
+      )}
+      {...props}
+    />
   )
 );
 Card.displayName = "Card";

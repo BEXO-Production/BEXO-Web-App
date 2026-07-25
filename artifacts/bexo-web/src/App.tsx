@@ -33,6 +33,7 @@ import WelcomeSuccess from './pages/welcome';
 import LandingPage from './pages/landing/LandingPage';
 import { TermsPage, PrivacyPage, RefundPage, CookiesPage } from './pages/legal';
 import { useToast } from './hooks/use-toast';
+import { AppAtmosphere } from './components/AppAtmosphere';
 import {
   getPortfolioSubdomain,
   isCombinedMarketingHost,
@@ -100,9 +101,10 @@ function Router() {
         path === '/cookies');
     if (!isPublicMarketing) {
       return (
-        <div className="flex min-h-[100dvh] w-full items-center justify-center bg-slate-50">
-          <div className="flex flex-col items-center gap-3">
-            <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+        <div className="relative flex min-h-[100dvh] w-full items-center justify-center bexo-app-shell">
+          <AppAtmosphere intensity="soft" />
+          <div className="relative z-10 flex flex-col items-center gap-3">
+            <div className="w-10 h-10 border-4 border-[var(--bexo-accent)] border-t-transparent rounded-full animate-spin"></div>
             <p className="text-sm font-medium text-slate-500">Loading your profile...</p>
           </div>
         </div>

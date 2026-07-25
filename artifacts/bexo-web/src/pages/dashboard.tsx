@@ -53,6 +53,7 @@ import { createPortal } from 'react-dom';
 import { AssetPreviewModal, PreviewTarget } from '../components/AssetPreviewModal';
 import { cn } from '../design-system/primitives';
 import { BrandLogo } from '../components/BrandLogo';
+import { AppAtmosphere } from '../components/AppAtmosphere';
 import { supabase } from '../lib/supabase';
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { Calendar } from '../components/ui/calendar';
@@ -2335,7 +2336,9 @@ export default function Dashboard() {
   );
 
   return (
-    <div className="min-h-[100dvh] w-full overflow-x-hidden flex flex-col transition-colors duration-300 bg-slate-50 text-slate-800 bexo-mobile-shell">
+    <div className="relative min-h-[100dvh] w-full overflow-x-hidden flex flex-col transition-colors duration-300 text-slate-800 bexo-mobile-shell bexo-app-shell">
+      <AppAtmosphere />
+      <div className="relative z-10 flex min-h-[100dvh] w-full flex-col">
       {/* Premium custom top-right "Successfully Logged In" toast */}
       {showLoginToast && (
         <div className="fixed left-3 right-3 top-[max(0.75rem,env(safe-area-inset-top))] z-[100] sm:left-auto sm:right-6 sm:top-6 animate-in slide-in-from-top-4 md:slide-in-from-right-4 duration-500">
@@ -2358,7 +2361,7 @@ export default function Dashboard() {
       )}
 
       {/* Navigation bar */}
-      <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 px-3 py-2.5 sm:px-6 sm:py-4 flex items-center justify-between sticky top-0 z-20 transition-colors duration-300 w-full pt-[max(0.625rem,env(safe-area-inset-top))]">
+      <header className="bexo-header-glass px-3 py-2.5 sm:px-6 sm:py-4 flex items-center justify-between sticky top-0 z-20 transition-colors duration-300 w-full pt-[max(0.625rem,env(safe-area-inset-top))]">
         <div className="flex items-center gap-2 cursor-pointer min-w-0 min-h-11" onClick={() => goView('overview')}>
           <BrandLogo size="sm" className="sm:hidden" />
           <BrandLogo size="md" className="hidden sm:inline-flex" />
@@ -2516,15 +2519,15 @@ export default function Dashboard() {
             <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3.5 sm:gap-4">
               <div className="min-w-0">
                 <div className="flex items-center gap-2 mb-1.5 sm:mb-2">
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-100 bg-indigo-50/70 px-2.5 py-1 text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.12em] text-indigo-600">
-                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
+                  <span className="inline-flex items-center gap-1.5 rounded-md border border-[rgba(47,107,255,0.18)] bg-white/70 px-2.5 py-1 text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.14em] text-[#2558e0] shadow-sm backdrop-blur-sm">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--bexo-accent)] animate-pulse" />
                     Command center
                   </span>
                 </div>
-                <h1 className="font-serif text-[1.65rem] leading-tight sm:text-3xl md:text-4xl font-bold text-slate-900 tracking-tight break-words">
-                  Welcome back, {data.name?.split(' ')[0] || 'there'}
+                <h1 className="font-serif text-[1.75rem] leading-[1.12] sm:text-3xl md:text-[2.65rem] font-normal text-slate-900 tracking-tight break-words text-balance">
+                  Welcome back, <span className="italic text-slate-800">{data.name?.split(' ')[0] || 'there'}</span>
                 </h1>
-                <p className="text-[13px] sm:text-base text-slate-500 max-w-2xl mt-1.5 leading-relaxed">Keep your public portfolio ready for applications, recruiters, and campus opportunities.</p>
+                <p className="text-[13px] sm:text-base text-slate-500 max-w-2xl mt-2 leading-relaxed">Keep your public portfolio ready for applications, recruiters, and campus opportunities.</p>
               </div>
               <div className="grid grid-cols-2 gap-2 w-full md:w-auto md:flex md:flex-wrap md:items-center">
                 <Button onClick={() => goView('edit-profile')} className="tap-scale h-11 md:h-10 px-3 sm:px-4 text-xs gap-1.5 sm:gap-2 w-full md:w-auto">
@@ -2604,19 +2607,20 @@ export default function Dashboard() {
             )}
 
             <div className="grid lg:grid-cols-[1.35fr_0.85fr] gap-4 sm:gap-6 items-stretch">
-              <Card className="relative p-4 sm:p-6 bg-slate-950 text-slate-100 border border-slate-900 shadow-lg shadow-slate-950/10 overflow-hidden min-w-0">
-                <div className="pointer-events-none absolute -top-24 -right-16 h-56 w-56 rounded-full bg-indigo-600/25 blur-3xl" />
-                <div className="pointer-events-none absolute -bottom-28 -left-10 h-48 w-48 rounded-full bg-emerald-500/10 blur-3xl" />
+              <Card className="relative p-4 sm:p-6 bg-[var(--bexo-ink)] text-slate-100 border border-slate-900/80 shadow-[0_24px_60px_-28px_rgba(11,18,32,0.55)] overflow-hidden min-w-0">
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_85%_0%,_rgba(47,107,255,0.35),_transparent_55%),radial-gradient(ellipse_at_10%_100%,_rgba(16,185,129,0.12),_transparent_50%)]" />
+                <div className="pointer-events-none absolute inset-0 opacity-[0.12] bexo-film-grain mix-blend-overlay" />
+                <div className="pointer-events-none absolute inset-0 opacity-[0.2]" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px)', backgroundSize: '28px 28px' }} />
                 <div className="relative flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 sm:gap-5">
                   <div className="space-y-4 sm:space-y-5 min-w-0">
                     <div>
-                      <p className="text-[10px] sm:text-xs font-bold uppercase tracking-[0.14em] text-indigo-300/80">Next best action</p>
-                      <h2 className="text-xl sm:text-2xl font-bold mt-1.5 sm:mt-2 leading-snug">{nextAction.label}</h2>
+                      <p className="text-[10px] sm:text-xs font-bold uppercase tracking-[0.14em] text-[#93b0ff]">Next best action</p>
+                      <h2 className="font-serif text-xl sm:text-2xl font-normal mt-1.5 sm:mt-2 leading-snug tracking-tight">{nextAction.label}</h2>
                       <p className="text-[13px] sm:text-sm text-slate-300 mt-1 max-w-xl leading-relaxed">{nextAction.detail}</p>
                     </div>
                     <Button
                       onClick={nextAction.action}
-                      className="tap-scale h-11 px-4 bg-slate-100 text-slate-950 hover:bg-white border-none shadow-none gap-2 w-full sm:w-auto"
+                      className="tap-scale h-11 px-4 bg-white text-[var(--bexo-ink)] hover:bg-slate-100 border-none shadow-none gap-2 w-full sm:w-auto"
                     >
                       <NextActionIcon className="w-4 h-4" /> Continue
                     </Button>
@@ -2625,23 +2629,23 @@ export default function Dashboard() {
                     <button
                       type="button"
                       onClick={openReadiness}
-                      className="rounded-xl bg-white/[0.06] border border-white/10 backdrop-blur-sm p-2.5 sm:p-3 min-w-0 text-left hover:bg-white/[0.1] hover:border-white/20 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
+                      className="rounded-xl bg-white/[0.07] border border-white/10 backdrop-blur-sm p-2.5 sm:p-3 min-w-0 text-left hover:bg-white/[0.12] hover:border-white/20 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#93b0ff]"
                       title="See what’s missing for 100% readiness"
                     >
                       <p className="text-[10px] sm:text-[11px] text-slate-400 font-semibold">Readiness</p>
                       <p className="text-lg sm:text-xl font-bold mt-0.5 sm:mt-1 tabular-nums">{completionScore}%</p>
                       <div className="mt-1.5 h-1 w-full rounded-full bg-white/10 overflow-hidden">
-                        <div className="h-full rounded-full bg-indigo-400 transition-all duration-700" style={{ width: `${completionScore}%` }} />
+                        <div className="h-full rounded-full bg-[var(--bexo-accent)] transition-all duration-700" style={{ width: `${completionScore}%` }} />
                       </div>
-                      <p className="mt-1.5 text-[9px] sm:text-[10px] font-semibold text-indigo-200/90">
+                      <p className="mt-1.5 text-[9px] sm:text-[10px] font-semibold text-[#93b0ff]">
                         {completionScore >= 100 ? 'Complete' : `Tap · ${missingReadiness.length} left`}
                       </p>
                     </button>
-                    <div className="rounded-xl bg-white/[0.06] border border-white/10 backdrop-blur-sm p-2.5 sm:p-3 min-w-0">
+                    <div className="rounded-xl bg-white/[0.07] border border-white/10 backdrop-blur-sm p-2.5 sm:p-3 min-w-0">
                       <p className="text-[10px] sm:text-[11px] text-slate-400 font-semibold">Entries</p>
                       <p className="text-lg sm:text-xl font-bold mt-0.5 sm:mt-1 tabular-nums">{totalEntries}</p>
                     </div>
-                    <div className="rounded-xl bg-white/[0.06] border border-white/10 backdrop-blur-sm p-2.5 sm:p-3 min-w-0">
+                    <div className="rounded-xl bg-white/[0.07] border border-white/10 backdrop-blur-sm p-2.5 sm:p-3 min-w-0">
                       <p className="text-[10px] sm:text-[11px] text-slate-400 font-semibold">Plan</p>
                       <p className="text-xs sm:text-sm font-bold mt-0.5 sm:mt-1 truncate">{planName}</p>
                     </div>
@@ -2685,19 +2689,19 @@ export default function Dashboard() {
             </div>
 
             {/* Review live portfolio — primary surface */}
-            <Card className="relative overflow-hidden border-slate-200/80 bg-white shadow-sm min-w-0">
-              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_rgba(99,102,241,0.08),_transparent_55%)]" />
+            <Card className="relative overflow-hidden border-slate-200/60 bg-white/75 shadow-[0_1px_2px_rgba(11,18,32,0.04),0_18px_44px_-20px_rgba(11,18,32,0.16)] min-w-0">
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_rgba(47,107,255,0.1),_transparent_55%)]" />
               <div className="relative p-4 sm:p-6">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch lg:justify-between">
                   <div className="min-w-0 flex-1 space-y-3">
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
-                        <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+                        <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-[var(--bexo-accent-soft)] text-[var(--bexo-accent)]">
                           <Eye className="w-4 h-4" />
                         </span>
                         <div>
                           <p className="text-[10px] sm:text-xs font-bold uppercase tracking-[0.14em] text-slate-400">Review portfolio</p>
-                          <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-tight">Your live public site</h2>
+                          <h2 className="font-serif text-base sm:text-lg font-normal text-slate-900 leading-tight tracking-tight">Your live public site</h2>
                         </div>
                       </div>
                       <span className={cn(
@@ -4666,27 +4670,46 @@ export default function Dashboard() {
 
         {/* View 4: Appearance & Settings */}
         {currentView === 'settings' && (
-          <div className="space-y-6 animate-in slide-in-from-bottom duration-300">
-            <button 
-              onClick={() => goView('overview')}
-              className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-slate-800 transition-colors uppercase tracking-wider select-none"
-            >
-              <ChevronLeft className="w-4 h-4" /> Back to Dashboard
-            </button>
-
-            <div>
-              <h1 className="text-xl sm:text-2xl md:text-3xl font-serif font-bold text-slate-900 tracking-tight">Appearance & Settings</h1>
-              <p className="text-slate-500 text-sm mt-0.5 leading-relaxed">Customize template designs, color theme accents, and personal settings.</p>
+          <div className="space-y-5 animate-in slide-in-from-bottom duration-300">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div className="min-w-0">
+                <button 
+                  onClick={() => goView('overview')}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-slate-800 transition-colors uppercase tracking-wider select-none mb-2"
+                >
+                  <ChevronLeft className="w-4 h-4" /> Back to Dashboard
+                </button>
+                <h1 className="text-xl sm:text-2xl md:text-3xl font-serif font-bold text-slate-900 tracking-tight">Appearance &amp; Settings</h1>
+                <p className="text-slate-500 text-sm mt-0.5 leading-relaxed">
+                  {settingsSubTab === 'profile' && 'Handle, profile, and resume defaults.'}
+                  {settingsSubTab === 'design' && 'Templates, accent color, and live preview.'}
+                  {settingsSubTab === 'storage' && 'How much cloud space your workspace is using.'}
+                  {settingsSubTab === 'assets' && 'Every file in your account — delete to free space.'}
+                  {settingsSubTab === 'billing' && 'Plan status and tax invoices.'}
+                </p>
+              </div>
+              {data.handle && (
+                <a
+                  href={livePortfolioHref}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 px-3.5 py-2 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 text-xs font-semibold w-fit shrink-0 hover:bg-indigo-100 transition-colors"
+                >
+                  <Globe className="w-3.5 h-3.5" />
+                  {livePortfolioHref.replace(/^https?:\/\//, '')}
+                  <ExternalLink className="w-3 h-3 opacity-60" />
+                </a>
+              )}
             </div>
 
-            {/* Premium Tabbed Layout */}
-            <div className="grid gap-4 md:gap-6 items-start md:grid-cols-[minmax(11rem,13.5rem)_minmax(0,1fr)] min-w-0">
-              {/* Tab Navigation — horizontal scroll pills on mobile, stacked card on desktop */}
-              <Card className="p-1.5 md:p-2.5 bg-white border border-slate-200 shadow-sm flex flex-row md:flex-col gap-1 overflow-x-auto md:overflow-visible hide-scrollbar sticky top-[calc(3.5rem+env(safe-area-inset-top))] md:static z-10 w-full min-w-0">
+            {/* Premium Tabbed Layout — sticky nav, full-width content */}
+            <div className="grid gap-4 lg:gap-6 items-start lg:grid-cols-[15rem_minmax(0,1fr)] min-w-0">
+              {/* Tab Navigation */}
+              <Card className="p-1.5 lg:p-2 bg-white border border-slate-200 shadow-sm flex flex-row lg:flex-col gap-1 overflow-x-auto lg:overflow-visible hide-scrollbar sticky top-[calc(3.5rem+env(safe-area-inset-top))] z-10 w-full min-w-0 lg:top-6">
                 <button
                   onClick={() => goView('settings', { settingsTab: 'profile' })}
                   className={cn(
-                    "flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-sm font-semibold transition-all text-left md:w-full whitespace-nowrap shrink-0",
+                    "flex items-center gap-2.5 px-3.5 lg:px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-all text-left lg:w-full whitespace-nowrap shrink-0",
                     settingsSubTab === 'profile' 
                       ? "bg-indigo-50 text-indigo-900 shadow-sm ring-1 ring-indigo-100" 
                       : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
@@ -4698,19 +4721,19 @@ export default function Dashboard() {
                 <button
                   onClick={() => goView('settings', { settingsTab: 'design' })}
                   className={cn(
-                    "flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-sm font-semibold transition-all text-left md:w-full whitespace-nowrap shrink-0",
+                    "flex items-center gap-2.5 px-3.5 lg:px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-all text-left lg:w-full whitespace-nowrap shrink-0",
                     settingsSubTab === 'design' 
                       ? "bg-indigo-50 text-indigo-900 shadow-sm ring-1 ring-indigo-100" 
                       : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                   )}
                 >
-                  <Palette className="w-4 h-4 shrink-0" /> Design & Theme
+                  <Palette className="w-4 h-4 shrink-0" /> Design &amp; Theme
                 </button>
                 
                 <button
                   onClick={() => { goView('settings', { settingsTab: 'storage' }); loadAssets(); }}
                   className={cn(
-                    "flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-sm font-semibold transition-all text-left md:w-full whitespace-nowrap shrink-0",
+                    "flex items-center gap-2.5 px-3.5 lg:px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-all text-left lg:w-full whitespace-nowrap shrink-0",
                     settingsSubTab === 'storage' 
                       ? "bg-indigo-50 text-indigo-900 shadow-sm ring-1 ring-indigo-100" 
                       : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
@@ -4722,35 +4745,36 @@ export default function Dashboard() {
                 <button
                   onClick={() => { goView('settings', { settingsTab: 'assets' }); loadAssets(); }}
                   className={cn(
-                    "flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-sm font-semibold transition-all text-left md:w-full whitespace-nowrap shrink-0",
+                    "flex items-center gap-2.5 px-3.5 lg:px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-all text-left lg:w-full whitespace-nowrap shrink-0",
                     settingsSubTab === 'assets' 
                       ? "bg-indigo-50 text-indigo-900 shadow-sm ring-1 ring-indigo-100" 
                       : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                   )}
                 >
-                  <ImageIcon className="w-4 h-4 shrink-0" /> Assets & Storage
+                  <ImageIcon className="w-4 h-4 shrink-0" /> Assets &amp; Storage
                 </button>
 
                 <button
                   onClick={() => goView('settings', { settingsTab: 'billing' })}
                   className={cn(
-                    "flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-sm font-semibold transition-all text-left md:w-full whitespace-nowrap shrink-0",
+                    "flex items-center gap-2.5 px-3.5 lg:px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-all text-left lg:w-full whitespace-nowrap shrink-0",
                     settingsSubTab === 'billing' 
                       ? "bg-indigo-50 text-indigo-900 shadow-sm ring-1 ring-indigo-100" 
                       : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                   )}
                 >
-                  <CreditCard className="w-4 h-4 shrink-0" /> Billing & Invoices
+                  <CreditCard className="w-4 h-4 shrink-0" /> Billing &amp; Invoices
                 </button>
               </Card>
 
               {/* Tab Content Cards */}
               <div className="min-w-0">
                 {settingsSubTab === 'profile' && (
-                  <div className="space-y-6 animate-in fade-in duration-200">
-                  <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-4">
+                  <div className="space-y-5 animate-in fade-in duration-200">
+                  <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-stretch">
+                  <Card className="p-5 bg-white border border-slate-200 shadow-sm space-y-4 xl:col-span-7">
                     <div>
-                      <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                      <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                         <Globe className="w-4 h-4 text-indigo-500" /> Portfolio URL
                       </h3>
                       <p className="text-slate-500 text-xs mt-0.5">
@@ -4758,7 +4782,7 @@ export default function Dashboard() {
                       </p>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-                      <div className="flex h-12 flex-1 items-center rounded-xl border border-slate-200 bg-slate-50 overflow-hidden">
+                      <div className="flex h-11 flex-1 items-center rounded-xl border border-slate-200 bg-slate-50 overflow-hidden">
                         <Input
                           value={handleDraft}
                           onChange={(e) => {
@@ -4767,14 +4791,14 @@ export default function Dashboard() {
                             setHandleCheck('idle');
                           }}
                           onBlur={() => void checkHandleAvailability(handleDraft)}
-                          className="border-0 bg-transparent shadow-none focus-visible:ring-0 h-12"
+                          className="border-0 bg-transparent shadow-none focus-visible:ring-0 h-11"
                           placeholder="yourname"
                         />
                         <span className="pr-3 text-xs font-medium text-slate-400 shrink-0">.{PLATFORM_DOMAIN}</span>
                       </div>
                       <Button
                         type="button"
-                        className="h-12 shrink-0"
+                        className="h-11 shrink-0"
                         disabled={
                           isHandleSaving ||
                           !handleDraft ||
@@ -4799,16 +4823,9 @@ export default function Dashboard() {
                     </p>
                   </Card>
 
-                  <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-6">
-                    <div>
-                      <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                        <User className="w-4 h-4 text-indigo-500" /> Personal Settings
-                      </h3>
-                      <p className="text-slate-500 text-xs mt-0.5">Update your basic onboarding and contact information.</p>
-                    </div>
-
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-4 p-4 rounded-xl border border-slate-100 bg-slate-50/80">
-                      <div className="w-20 h-20 rounded-full overflow-hidden bg-slate-200 border border-slate-200 shrink-0 flex items-center justify-center text-2xl font-bold text-slate-500">
+                  <Card className="p-5 bg-white border border-slate-200 shadow-sm xl:col-span-5 flex items-center">
+                    <div className="flex items-center gap-4 w-full">
+                      <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full overflow-hidden bg-slate-200 border border-slate-200 shrink-0 flex items-center justify-center text-2xl font-bold text-slate-500">
                         {data.photoUrl ? (
                           <img src={data.photoUrl} alt="Profile" className="w-full h-full object-cover" />
                         ) : (
@@ -4818,32 +4835,41 @@ export default function Dashboard() {
                       <div className="min-w-0 flex-1 space-y-2">
                         <div>
                           <p className="text-sm font-bold text-slate-900">Profile picture</p>
-                          <p className="text-[11px] text-slate-500">Shown on your portfolio and dashboard. JPG or PNG.</p>
+                          <p className="text-[11px] text-slate-500">Shown on your portfolio and dashboard.</p>
                         </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <input
-                            type="file"
-                            id="settings-photo-upload"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              if (file) handleUploadPhoto(file);
-                              e.target.value = '';
-                            }}
-                          />
-                          <label
-                            htmlFor="settings-photo-upload"
-                            className="cursor-pointer inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold border border-indigo-200 transition-colors"
-                          >
-                            <Upload className="w-3.5 h-3.5" />
-                            {data.photoUrl ? 'Change photo' : 'Upload photo'}
-                          </label>
-                        </div>
+                        <input
+                          type="file"
+                          id="settings-photo-upload"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleUploadPhoto(file);
+                            e.target.value = '';
+                          }}
+                        />
+                        <label
+                          htmlFor="settings-photo-upload"
+                          className="cursor-pointer inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold border border-indigo-200 transition-colors"
+                        >
+                          <Upload className="w-3.5 h-3.5" />
+                          {data.photoUrl ? 'Change photo' : 'Upload photo'}
+                        </label>
                       </div>
                     </div>
+                  </Card>
+                  </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
+                  <Card className="p-5 sm:p-6 bg-white border border-slate-200 shadow-sm space-y-5 xl:col-span-7">
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                        <User className="w-4 h-4 text-indigo-500" /> Personal Settings
+                      </h3>
+                      <p className="text-slate-500 text-xs mt-0.5">Update your name, pronouns, and account contact details.</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-1.5">
                         <Label className="text-xs font-semibold text-slate-500">First name</Label>
                         <Input
@@ -4898,7 +4924,7 @@ export default function Dashboard() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-1.5">
                         <Label className="text-xs font-semibold text-slate-500">Nationality</Label>
                         <Input
@@ -4918,60 +4944,46 @@ export default function Dashboard() {
                             </span>
                           )}
                         </div>
-                        <div className="flex h-12 w-full items-center rounded-xl border border-slate-100 bg-slate-50 px-4 text-sm font-medium tracking-wide text-slate-900">
+                        <div className="flex h-11 w-full items-center rounded-xl border border-slate-100 bg-slate-50 px-4 text-sm font-medium tracking-wide text-slate-900">
                           {formatDisplayPhone(verifiedPhone)}
                         </div>
-                        <p className="text-[11px] text-slate-400 leading-normal">
-                          This is your login phone. Change it from account recovery / support if needed.
-                        </p>
                       </div>
                     </div>
 
-                    <div className="space-y-1.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <Label className="text-xs font-semibold text-slate-500">Google account email</Label>
-                        {hasGoogleAuth ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
-                            <BadgeCheck className="w-3 h-3" /> Linked
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <Label className="text-xs font-semibold text-slate-500">Google account email</Label>
+                          {hasGoogleAuth ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                              <BadgeCheck className="w-3 h-3" /> Linked
+                            </span>
+                          ) : googleAuthEmail ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 border border-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                              On file
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                              Not linked
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex h-11 w-full items-center gap-2.5 rounded-xl border border-slate-100 bg-slate-50 px-4 text-sm text-slate-900">
+                          <Mail className="w-4 h-4 text-slate-400 shrink-0" />
+                          <span className={cn('truncate font-medium', !googleAuthEmail && 'text-slate-400 font-normal')}>
+                            {googleAuthEmail || 'No Google email on this account yet'}
                           </span>
-                        ) : googleAuthEmail ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 border border-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600">
-                            On file
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold text-slate-500">Workspace tier</Label>
+                        <div className="flex items-center justify-between h-11 w-full rounded-xl border border-slate-100 bg-slate-50 px-4 text-sm text-slate-700">
+                          <span className="font-semibold capitalize text-slate-900">{planName}</span>
+                          <span className="text-xs text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded-full font-bold">
+                            {data.isPremium ? 'Premium' : 'Standard'}
                           </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">
-                            Not linked
-                          </span>
-                        )}
+                        </div>
                       </div>
-                      <div className="flex h-12 w-full items-center gap-2.5 rounded-xl border border-slate-100 bg-slate-50 px-4 text-sm text-slate-900">
-                        <Mail className="w-4 h-4 text-slate-400 shrink-0" />
-                        <span className={cn('truncate font-medium', !googleAuthEmail && 'text-slate-400 font-normal')}>
-                          {googleAuthEmail || 'No Google email on this account yet'}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-400 leading-normal">
-                        {hasGoogleAuth
-                          ? 'Signed in with Google. This email is used for receipts and account recovery.'
-                          : googleAuthEmail
-                            ? 'Email is saved on your account. Link Google from login if you want Google sign-in.'
-                            : 'Connect Google on login to show your Google email here.'}
-                      </p>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-semibold text-slate-500">Workspace Tier Plan</Label>
-                      <div className="flex items-center justify-between h-12 w-full rounded-xl border border-slate-100 bg-slate-50 px-4 py-2 text-sm text-slate-700">
-                        <span className="font-semibold capitalize text-slate-900">
-                          {planName}
-                        </span>
-                        <span className="text-xs text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded-full font-bold">
-                          {data.isPremium ? 'Premium active' : 'Standard'}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-400 leading-normal">
-                        Workspace tier plans are securely managed via billing. You cannot change your subscription tier here.
-                      </p>
                     </div>
 
                     <Button
@@ -4990,25 +5002,25 @@ export default function Dashboard() {
                     </Button>
                   </Card>
 
-                  {/* Resume Manager — default resume toggle + store-only upload */}
-                  <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-5">
+                  {/* Resume Manager — beside personal form on wide screens */}
+                  <Card className="p-5 sm:p-6 bg-white border border-slate-200 shadow-sm space-y-4 xl:col-span-5">
                     <div>
-                      <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                      <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                         <FileText className="w-4 h-4 text-indigo-500" /> Resume Manager
                       </h3>
                       <p className="text-slate-500 text-xs mt-0.5">
-                        Choose which resume powers the Download Resume button on your live website.
+                        Which resume powers Download Resume on your live site.
                       </p>
                     </div>
 
                     {/* Default resume toggle */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 gap-3">
                       <button
                         type="button"
                         disabled={isResumePrefSaving}
                         onClick={() => handleResumePreference('generated')}
                         className={cn(
-                          "text-left p-4 rounded-xl border-2 transition-all",
+                          "text-left p-3.5 rounded-xl border-2 transition-all",
                           (data.defaultResume || 'generated') === 'generated'
                             ? "border-indigo-500 bg-indigo-50/50 shadow-sm"
                             : "border-slate-200 bg-white hover:border-slate-300"
@@ -5021,7 +5033,7 @@ export default function Dashboard() {
                           )}
                         </div>
                         <p className="text-xs text-slate-500 leading-snug">
-                          ATS resume compiled from your live portfolio details. Always up to date with your latest updates.
+                          ATS resume from your live portfolio — always up to date.
                         </p>
                         {data.generatedResumeUrl && (
                           <a
@@ -5041,7 +5053,7 @@ export default function Dashboard() {
                         disabled={isResumePrefSaving || !data.uploadedResumeUrl}
                         onClick={() => handleResumePreference('uploaded')}
                         className={cn(
-                          "text-left p-4 rounded-xl border-2 transition-all",
+                          "text-left p-3.5 rounded-xl border-2 transition-all",
                           data.defaultResume === 'uploaded'
                             ? "border-indigo-500 bg-indigo-50/50 shadow-sm"
                             : "border-slate-200 bg-white hover:border-slate-300",
@@ -5073,8 +5085,7 @@ export default function Dashboard() {
                       </button>
                     </div>
 
-                    {/* Upload / replace / remove */}
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-1 border-t border-slate-100 pt-4">
+                    <div className="flex flex-col gap-2 pt-3 border-t border-slate-100">
                       <input
                         type="file"
                         ref={resumeFileInputRef}
@@ -5089,7 +5100,7 @@ export default function Dashboard() {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-9 text-xs"
+                        className="h-9 text-xs w-full"
                         disabled={isResumeFileUploading}
                         onClick={() => resumeFileInputRef.current?.click()}
                       >
@@ -5104,7 +5115,7 @@ export default function Dashboard() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-9 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                          className="h-9 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 w-full"
                           onClick={handleResumeFileRemove}
                         >
                           <Trash2 className="w-3.5 h-3.5 mr-1.5" /> Remove uploaded resume
@@ -5112,107 +5123,101 @@ export default function Dashboard() {
                       )}
                     </div>
                     <p className="text-[11px] text-slate-400 leading-normal">
-                      Uploading here stores your file without using an AI parse credit. Uploaded resumes count towards your
-                      storage; system-generated resumes are free.
+                      Uploading stores your file without an AI parse credit. Uploaded resumes count toward storage; system-generated ones are free.
                     </p>
                   </Card>
+                  </div>
                   </div>
                 )}
 
                 {settingsSubTab === 'design' && (
-                  <div className="space-y-6 animate-in fade-in duration-200">
-                    {/* Theme + background — Pro layouts honor these */}
+                  <div className="space-y-4 animate-in fade-in duration-200">
+                    {/* Compact theme strip — accent + background in one band */}
                     {PORTFOLIO_TEMPLATES.some((t) => t.id === activeTemplateId) && (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-4">
-                          <div>
-                            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                              <Palette className="w-4 h-4 text-indigo-500" /> Accent Color
+                      <Card className="p-4 sm:p-5 bg-white border border-slate-200 shadow-sm">
+                        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:gap-8">
+                          <div className="min-w-0 xl:w-[14rem] xl:shrink-0">
+                            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                              <Palette className="w-4 h-4 text-indigo-500" /> Theme
                             </h3>
-                            <p className="text-slate-500 text-xs mt-0.5">
-                              Brand accent applied to buttons, labels, and glows on your live portfolio.
+                            <p className="text-slate-500 text-xs mt-0.5 leading-relaxed">
+                              Accent and background applied to Pro layouts.
                             </p>
                           </div>
-                          <div className="flex gap-2.5 pt-1">
-                            {THEMES.map(theme => (
-                              <button
-                                key={theme.id}
-                                type="button"
-                                onClick={() => handleThemeSelect(theme.id)}
-                                className={cn(
-                                  "w-9 h-9 rounded-full flex items-center justify-center transition-all hover:scale-105 shadow-sm ring-offset-2",
-                                  theme.hex,
-                                  data.themeColor === theme.id ? "ring-2 ring-slate-900 scale-105" : ""
-                                )}
-                                title={theme.label}
-                              >
-                                {data.themeColor === theme.id && <Check className="w-4 h-4 text-white" />}
-                              </button>
-                            ))}
+                          <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 min-w-0 xl:border-l xl:border-slate-100 xl:pl-8">
+                            <div className="space-y-2.5">
+                              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Accent color</p>
+                              <div className="flex flex-wrap gap-2">
+                                {THEMES.map(theme => (
+                                  <button
+                                    key={theme.id}
+                                    type="button"
+                                    onClick={() => handleThemeSelect(theme.id)}
+                                    className={cn(
+                                      "w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-105 shadow-sm",
+                                      theme.hex,
+                                      data.themeColor === theme.id ? "ring-2 ring-slate-900 ring-offset-2 scale-105" : ""
+                                    )}
+                                    title={theme.label}
+                                  >
+                                    {data.themeColor === theme.id && <Check className="w-3.5 h-3.5 text-white" />}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                            <div className="space-y-2.5">
+                              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Background</p>
+                              <div className="grid grid-cols-2 gap-2">
+                                {[
+                                  { id: 'grid', label: 'Clean Grid' },
+                                  { id: 'dots', label: 'Dots' },
+                                  { id: 'waves', label: 'Waves' },
+                                  { id: 'solid', label: 'Gradient' },
+                                ].map(bg => {
+                                  const isSelected = (data.themeBg || 'grid') === bg.id;
+                                  return (
+                                    <button
+                                      key={bg.id}
+                                      type="button"
+                                      onClick={() => handleBgSelect(bg.id)}
+                                      className={cn(
+                                        "relative px-2.5 py-2 rounded-lg border text-left transition-all",
+                                        isSelected
+                                          ? "border-slate-950 bg-slate-950/5 ring-1 ring-slate-950"
+                                          : "border-slate-200 bg-white hover:border-slate-300"
+                                      )}
+                                    >
+                                      <p className="text-[11px] font-bold text-slate-900">{bg.label}</p>
+                                      {isSelected && (
+                                        <span className="absolute top-1.5 right-1.5 w-3 h-3 rounded-full bg-slate-950 text-white flex items-center justify-center">
+                                          <Check className="w-1.5 h-1.5" />
+                                        </span>
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
                           </div>
-                        </Card>
-
-                        <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-4">
-                          <div>
-                            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                              <Palette className="w-4 h-4 text-indigo-500" /> Background Style
-                            </h3>
-                            <p className="text-slate-500 text-xs mt-0.5">
-                              Texture or gradient wash behind your portfolio hero and surfaces.
-                            </p>
-                          </div>
-                          <div className="grid grid-cols-2 gap-2.5 pt-1">
-                            {[
-                              { id: 'grid', label: 'Clean Grid', desc: 'Subtle blueprint canvas' },
-                              { id: 'dots', label: 'Minimalist Dots', desc: 'Clean dot matrix overlay' },
-                              { id: 'waves', label: 'Abstract Waves', desc: 'Soft vector wave curves' },
-                              { id: 'solid', label: 'Accent Gradient', desc: 'Vibrant color blend' },
-                            ].map(bg => {
-                              const isSelected = (data.themeBg || 'grid') === bg.id;
-                              return (
-                                <button
-                                  key={bg.id}
-                                  type="button"
-                                  onClick={() => handleBgSelect(bg.id)}
-                                  className={cn(
-                                    "relative p-3 rounded-xl border text-left transition-all hover:scale-[1.01] flex flex-col justify-center min-h-[58px]",
-                                    isSelected 
-                                      ? "border-slate-950 bg-slate-950/5 ring-1 ring-slate-950" 
-                                      : "border-slate-200 bg-white hover:border-slate-300"
-                                  )}
-                                >
-                                  <p className="text-xs font-bold text-slate-950">{bg.label}</p>
-                                  <p className="text-[9px] text-slate-500 leading-tight mt-0.5">{bg.desc}</p>
-                                  {isSelected && (
-                                    <span className="absolute top-2 right-2 w-3.5 h-3.5 rounded-full bg-slate-950 text-white flex items-center justify-center">
-                                      <Check className="w-2 h-2" />
-                                    </span>
-                                  )}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </Card>
-                      </div>
+                        </div>
+                      </Card>
                     )}
 
-                    {/* Visual Page Template + Live Preview — split layout */}
-                    <div className="grid grid-cols-1 gap-5 items-stretch lg:grid-cols-12">
-                      
-                      {/* Template Selector */}
-                      <Card className="p-5 bg-white border border-slate-200 shadow-sm space-y-4 lg:col-span-4 xl:col-span-3">
+                    {/* Template picker sticky left + live preview fills remaining width */}
+                    <div className="grid grid-cols-1 gap-4 items-start lg:grid-cols-12">
+                      <Card className="p-4 sm:p-5 bg-white border border-slate-200 shadow-sm space-y-3 lg:col-span-4 xl:col-span-3 lg:sticky lg:top-6 self-start">
                         <div>
-                          <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                          <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                             <Layout className="w-4 h-4 text-indigo-500" /> Page Template
                           </h3>
                           <p className="text-slate-500 text-xs mt-0.5">
-                            {data.isPremium 
-                              ? "Choose a design layout. Live preview updates instantly."
-                              : "Choose a layout. Upgrade to Pro to unlock premium templates."}
+                            {data.isPremium
+                              ? 'Pick a layout — preview updates instantly.'
+                              : 'Upgrade to Pro to publish premium templates.'}
                           </p>
                         </div>
 
-                        <div className="flex flex-col gap-3">
+                        <div className="flex flex-col gap-2 max-h-[min(52vh,420px)] overflow-y-auto pr-0.5">
                           {TEMPLATES.map(tpl => {
                             const isSelected = activeTemplateId === tpl.id;
                             const accentBg = getThemeClass(true);
@@ -5225,13 +5230,12 @@ export default function Dashboard() {
                                 onClick={() => handleTemplateSelect(tpl.id)}
                                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleTemplateSelect(tpl.id); }}
                                 className={cn(
-                                  "group cursor-pointer text-left rounded-xl border-2 transition-all hover:shadow-md flex items-center gap-3 p-2.5 relative overflow-hidden",
+                                  "group cursor-pointer text-left rounded-xl border-2 transition-all hover:shadow-md flex items-center gap-2.5 p-2 relative overflow-hidden",
                                   isSelected ? "border-indigo-600 bg-indigo-50/30 shadow-sm" : "border-slate-200 bg-white hover:border-slate-300"
                                 )}
                               >
-                                {/* Live mini preview of the real template */}
-                                <div className="w-[124px] h-[84px] bg-slate-100 rounded-lg overflow-hidden border border-slate-200/60 shrink-0 relative flex flex-col shadow-inner">
-                                  <div className="h-3.5 bg-slate-200 border-b border-slate-300 flex items-center px-1 gap-0.5 shrink-0">
+                                <div className="w-[96px] h-[68px] bg-slate-100 rounded-lg overflow-hidden border border-slate-200/60 shrink-0 relative flex flex-col shadow-inner">
+                                  <div className="h-2.5 bg-slate-200 border-b border-slate-300 flex items-center px-1 gap-0.5 shrink-0">
                                     <span className="w-1 h-1 rounded-full bg-red-400" />
                                     <span className="w-1 h-1 rounded-full bg-yellow-400" />
                                     <span className="w-1 h-1 rounded-full bg-green-400" />
@@ -5239,8 +5243,8 @@ export default function Dashboard() {
                                   <div className="flex-1 relative">
                                     <TemplateThumbPreview
                                       templateId={tpl.id}
-                                      width={124}
-                                      height={70}
+                                      width={96}
+                                      height={56}
                                       fallback={
                                         <div className="w-full h-full p-1">
                                           {tpl.id === 'cura-futuri' && renderCreativeMockup(accentBg)}
@@ -5252,36 +5256,34 @@ export default function Dashboard() {
                                   </div>
                                   {isLocked && (
                                     <div className="absolute inset-0 bg-slate-900/25 flex items-center justify-center">
-                                      <Lock className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
+                                      <Lock className="w-3 h-3 text-white" strokeWidth={2.5} />
                                     </div>
                                   )}
                                 </div>
 
-                                {/* Text */}
                                 <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    <h4 className="text-sm font-bold text-slate-900 capitalize">{tpl.name}</h4>
-                                    {tpl.isPro && <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded uppercase tracking-wider">Pro</span>}
+                                  <div className="flex items-center gap-1.5">
+                                    <h4 className="text-xs font-bold text-slate-900 capitalize truncate">{tpl.name}</h4>
+                                    {tpl.isPro && <span className="text-[8px] font-bold text-indigo-600 bg-indigo-50 px-1 py-0.5 rounded uppercase tracking-wider shrink-0">Pro</span>}
                                   </div>
-                                  <p className="text-[11px] text-slate-400 leading-normal mt-0.5 line-clamp-2">{tpl.description}</p>
+                                  <p className="text-[10px] text-slate-400 leading-snug mt-0.5 line-clamp-2">{tpl.description}</p>
                                   {tpl.previewable ? (
                                     <button
                                       type="button"
                                       onClick={(e) => { e.stopPropagation(); setPreviewTemplateId(tpl.id); }}
-                                      className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-wider transition-colors"
+                                      className="mt-1 inline-flex items-center gap-1 text-[9px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-wider transition-colors"
                                     >
-                                      <Eye className="w-3 h-3" /> Preview demo
+                                      <Eye className="w-2.5 h-2.5" /> Demo
                                     </button>
                                   ) : (
-                                    <span className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-bold text-slate-300 uppercase tracking-wider">
-                                      <Eye className="w-3 h-3" /> Preview coming soon
+                                    <span className="mt-1 inline-flex items-center gap-1 text-[9px] font-bold text-slate-300 uppercase tracking-wider">
+                                      Soon
                                     </span>
                                   )}
                                 </div>
 
-                                {/* Selected indicator */}
                                 {isSelected && !isLocked && (
-                                  <CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0" />
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
                                 )}
                               </div>
                             );
@@ -5289,27 +5291,24 @@ export default function Dashboard() {
                         </div>
 
                         {!data.isPremium && (
-                          <div className="flex items-start gap-2.5 rounded-xl border border-indigo-100 bg-indigo-50/60 px-3.5 py-2.5">
-                            <Crown className="w-4 h-4 text-indigo-500 mt-0.5 shrink-0" />
-                            <p className="text-[11px] text-indigo-900 leading-relaxed">
-                              Preview every Pro layout with the BEXO demo portfolio.
-                              Publishing on a Pro template needs an active Pro plan.
+                          <div className="flex items-start gap-2 rounded-xl border border-indigo-100 bg-indigo-50/60 px-3 py-2">
+                            <Crown className="w-3.5 h-3.5 text-indigo-500 mt-0.5 shrink-0" />
+                            <p className="text-[10px] text-indigo-900 leading-relaxed">
+                              Preview Pro layouts free. Publishing them needs an active Pro plan.
                             </p>
                           </div>
                         )}
 
-                        {/* Open portfolio link */}
                         <a
                           href={data.isPremium ? correctVisitUrl : pathPortfolioUrl(handleString)}
                           target="_blank"
                           rel="noreferrer"
-                          className="flex items-center justify-center gap-1.5 w-full py-2.5 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-755 text-xs font-bold hover:bg-indigo-100 transition-colors mt-1"
+                          className="flex items-center justify-center gap-1.5 w-full py-2 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-bold hover:bg-indigo-100 transition-colors"
                         >
                           <ExternalLink className="w-3.5 h-3.5" /> Open Live Portfolio
                         </a>
                       </Card>
 
-                      {/* Right: Live iframe Preview */}
                       <div className="lg:col-span-8 xl:col-span-9 flex flex-col gap-2 min-w-0">
                         <div className="flex items-center justify-between px-1">
                           <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Live Preview</span>
@@ -5318,9 +5317,7 @@ export default function Dashboard() {
                           </span>
                         </div>
 
-                        {/* Browser chrome frame */}
                         <div className="rounded-2xl overflow-hidden border border-slate-200 shadow-lg bg-white">
-                          {/* Browser top bar */}
                           <div className="h-9 bg-slate-100 border-b border-slate-200 flex items-center px-3 gap-2 shrink-0">
                             <div className="flex items-center gap-1.5">
                               <span className="w-2.5 h-2.5 rounded-full bg-red-400" />
@@ -5337,8 +5334,7 @@ export default function Dashboard() {
                             </div>
                           </div>
 
-                          {/* Responsive scaled iframe */}
-                          <div className="relative w-full overflow-hidden h-[400px] sm:h-[480px] md:h-[540px] lg:h-[min(68vh,720px)] xl:h-[min(72vh,820px)]">
+                          <div className="relative w-full overflow-hidden h-[min(58vh,560px)] lg:h-[min(70vh,760px)]">
                             <iframe
                               key={`${activeTemplateId}-${data.themeColor || 'indigo'}-${data.themeBg || 'grid'}-demo`}
                               src={getTemplatePreviewUrl(activeTemplateId, data.handle)}
@@ -5357,7 +5353,7 @@ export default function Dashboard() {
                         </div>
 
                         <p className="text-[11px] text-slate-400 text-center">
-                          Template demos use the BEXO showcase portfolio at {demoPreviewHost}. Use Open Live Portfolio for your public URL.
+                          Demos use the BEXO showcase at {demoPreviewHost}. Open Live Portfolio for your public URL.
                         </p>
                       </div>
                     </div>
@@ -5376,90 +5372,97 @@ export default function Dashboard() {
                   const otherCount = Math.max(0, assetsList.length - imageCount - pdfCount);
                   const fmtMb = (b: number) => `${(b / 1024 / 1024).toFixed(1)}MB`;
                   return (
-                  <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-6 animate-in fade-in duration-200">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                          <FileText className="w-4 h-4 text-indigo-500" /> Cloud Storage
-                        </h3>
-                        <p className="text-slate-500 text-xs mt-0.5">Live server usage across every file in your workspace.</p>
-                      </div>
-                      <Button variant="outline" size="sm" className="h-8 text-xs shrink-0" onClick={() => loadAssets()} disabled={assetsLoading}>
-                        {assetsLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Refresh'}
-                      </Button>
-                    </div>
+                  <div className="space-y-4 animate-in fade-in duration-200">
+                    <Card className="p-5 sm:p-6 bg-white border border-slate-200 shadow-sm">
+                      <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:gap-8">
+                        <div className="flex items-start justify-between gap-3 min-w-0 xl:w-[18rem] xl:shrink-0">
+                          <div>
+                            <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                              <FileText className="w-4 h-4 text-indigo-500" /> Cloud Storage
+                            </h3>
+                            <p className="text-slate-500 text-xs mt-0.5">Live usage across your workspace.</p>
+                          </div>
+                          <Button variant="outline" size="sm" className="h-8 text-xs shrink-0 xl:hidden" onClick={() => loadAssets()} disabled={assetsLoading}>
+                            {assetsLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Refresh'}
+                          </Button>
+                        </div>
 
-                    <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 space-y-4">
-                      <div>
-                        <div className="flex justify-between items-center mb-1.5 text-xs font-bold text-slate-700">
-                          <span>Usage Details</span>
-                          <span className="tabular-nums">{fmtMb(srvUsed)} / {(srvQuota / 1024 / 1024).toFixed(0)}MB</span>
+                        <div className="flex-1 min-w-0 space-y-3 xl:border-l xl:border-slate-100 xl:pl-8">
+                          <div className="flex justify-between items-center text-xs font-bold text-slate-700">
+                            <span>Usage</span>
+                            <span className="tabular-nums">{fmtMb(srvUsed)} / {(srvQuota / 1024 / 1024).toFixed(0)}MB</span>
+                          </div>
+                          <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden">
+                            <div
+                              className={cn(
+                                "h-full rounded-full transition-all duration-500",
+                                srvFull ? "bg-red-500" : srvPct >= 85 ? "bg-amber-500" : "bg-indigo-600",
+                              )}
+                              style={{ width: `${srvPct}%` }}
+                            />
+                          </div>
+                          <p className="text-[11px] text-slate-400">
+                            {srvFull
+                              ? 'Storage full — free space or add capacity to upload again.'
+                              : `${fmtMb(Math.max(0, srvQuota - srvUsed))} free of ${(srvQuota / 1024 / 1024).toFixed(0)}MB capacity.`}
+                            {addonBlocks > 0 && ` Includes ${addonBlocks} add-on block${addonBlocks === 1 ? '' : 's'} (+${addonBlocks * 50}MB).`}
+                          </p>
                         </div>
-                        <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden">
-                          <div 
-                            className={cn(
-                              "h-full rounded-full transition-all duration-500",
-                              srvFull ? "bg-red-500" : srvPct >= 85 ? "bg-amber-500" : "bg-indigo-600",
-                            )}
-                            style={{ width: `${srvPct}%` }}
-                          />
-                        </div>
-                        <p className="text-[11px] text-slate-400 mt-1.5">
-                          {srvFull
-                            ? 'Storage full — uploads are blocked until you free space or add storage.'
-                            : `${fmtMb(Math.max(0, srvQuota - srvUsed))} free of your ${(srvQuota / 1024 / 1024).toFixed(0)}MB plan capacity.`}
-                          {addonBlocks > 0 && ` Includes ${addonBlocks} add-on block${addonBlocks === 1 ? '' : 's'} (+${addonBlocks * 50}MB).`}
-                        </p>
-                      </div>
 
-                      <div className="grid grid-cols-3 gap-2">
-                        <div className="rounded-xl bg-white border border-slate-100 p-3 text-center">
-                          <p className="text-lg font-bold text-slate-900 tabular-nums">{assetsLoading ? '—' : imageCount}</p>
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Images</p>
-                        </div>
-                        <div className="rounded-xl bg-white border border-slate-100 p-3 text-center">
-                          <p className="text-lg font-bold text-slate-900 tabular-nums">{assetsLoading ? '—' : pdfCount}</p>
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">PDFs</p>
-                        </div>
-                        <div className="rounded-xl bg-white border border-slate-100 p-3 text-center">
-                          <p className="text-lg font-bold text-slate-900 tabular-nums">{assetsLoading ? '—' : otherCount}</p>
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Other</p>
-                        </div>
-                      </div>
-
-                      <p className="text-[11px] text-slate-400">
-                        System-generated resumes are free and never count against your storage.
-                      </p>
-                      
-                      <div className="flex flex-col sm:flex-row gap-3 pt-1">
-                        <Button
-                          onClick={() => { goView('settings', { settingsTab: 'assets' }); loadAssets(); }}
-                          size="sm"
-                          variant="outline"
-                          className="h-10 text-xs px-4 flex-1"
-                        >
-                          <ImageIcon className="w-3.5 h-3.5 mr-1.5" /> View & manage files
+                        <Button variant="outline" size="sm" className="h-8 text-xs shrink-0 hidden xl:inline-flex" onClick={() => loadAssets()} disabled={assetsLoading}>
+                          {assetsLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Refresh'}
                         </Button>
-                        {data.isPremium ? (
-                          <Button 
-                            onClick={openBilling}
-                            size="sm" 
-                            className="h-10 text-xs px-4 bg-indigo-50 text-indigo-900 hover:bg-indigo-100 flex-1 border border-indigo-200 shadow-none"
-                          >
-                            {srvPct >= 85 ? 'Add +50MB storage' : 'Manage Billing'}
-                          </Button>
-                        ) : (
-                          <Button 
-                            onClick={openBilling}
-                            size="sm" 
-                            className="h-10 text-xs px-4 bg-indigo-600 text-white hover:bg-indigo-700 flex-1 border-none shadow-md font-semibold"
-                          >
-                            Upgrade for more storage
-                          </Button>
-                        )}
                       </div>
+                    </Card>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                      <div className="lg:col-span-7 grid grid-cols-3 gap-3">
+                        {[
+                          { label: 'Images', value: imageCount },
+                          { label: 'PDFs', value: pdfCount },
+                          { label: 'Other', value: otherCount },
+                        ].map((stat) => (
+                          <Card key={stat.label} className="p-4 bg-white border border-slate-200 shadow-sm text-center">
+                            <p className="text-2xl font-bold text-slate-900 tabular-nums">{assetsLoading ? '—' : stat.value}</p>
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mt-1">{stat.label}</p>
+                          </Card>
+                        ))}
+                      </div>
+
+                      <Card className="lg:col-span-5 p-5 bg-white border border-slate-200 shadow-sm flex flex-col justify-between gap-4">
+                        <p className="text-[11px] text-slate-500 leading-relaxed">
+                          System-generated resumes are free and never count against storage.
+                        </p>
+                        <div className="flex flex-col sm:flex-row lg:flex-col xl:flex-row gap-2">
+                          <Button
+                            onClick={() => { goView('settings', { settingsTab: 'assets' }); loadAssets(); }}
+                            size="sm"
+                            variant="outline"
+                            className="h-9 text-xs px-3 flex-1"
+                          >
+                            <ImageIcon className="w-3.5 h-3.5 mr-1.5" /> Manage files
+                          </Button>
+                          {data.isPremium ? (
+                            <Button
+                              onClick={openBilling}
+                              size="sm"
+                              className="h-9 text-xs px-3 bg-indigo-50 text-indigo-900 hover:bg-indigo-100 flex-1 border border-indigo-200 shadow-none"
+                            >
+                              {srvPct >= 85 ? 'Add +50MB' : 'Manage Billing'}
+                            </Button>
+                          ) : (
+                            <Button
+                              onClick={openBilling}
+                              size="sm"
+                              className="h-9 text-xs px-3 bg-indigo-600 text-white hover:bg-indigo-700 flex-1 border-none shadow-md font-semibold"
+                            >
+                              Upgrade storage
+                            </Button>
+                          )}
+                        </div>
+                      </Card>
                     </div>
-                  </Card>
+                  </div>
                   );
                 })()}
 
@@ -5474,109 +5477,113 @@ export default function Dashboard() {
                   const pct = Math.min((used / Math.max(quota, 1)) * 100, 100);
                   const isImage = (a: any) => /\.(png|jpe?g|gif|webp|svg)(\?|$)/i.test(a.url || '') || (a.name || '').match(/\.(png|jpe?g|gif|webp|svg)$/i);
                   return (
-                  <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-6 animate-in fade-in duration-200">
-                    <div className="flex items-start justify-between gap-3 flex-wrap">
-                      <div>
-                        <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                          <ImageIcon className="w-4 h-4 text-indigo-500" /> Assets & Storage
-                        </h3>
-                        <p className="text-slate-500 text-xs mt-0.5">
-                          Every file in your account — deleting here frees storage instantly.
-                        </p>
-                      </div>
-                      <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => loadAssets()} disabled={assetsLoading}>
-                        {assetsLoading ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : null}
-                        Refresh
-                      </Button>
-                    </div>
-
-                    {/* Server-side usage meter */}
-                    <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 space-y-2">
-                      <div className="flex justify-between items-center text-xs font-semibold text-slate-700">
-                        <span>Cloud storage used</span>
-                        <span className="tabular-nums">{(used / 1024 / 1024).toFixed(1)} / {(quota / 1024 / 1024).toFixed(0)} MB</span>
-                      </div>
-                      <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden">
-                        <div
-                          className={cn("h-full rounded-full transition-all duration-500", pct >= 90 ? "bg-red-500" : pct >= 70 ? "bg-amber-500" : "bg-indigo-600")}
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                      <div className="flex items-center justify-between flex-wrap gap-2 pt-1">
-                        <p className="text-[11px] text-slate-400">
-                          {assetsUsage?.addonBlocks
-                            ? `Includes ${assetsUsage.addonBlocks} storage add-on block(s) (+${assetsUsage.addonBlocks * 50}MB).`
-                            : 'System-generated resumes never count against storage.'}
-                        </p>
-                        {data.isPremium && (
-                          <button onClick={openBilling} className="text-[11px] font-bold text-indigo-600 hover:underline">
-                            Need more space? Add 50MB for ₹25/mo →
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Asset list */}
-                    {assetsLoading && assetsList.length === 0 ? (
-                      <div className="py-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-300" /></div>
-                    ) : assetsList.length === 0 ? (
-                      <div className="text-center py-10 rounded-2xl bg-slate-50/50 border border-dashed border-slate-200">
-                        <p className="text-sm text-slate-400 font-medium">No assets uploaded yet.</p>
-                        <p className="text-xs text-slate-400 mt-1">Files you attach to projects, certificates, and updates will appear here.</p>
-                      </div>
-                    ) : (
-                      <div className="divide-y divide-slate-100">
-                        {assetsList.map((asset: any) => (
-                          <div key={asset.id} className="py-3 flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-lg border border-slate-200 bg-slate-50 overflow-hidden flex items-center justify-center shrink-0">
-                              {isImage(asset) ? (
-                                <img src={asset.url} alt={asset.name} className="w-full h-full object-cover" loading="lazy" />
-                              ) : (
-                                <FileText className="w-4 h-4 text-slate-400" />
-                              )}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <a href={asset.url} target="_blank" rel="noreferrer" className="text-xs font-semibold text-slate-800 hover:text-indigo-600 hover:underline truncate block">
-                                {asset.name || 'file'}
-                              </a>
-                              <p className="text-[11px] text-slate-400 truncate">
-                                {fmtSize(Number(asset.sizeBytes))}{asset.sectionType ? ` · ${asset.sectionType}` : ''}{asset.createdAt ? ` · ${new Date(asset.createdAt).toLocaleDateString()}` : ''}
-                              </p>
-                            </div>
-                            <button
-                              type="button"
-                              disabled={deletingAssetId === asset.id}
-                              onClick={() => handleDeleteAssetRow(asset)}
-                              className="p-2 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors shrink-0"
-                              title="Delete asset"
-                            >
-                              {deletingAssetId === asset.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                            </button>
+                  <div className="space-y-4 animate-in fade-in duration-200">
+                    <Card className="p-5 bg-white border border-slate-200 shadow-sm">
+                      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:gap-8">
+                        <div className="flex items-start justify-between gap-3 min-w-0 xl:w-[16rem] xl:shrink-0">
+                          <div>
+                            <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                              <ImageIcon className="w-4 h-4 text-indigo-500" /> Assets &amp; Storage
+                            </h3>
+                            <p className="text-slate-500 text-xs mt-0.5">
+                              Delete files to free space instantly.
+                            </p>
                           </div>
-                        ))}
+                          <Button variant="outline" size="sm" className="h-8 text-xs shrink-0" onClick={() => loadAssets()} disabled={assetsLoading}>
+                            {assetsLoading ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : null}
+                            Refresh
+                          </Button>
+                        </div>
+                        <div className="flex-1 min-w-0 space-y-2 xl:border-l xl:border-slate-100 xl:pl-8">
+                          <div className="flex justify-between items-center text-xs font-semibold text-slate-700">
+                            <span>Cloud storage used</span>
+                            <span className="tabular-nums">{(used / 1024 / 1024).toFixed(1)} / {(quota / 1024 / 1024).toFixed(0)} MB</span>
+                          </div>
+                          <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden">
+                            <div
+                              className={cn("h-full rounded-full transition-all duration-500", pct >= 90 ? "bg-red-500" : pct >= 70 ? "bg-amber-500" : "bg-indigo-600")}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between flex-wrap gap-2">
+                            <p className="text-[11px] text-slate-400">
+                              {assetsUsage?.addonBlocks
+                                ? `Includes ${assetsUsage.addonBlocks} storage add-on block(s) (+${assetsUsage.addonBlocks * 50}MB).`
+                                : 'System-generated resumes never count against storage.'}
+                            </p>
+                            {data.isPremium && (
+                              <button onClick={openBilling} className="text-[11px] font-bold text-indigo-600 hover:underline">
+                                Add 50MB for ₹25/mo →
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    )}
-                  </Card>
+                    </Card>
+
+                    <Card className="p-4 sm:p-5 bg-white border border-slate-200 shadow-sm">
+                      {assetsLoading && assetsList.length === 0 ? (
+                        <div className="py-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-300" /></div>
+                      ) : assetsList.length === 0 ? (
+                        <div className="text-center py-10 rounded-2xl bg-slate-50/50 border border-dashed border-slate-200">
+                          <p className="text-sm text-slate-400 font-medium">No assets uploaded yet.</p>
+                          <p className="text-xs text-slate-400 mt-1">Files you attach to projects, certificates, and updates will appear here.</p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-x-6 divide-y xl:divide-y-0 divide-slate-100">
+                          {assetsList.map((asset: any) => (
+                            <div key={asset.id} className="py-2.5 xl:py-2 flex items-center gap-3 xl:border-b xl:border-slate-100">
+                              <div className="w-9 h-9 rounded-lg border border-slate-200 bg-slate-50 overflow-hidden flex items-center justify-center shrink-0">
+                                {isImage(asset) ? (
+                                  <img src={asset.url} alt={asset.name} className="w-full h-full object-cover" loading="lazy" />
+                                ) : (
+                                  <FileText className="w-4 h-4 text-slate-400" />
+                                )}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <a href={asset.url} target="_blank" rel="noreferrer" className="text-xs font-semibold text-slate-800 hover:text-indigo-600 hover:underline truncate block">
+                                  {asset.name || 'file'}
+                                </a>
+                                <p className="text-[10px] text-slate-400 truncate">
+                                  {fmtSize(Number(asset.sizeBytes))}{asset.sectionType ? ` · ${asset.sectionType}` : ''}{asset.createdAt ? ` · ${new Date(asset.createdAt).toLocaleDateString()}` : ''}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                disabled={deletingAssetId === asset.id}
+                                onClick={() => handleDeleteAssetRow(asset)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors shrink-0"
+                                title="Delete asset"
+                              >
+                                {deletingAssetId === asset.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </Card>
+                  </div>
                   );
                 })()}
 
                 {settingsSubTab === 'billing' && (
-                  <div className="space-y-5 animate-in fade-in duration-200">
-                    {/* Current plan + validity */}
-                    <Card className="p-6 bg-white border border-slate-200 shadow-sm">
-                      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                        <div>
-                          <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                            <Crown className="w-4 h-4 text-indigo-500" /> {planName}
-                          </h3>
-                          <p className="text-slate-500 text-xs mt-1">
-                            {isLifetimePlan
-                              ? 'Lifetime access — one-time payment, never expires.'
-                              : billingStatus?.expiresAt
-                                ? `${(billingStatus?.autopay ?? billingStatus?.subscription?.autopay) && !billingStatus?.cancelAtPeriodEnd ? 'Renews automatically on' : 'Valid until'} ${new Date(billingStatus.expiresAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}${billingStatus?.billingPeriod === 'monthly' ? ' (monthly billing)' : billingStatus?.billingPeriod === 'yearly' ? ' (yearly billing)' : ''}.`
-                                : 'Free plan — upgrade anytime for a subdomain, premium templates, and more storage.'}
-                          </p>
-                          <div className="flex flex-wrap items-center gap-2 mt-3">
+                  <div className="space-y-4 animate-in fade-in duration-200">
+                    <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
+                      <Card className="p-5 sm:p-6 bg-white border border-slate-200 shadow-sm xl:col-span-5">
+                        <div className="flex flex-col gap-4 h-full">
+                          <div>
+                            <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                              <Crown className="w-4 h-4 text-indigo-500" /> {planName}
+                            </h3>
+                            <p className="text-slate-500 text-xs mt-1 leading-relaxed">
+                              {isLifetimePlan
+                                ? 'Lifetime access — one-time payment, never expires.'
+                                : billingStatus?.expiresAt
+                                  ? `${(billingStatus?.autopay ?? billingStatus?.subscription?.autopay) && !billingStatus?.cancelAtPeriodEnd ? 'Renews automatically on' : 'Valid until'} ${new Date(billingStatus.expiresAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}${billingStatus?.billingPeriod === 'monthly' ? ' (monthly billing)' : billingStatus?.billingPeriod === 'yearly' ? ' (yearly billing)' : ''}.`
+                                  : 'Free plan — upgrade anytime for a subdomain, premium templates, and more storage.'}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
                             {!isLifetimePlan && (billingStatus?.autopay ?? billingStatus?.subscription?.autopay) && !billingStatus?.cancelAtPeriodEnd && (
                               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-bold">
                                 <CheckCircle2 className="w-3 h-3" /> Auto-renew on
@@ -5598,71 +5605,71 @@ export default function Dashboard() {
                               </span>
                             )}
                           </div>
+                          <Button variant="outline" size="sm" onClick={openBilling} className="w-full sm:w-auto gap-1.5 mt-auto">
+                            <CreditCard className="w-3.5 h-3.5" /> {data.isPremium ? 'Manage plan & storage' : 'Upgrade plan'}
+                          </Button>
                         </div>
-                        <Button variant="outline" size="sm" onClick={openBilling} className="shrink-0 gap-1.5">
-                          <CreditCard className="w-3.5 h-3.5" /> {data.isPremium ? 'Manage plan & storage' : 'Upgrade plan'}
-                        </Button>
-                      </div>
-                    </Card>
+                      </Card>
 
-                    <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-6">
-                    <div>
-                      <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                        <CreditCard className="w-4 h-4 text-indigo-500" /> Billing History & Invoices
-                      </h3>
-                      <p className="text-slate-500 text-xs mt-0.5">Access and download tax invoices for your Bexo payments.</p>
-                    </div>
+                      <Card className="p-5 sm:p-6 bg-white border border-slate-200 shadow-sm space-y-4 xl:col-span-7">
+                        <div>
+                          <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                            <CreditCard className="w-4 h-4 text-indigo-500" /> Billing History &amp; Invoices
+                          </h3>
+                          <p className="text-slate-500 text-xs mt-0.5">Download tax invoices for your Bexo payments.</p>
+                        </div>
 
-                    <div className="space-y-4">
-                      {data.payments && data.payments.length > 0 ? (
-                        <div className="divide-y divide-slate-100">
-                          {data.payments.map((payment: any) => {
-                            const dateStr = new Date(payment.createdAt).toLocaleDateString('en-IN', {
-                              day: 'numeric',
-                              month: 'long',
-                              year: 'numeric'
-                            });
-                            const planLabel = payment.plan === 'storage_addon'
-                              ? 'Storage Increase (monthly add-on)'
-                              : `${PLAN_DISPLAY_NAMES[payment.plan] || 'Pro'} Plan${payment.kind === 'subscription' ? ' (Auto-renew)' : payment.plan === 'studentplus' || payment.plan === 'lifetime' ? ' (Lifetime)' : ''}`;
-                            return (
-                              <div key={payment.id} className="py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                                <div>
-                                  <p className="text-sm font-semibold text-slate-900">
-                                    Bexo {planLabel}
-                                  </p>
-                                  <p className="text-xs text-slate-500 mt-0.5">
-                                    Paid on {dateStr}  |  Ref: <span className="font-mono text-slate-400">{payment.razorpayOrderId || payment.razorpaySubscriptionId || payment.razorpayPaymentId}</span>
-                                  </p>
-                                </div>
-                                <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto">
-                                  <span className="text-sm font-bold text-slate-900">
-                                    ₹{(payment.amount / 100).toLocaleString('en-IN')}
-                                  </span>
-                                  {payment.invoiceUrl ? (
-                                    <a 
-                                      href={payment.invoiceUrl} 
-                                      target="_blank" 
-                                      rel="noreferrer" 
-                                      className="text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100/70 px-3 py-1.5 rounded-lg border border-indigo-100 transition-colors flex items-center gap-1.5 shrink-0 select-none"
-                                    >
-                                      <FileText className="w-3.5 h-3.5" /> Download Invoice
-                                    </a>
-                                  ) : (
-                                    <span className="text-xs text-slate-400 font-medium italic">Invoice generating...</span>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
+                        <div className="space-y-1 max-h-[min(52vh,480px)] overflow-y-auto">
+                          {data.payments && data.payments.length > 0 ? (
+                            <div className="divide-y divide-slate-100">
+                              {data.payments.map((payment: any) => {
+                                const dateStr = new Date(payment.createdAt).toLocaleDateString('en-IN', {
+                                  day: 'numeric',
+                                  month: 'short',
+                                  year: 'numeric'
+                                });
+                                const planLabel = payment.plan === 'storage_addon'
+                                  ? 'Storage Increase (monthly add-on)'
+                                  : `${PLAN_DISPLAY_NAMES[payment.plan] || 'Pro'} Plan${payment.kind === 'subscription' ? ' (Auto-renew)' : payment.plan === 'studentplus' || payment.plan === 'lifetime' ? ' (Lifetime)' : ''}`;
+                                return (
+                                  <div key={payment.id} className="py-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2.5">
+                                    <div className="min-w-0">
+                                      <p className="text-sm font-semibold text-slate-900 truncate">
+                                        Bexo {planLabel}
+                                      </p>
+                                      <p className="text-[11px] text-slate-500 mt-0.5 truncate">
+                                        Paid {dateStr}
+                                      </p>
+                                    </div>
+                                    <div className="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto shrink-0">
+                                      <span className="text-sm font-bold text-slate-900 tabular-nums">
+                                        ₹{(payment.amount / 100).toLocaleString('en-IN')}
+                                      </span>
+                                      {payment.invoiceUrl ? (
+                                        <a
+                                          href={payment.invoiceUrl}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100/70 px-2.5 py-1.5 rounded-lg border border-indigo-100 transition-colors flex items-center gap-1.5 shrink-0 select-none"
+                                        >
+                                          <FileText className="w-3.5 h-3.5" /> Invoice
+                                        </a>
+                                      ) : (
+                                        <span className="text-[11px] text-slate-400 font-medium italic">Generating…</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className="text-center py-10 rounded-2xl bg-slate-50/50 border border-dashed border-slate-200">
+                              <p className="text-sm text-slate-400 font-medium">No payment history found.</p>
+                            </div>
+                          )}
                         </div>
-                      ) : (
-                        <div className="text-center py-10 rounded-2xl bg-slate-50/50 border border-dashed border-slate-200">
-                          <p className="text-sm text-slate-400 font-medium">No payment history found.</p>
-                        </div>
-                      )}
+                      </Card>
                     </div>
-                    </Card>
                   </div>
                 )}
               </div>
@@ -6061,7 +6068,7 @@ export default function Dashboard() {
 
           <button
             onClick={() => setShowFabMenu(!showFabMenu)}
-            className="w-12 h-12 sm:w-14 sm:h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full flex items-center justify-center shadow-[0_8px_30px_rgb(0,0,0,0.12)] hover:shadow-[0_8px_30px_rgb(79,70,229,0.3)] transition-all duration-300 active:scale-95 hover:scale-105"
+            className="w-12 h-12 sm:w-14 sm:h-14 bg-[var(--bexo-accent)] hover:bg-[#2558e0] text-white rounded-full flex items-center justify-center shadow-[0_12px_32px_-8px_rgba(47,107,255,0.65)] hover:shadow-[0_16px_40px_-8px_rgba(47,107,255,0.75)] transition-all duration-300 active:scale-95 hover:scale-105 ring-4 ring-white/40"
             aria-label={showFabMenu ? "Close quick actions" : "Open quick actions"}
           >
             {showFabMenu ? <X className="w-5 h-5 sm:w-6 sm:h-6" /> : <Plus className="w-5 h-5 sm:w-6 sm:h-6" />}
@@ -6155,6 +6162,7 @@ export default function Dashboard() {
           document.body
         );
       })()}
+      </div>
     </div>
   );
 }
