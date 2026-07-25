@@ -813,3 +813,151 @@ export async function getMandateSummary(userId: string) {
       : null,
   };
 }
+
+/**
+ * Fire a one-off recurring debit against the user's live UPI Autopay token.
+ * Uses the same Razorpay createRecurringPayment path as monthly renewals.
+ *
+ * Does NOT extend the paid period and does NOT touch the next scheduled
+ * renewal — safe for ₹1 / small verification tests.
+ */
+export async function runTestRecurringCharge(opts: {
+  userId: string;
+  amountPaise?: number;
+  note?: string;
+}): Promise<
+  | { ok: true; orderId: string; paymentId: string | null; amountPaise: number; tokenId: string; plan: string }
+  | { ok: false; error: string; code: string }
+> {
+  if (!razorpay) return { ok: false, error: "Razorpay not configured", code: "RAZORPAY_MISSING" };
+
+  const amountPaise = Math.max(100, Math.floor(opts.amountPaise ?? 100)); // min ₹1
+  const [mandate] = await db
+    .select()
+    .from(autopayMandates)
+    .where(eq(autopayMandates.userId, opts.userId))
+    .limit(1);
+
+  if (!mandate || mandate.status !== "active" || !mandate.razorpayTokenId) {
+    return { ok: false, error: "No active UPI Autopay mandate for this user", code: "MANDATE_INACTIVE" };
+  }
+  if (!mandate.razorpayCustomerId) {
+    return { ok: false, error: "Mandate is missing Razorpay customer id", code: "CUSTOMER_MISSING" };
+  }
+  if (amountPaise > mandate.maxAmountPaise) {
+    return {
+      ok: false,
+      error: `Amount ₹${(amountPaise / 100).toFixed(2)} exceeds mandate ceiling ₹${(mandate.maxAmountPaise / 100).toFixed(2)}`,
+      code: "EXCEEDS_MANDATE_MAX",
+    };
+  }
+
+  const contact = await loadContact(opts.userId);
+  if (!contact.email && !contact.phone) {
+    return { ok: false, error: "User has no email/phone for the recurring charge", code: "CONTACT_MISSING" };
+  }
+
+  const stamp = Date.now();
+  const order: any = await razorpay.orders.create({
+    amount: amountPaise,
+    currency: "INR",
+    customer_id: mandate.razorpayCustomerId,
+    receipt: `upi_test_${stamp}`.slice(0, 40),
+    notes: {
+      userId: opts.userId,
+      plan: mandate.plan,
+      kind: "upi_autopay_test",
+      note: (opts.note || "manual ₹1 Autopay engine test").slice(0, 200),
+    },
+  } as any);
+
+  let paymentId: string | null = null;
+  try {
+    const result: any = await razorpay.payments.createRecurringPayment({
+      email: contact.email || undefined,
+      contact: contact.phone || undefined,
+      amount: amountPaise,
+      currency: "INR",
+      order_id: order.id,
+      customer_id: mandate.razorpayCustomerId,
+      token: mandate.razorpayTokenId,
+      recurring: "1",
+      notes: {
+        userId: opts.userId,
+        plan: mandate.plan,
+        kind: "upi_autopay_test",
+      },
+    } as any);
+    paymentId = result?.razorpay_payment_id || result?.payment_id || null;
+  } catch (err: any) {
+    const desc = String(err?.error?.description || err?.message || err).slice(0, 500);
+    logger.error({ err, userId: opts.userId, orderId: order.id }, "upiAutopay: test charge failed");
+    await recordLedger({
+      userId: opts.userId,
+      eventType: "upi_autopay_test_failed",
+      amountPaise,
+      plan: mandate.plan,
+      razorpayOrderId: order.id,
+      idempotencyKey: `upi_test_fail:${order.id}`,
+      metadata: { error: desc },
+    });
+    return { ok: false, error: desc || "Recurring charge failed", code: "CHARGE_FAILED" };
+  }
+
+  // Record only — do not activatePaidPlan / move nextChargeAt (test must not gift a month).
+  // payments.kind is constrained; use subscription + ledger event for the test marker.
+  try {
+    await db.insert(payments).values({
+      userId: opts.userId,
+      razorpayOrderId: order.id,
+      razorpayPaymentId: paymentId,
+      amount: amountPaise,
+      status: "success",
+      plan: mandate.plan,
+      kind: "subscription",
+    });
+  } catch (err) {
+    logger.warn({ err, orderId: order.id, paymentId }, "upiAutopay: test payment row insert failed (charge already submitted)");
+  }
+
+  await db
+    .update(autopayMandates)
+    .set({
+      lastChargeAt: new Date(),
+      lastChargeStatus: "test_charged",
+      failureCount: 0,
+      updatedAt: new Date(),
+    })
+    .where(eq(autopayMandates.id, mandate.id));
+
+  await recordLedger({
+    userId: opts.userId,
+    eventType: "upi_autopay_test_charged",
+    amountPaise,
+    plan: mandate.plan,
+    razorpayPaymentId: paymentId,
+    razorpayOrderId: order.id,
+    idempotencyKey: `upi_test:${order.id}`,
+    metadata: { note: opts.note || "manual test", tokenId: mandate.razorpayTokenId },
+  });
+
+  try {
+    await sendBillingReceipts(opts.userId, `${mandate.plan} (test)`, amountPaise / 100, paymentId || order.id);
+  } catch (err) {
+    logger.warn({ err, userId: opts.userId }, "upiAutopay: test receipt failed");
+  }
+
+  logger.info(
+    { userId: opts.userId, amountPaise, orderId: order.id, paymentId },
+    "upiAutopay: test recurring charge submitted",
+  );
+
+  return {
+    ok: true,
+    orderId: order.id,
+    paymentId,
+    amountPaise,
+    tokenId: mandate.razorpayTokenId,
+    plan: mandate.plan,
+  };
+}

@@ -12,6 +12,7 @@ import {
   cancelMandate,
   getMandateSummary,
   runUpiAutopayTick,
+  runTestRecurringCharge,
 } from "../lib/upiAutopay";
 
 const router = Router();
@@ -124,6 +125,38 @@ router.post("/jobs/tick", async (req: any, res: any) => {
   } catch (err: any) {
     logger.error({ err }, "upiAutopay tick failed");
     return res.status(500).json({ error: "Tick failed" });
+  }
+});
+
+/**
+ * Manual ₹1 (or custom) Autopay engine test debit against a live UPI token.
+ * Same Razorpay createRecurringPayment path as monthly renewals — does NOT
+ * extend the paid period. Guarded by CRON_SECRET / INTERNAL_JOB_SECRET.
+ *
+ * Body: { userId, amountPaise?: 100, note?: string }
+ */
+router.post("/jobs/test-charge", async (req: any, res: any) => {
+  const secret = process.env.CRON_SECRET || process.env.INTERNAL_JOB_SECRET;
+  const provided = req.get("x-cron-secret") || req.query.secret;
+  if (!secret || provided !== secret) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  const userId = String(req.body?.userId || "").trim();
+  if (!userId) return res.status(400).json({ error: "userId is required" });
+  const amountPaise = req.body?.amountPaise != null ? Number(req.body.amountPaise) : 100;
+  try {
+    const result = await runTestRecurringCharge({
+      userId,
+      amountPaise,
+      note: String(req.body?.note || "manual Autopay engine test").slice(0, 200),
+    });
+    if (!result.ok) {
+      return res.status(400).json(result);
+    }
+    return res.json(result);
+  } catch (err: any) {
+    logger.error({ err, userId }, "upiAutopay test-charge failed");
+    return res.status(500).json({ error: String(err?.message || err) });
   }
 });
 
