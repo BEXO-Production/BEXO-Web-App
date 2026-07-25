@@ -98,6 +98,12 @@ export default function Step9Plan() {
   const [isEnablingAutopay, setIsEnablingAutopay] = useState(false);
   const [canEnableAutopay, setCanEnableAutopay] = useState(false);
   const [activatedViaKey, setActivatedViaKey] = useState(false);
+  const [upiMandate, setUpiMandate] = useState<{
+    status: string;
+    maxAmountPaise: number;
+    nextChargeAt: string | null;
+    upcomingCharge: { amountPaise: number; storagePaise: number; scheduledFor: string } | null;
+  } | null>(null);
   const [billingProfile, setBillingProfile] = useState<{
     fullName: string;
     email: string;
@@ -176,6 +182,7 @@ export default function Step9Plan() {
         setBillingProfile(result.billingProfile || null);
         setCanEnableAutopay(!!result.canEnableAutopay);
         setActivatedViaKey(!!result.activatedViaKey);
+        setUpiMandate(result.upiMandate || null);
       } catch (err) {
         console.error('Billing status refresh failed:', err);
       }
@@ -817,36 +824,42 @@ export default function Step9Plan() {
     const MAX_ADDON_UI = 20;
     const addonRemainingSlots = Math.max(0, MAX_ADDON_UI - currentAddonBlocks);
     return (
-      <div className="flex flex-col h-full w-full max-w-md lg:max-w-5xl mx-auto pb-10 animate-in fade-in slide-in-from-right-4">
+      <div className="flex flex-col h-full w-full max-w-md lg:max-w-6xl xl:max-w-[88rem] mx-auto pb-10 animate-in fade-in slide-in-from-right-4">
         <button 
           onClick={() => setLocation('/dashboard')}
-          className="flex items-center text-slate-500 hover:text-slate-900 mb-6 transition-colors w-fit text-sm font-medium"
+          className="flex items-center text-slate-500 hover:text-slate-900 mb-4 transition-colors w-fit text-sm font-medium"
         >
           <ArrowLeft className="w-4 h-4 mr-1" /> Back to Dashboard
         </button>
 
-        <h2 className="font-serif text-2xl sm:text-3xl md:text-4xl font-bold text-slate-900 mb-2">Billing & Plan</h2>
-        <p className="text-slate-500 text-sm mb-6">Manage your subscription, storage, and view your current limits.</p>
-
-        {portfolioUrl && (
-          <div className="inline-flex items-center gap-2 mb-6 px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-full w-fit">
-            <Globe className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-            <span className="text-sm font-semibold text-indigo-700">{portfolioUrl || portfolioHostname(data.handle || '')}</span>
+        {/* Header — title and portfolio share one row on desktop to save height */}
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between mb-5">
+          <div>
+            <h2 className="font-serif text-2xl sm:text-3xl md:text-4xl font-bold text-slate-900">Billing &amp; Plan</h2>
+            <p className="text-slate-500 text-sm mt-1">Manage your subscription, storage, and view your current limits.</p>
           </div>
-        )}
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 lg:gap-6 lg:items-start space-y-6 lg:space-y-0">
-          <div className="space-y-6 min-w-0">
-          <Card className="p-6 bg-white border border-slate-200 shadow-sm relative overflow-hidden">
-            <div className="absolute top-0 right-0 bg-indigo-50 text-indigo-600 font-bold px-3 py-1 text-xs rounded-bl-lg">
-              ACTIVE
+          {portfolioUrl && (
+            <div className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-full w-fit shrink-0">
+              <Globe className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+              <span className="text-sm font-semibold text-indigo-700">{portfolioUrl || portfolioHostname(data.handle || '')}</span>
             </div>
-            <div className="flex items-start gap-4 mb-4">
+          )}
+        </div>
+
+        {/* Full-width summary band — plan identity + the numbers people check first */}
+        <Card className="p-5 sm:p-6 bg-white border border-slate-200 shadow-sm mb-5">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:gap-8">
+            <div className="flex items-start gap-4 min-w-0 xl:w-[22rem] xl:shrink-0">
               <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-500 flex items-center justify-center shrink-0">
                 <Check className="w-6 h-6" />
               </div>
-              <div>
-                <h3 className="font-bold text-slate-900 text-lg">{currentPlanLabel} Plan</h3>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="font-bold text-slate-900 text-lg">{currentPlanLabel} Plan</h3>
+                  <span className="text-[10px] font-bold tracking-wider text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full uppercase">
+                    Active
+                  </span>
+                </div>
                 <p className="text-sm text-slate-500 mt-0.5">
                   {isLifetimePlan
                     ? 'Lifetime premium access — one-time payment, forever.'
@@ -872,11 +885,11 @@ export default function Step9Plan() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 mt-6 pt-6 border-t border-slate-100">
+            <div className="grid grid-cols-2 gap-4 sm:gap-6 md:grid-cols-4 flex-1 xl:border-l xl:border-slate-100 xl:pl-8 pt-5 border-t border-slate-100 xl:pt-0 xl:border-t-0">
               <div>
-                <p className="text-xs font-bold text-slate-400 uppercase mb-1">Storage Quota</p>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Storage quota</p>
                 <p className="text-sm font-semibold text-slate-800">
-                  {formatMb(data.storageQuotaBytes || 0)} Limit
+                  {formatMb(data.storageQuotaBytes || 0)} limit
                   {currentAddonBlocks > 0 && (
                     <span className="block text-xs font-medium text-indigo-600 mt-0.5">
                       includes +{formatMb(currentAddonBlocks * STORAGE_BLOCK_BYTES)} add-on
@@ -885,16 +898,66 @@ export default function Step9Plan() {
                 </p>
               </div>
               <div>
-                <p className="text-xs font-bold text-slate-400 uppercase mb-1">Monthly Limits</p>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Monthly limits</p>
                 <p className="text-sm font-semibold text-slate-800">
-                  {data.limits?.parsesPerMonth ?? '—'} AI parses · {data.limits?.updatesPerMonth ?? '—'} updates
+                  {data.limits?.parsesPerMonth ?? '—'} AI parses
+                  <span className="block text-xs text-slate-500 mt-0.5">
+                    {data.limits?.updatesPerMonth ?? '—'} updates
+                  </span>
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                  {isLifetimePlan ? 'Access' : data.cancelAtPeriodEnd ? 'Access until' : 'Renews on'}
+                </p>
+                <p className="text-sm font-semibold text-slate-800">
+                  {isLifetimePlan ? 'Lifetime' : expiryLabel || '—'}
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Next debit</p>
+                <p className="text-sm font-semibold text-slate-800">
+                  {isLifetimePlan
+                    ? 'None'
+                    : data.cancelAtPeriodEnd || !data.autopay
+                      ? 'Not scheduled'
+                      : upiMandate?.upcomingCharge
+                        ? `₹${fmtINR(upiMandate.upcomingCharge.amountPaise / 100)}`
+                        : 'At renewal'}
+                  {!isLifetimePlan && data.autopay && !data.cancelAtPeriodEnd && upiMandate?.upcomingCharge && (
+                    <span className="block text-xs text-slate-500 mt-0.5">
+                      on {new Date(upiMandate.upcomingCharge.scheduledFor).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
+                    </span>
+                  )}
                 </p>
               </div>
             </div>
-          </Card>
           </div>
+        </Card>
 
-          <div className="space-y-6 min-w-0 lg:sticky lg:top-6">
+        {/* Blocking state stays full width so it can't get buried in a column */}
+        {!isLifetimePlan && needsMandateSetup && (
+          <Card className="p-5 sm:p-6 bg-amber-50 border border-amber-200 shadow-sm mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <h3 className="font-bold text-slate-900 text-base">Finish Autopay to activate</h3>
+              <p className="text-sm text-slate-600 mt-1">
+                Your first invoice is on hold. Authorize Razorpay Autopay to activate the plan. Closing without authorizing triggers a refund.
+              </p>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              className="h-9 text-xs shrink-0"
+              disabled={isConfirmingMandate || !pendingMandateSubId}
+              onClick={completeAutopaySetup}
+            >
+              {isConfirmingMandate ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Authorize Autopay'}
+            </Button>
+          </Card>
+        )}
+
+        {/* Balanced multi-column card flow — fills the width instead of one tall stack */}
+        <div className="lg:columns-2 xl:columns-3 lg:gap-5 [&>*]:break-inside-avoid [&>*]:mb-5">
           <Card className="p-6 bg-white border border-slate-200 shadow-sm">
             <div className="flex items-start justify-between gap-3 mb-4">
               <h3 className="text-xs font-bold tracking-[0.12em] text-slate-900 uppercase">
@@ -1027,24 +1090,6 @@ export default function Step9Plan() {
               </div>
             )}
           </Card>
-
-          {!isLifetimePlan && needsMandateSetup && (
-            <Card className="p-6 bg-amber-50 border border-amber-200 shadow-sm space-y-3">
-              <h3 className="font-bold text-slate-900 text-base mb-1.5">Finish Autopay to activate</h3>
-              <p className="text-sm text-slate-600">
-                Your first invoice is on hold. Authorize Razorpay Autopay to activate the plan. Closing without authorizing triggers a refund.
-              </p>
-              <Button
-                type="button"
-                size="sm"
-                className="h-9 text-xs"
-                disabled={isConfirmingMandate || !pendingMandateSubId}
-                onClick={completeAutopaySetup}
-              >
-                {isConfirmingMandate ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Authorize Autopay'}
-              </Button>
-            </Card>
-          )}
 
           {!isLifetimePlan && (data.autopay || data.cancelAtPeriodEnd || canEnableAutopay) && (
             <Card className="p-6 bg-white border border-slate-200 shadow-sm space-y-3">
@@ -1303,7 +1348,6 @@ export default function Step9Plan() {
           </Card>
 
           <ContactSupportCard />
-          </div>
         </div>
       </div>
     );

@@ -11,7 +11,7 @@ export default function BillingPage() {
 
   return (
     <div className="min-h-[100dvh] bg-slate-50 px-3 sm:px-4 py-6 sm:py-8">
-      <div className="mx-auto mb-5 sm:mb-6 flex w-full max-w-md lg:max-w-5xl items-center justify-between">
+      <div className="mx-auto mb-5 sm:mb-6 flex w-full max-w-md lg:max-w-6xl xl:max-w-[88rem] items-center justify-between">
         <button
           type="button"
           onClick={() => setLocation('/dashboard/settings/billing')}

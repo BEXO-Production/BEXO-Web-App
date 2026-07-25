@@ -30,6 +30,7 @@ import {
 } from "../lib/resumeParseQueue";
 import { resolveSubscriptionState, syncStorageQuota, recomputeUserQuota } from "../lib/subscriptions";
 import { resolveSiteAccess } from "../lib/siteAccess";
+import { getMandateSummary } from "../lib/upiAutopay";
 import {
   ONBOARDING_PARSE_LIMIT,
   consumeUpdate,
@@ -167,6 +168,9 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<voi
     const subscriptionState = await resolveSubscriptionState(userId);
     await syncStorageQuota(userId, subscriptionState.storageQuotaBytes, Number(user.storageQuotaBytes));
     const siteAccess = await resolveSiteAccess(userId);
+    // UPI Autopay users have a token mandate instead of a Razorpay subscription.
+    const hasActiveUpiMandate =
+      (await getMandateSummary(userId).catch(() => null))?.status === "active";
     const limits = await getPlanLimits(subscriptionState.isPremium ? subscriptionState.plan : "free");
     const updatesUsage = await getUpdatesUsage(user, limits.updatesPerMonth);
     const parsesUsage = await getParsesUsage(user, limits.parsesPerMonth);
@@ -237,7 +241,9 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<voi
         parsesRemaining: parsesUsage.remaining,
         parsesDaysToReset: parsesUsage.daysToReset,
       },
-      autopay: !!subscriptionState.subscription?.razorpaySubscriptionId && !siteAccess.cancelAtPeriodEnd,
+      autopay:
+        (!!subscriptionState.subscription?.razorpaySubscriptionId || hasActiveUpiMandate) &&
+        !siteAccess.cancelAtPeriodEnd,
       aboutEntries: getEntries("about"),
       educationEntries: getEntries("education"),
       experienceEntries: getEntries("experience"),

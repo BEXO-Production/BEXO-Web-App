@@ -49,6 +49,7 @@ import {
   setCancelAtPeriodEnd,
 } from "../lib/siteAccess";
 import { enqueueEmail } from "../lib/emailOutbox";
+import { cancelMandate, getMandateSummary } from "../lib/upiAutopay";
 import {
   ensureBillingProfileForCheckout,
   getBillingProfile,
@@ -439,7 +440,12 @@ router.get("/status", requireAuth, async (req: any, res: any) => {
     const storageAddon = await getStorageAddonControl(userId);
     const rzpSubId = state.subscription?.razorpaySubscriptionId || null;
     const rzpStatus = await fetchRazorpaySubscriptionStatus(rzpSubId);
-    const autopayLive = !!rzpSubId && (rzpSubId.startsWith("mock_") || isMandateReadyStatus(rzpStatus));
+    // UPI Autopay stores a token mandate instead of a Razorpay Subscription, so
+    // renewal state must consider both engines or token users read as "off".
+    const upiMandate = await getMandateSummary(userId).catch(() => null);
+    const upiAutopayLive = upiMandate?.status === "active";
+    const autopayLive =
+      upiAutopayLive || (!!rzpSubId && (rzpSubId.startsWith("mock_") || isMandateReadyStatus(rzpStatus)));
     // Effective renewing state: mandate is live AND user has not cancelled at period end.
     // Keeping razorpaySubscriptionId after cancel_at_cycle_end must NOT show "Autopay on".
     const willAutoRenew = autopayLive && !access.cancelAtPeriodEnd;
@@ -452,8 +458,9 @@ router.get("/status", requireAuth, async (req: any, res: any) => {
       .limit(1);
 
     const needsMandateSetup =
-      !!heldMandate ||
-      (!!rzpSubId && !rzpSubId.startsWith("mock_") && rzpStatus === "created" && !state.isPremium);
+      !upiAutopayLive &&
+      (!!heldMandate ||
+        (!!rzpSubId && !rzpSubId.startsWith("mock_") && rzpStatus === "created" && !state.isPremium));
 
     const isLifetime = state.billingPeriod === "lifetime" || planBillingPeriod(state.plan || "free") === "lifetime";
     // Premium users without live Autopay (activation key / cancelled renew) can attach a delayed mandate.
@@ -526,6 +533,15 @@ router.get("/status", requireAuth, async (req: any, res: any) => {
       canBuy: state.canBuy,
       renewalMode: state.renewalMode,
       autopay: willAutoRenew,
+      autopayMethod: upiAutopayLive ? "upi_mandate" : autopayLive ? "razorpay_subscription" : null,
+      upiMandate: upiMandate
+        ? {
+            status: upiMandate.status,
+            maxAmountPaise: upiMandate.maxAmountPaise,
+            nextChargeAt: upiMandate.nextChargeAt,
+            upcomingCharge: upiMandate.upcomingCharge,
+          }
+        : null,
       canEnableAutopay,
       activatedViaKey,
       needsMandateSetup,
@@ -2285,15 +2301,22 @@ router.post("/subscription/cancel", requireAuth, async (req: any, res: any) => {
       });
     }
 
+    // UPI Autopay renews off a stored token, not a Razorpay subscription — the
+    // mandate must be revoked here or the scheduler keeps debiting after cancel.
+    const upiRevoked = await cancelMandate(userId).catch(() => false);
+
     const subId = state.subscription?.razorpaySubscriptionId;
     if (!subId) {
-      // Already cancelled at Razorpay / one-time without autopay — mark local flag.
       await setCancelAtPeriodEnd(userId, true);
       return res.json({
         success: true,
         cancelAtPeriodEnd: true,
         expiresAt: state.expiresAt,
-        message: "Auto-renew is already off. Your plan stays active until the paid-through date.",
+        message: upiRevoked
+          ? state.expiresAt
+            ? `Auto-renew cancelled. You keep full access until ${new Date(state.expiresAt).toLocaleDateString()}.`
+            : "Auto-renew cancelled. You keep access until the end of the current period."
+          : "Auto-renew is already off. Your plan stays active until the paid-through date.",
       });
     }
 
@@ -2373,6 +2396,17 @@ router.post("/subscription/enable-autopay", requireAuth, async (req: any, res: a
       return res.status(400).json({
         error: "Activate a paid plan first, then enable Autopay for renewals.",
         code: "NO_ACTIVE_PLAN",
+      });
+    }
+
+    // A live UPI token mandate already renews this plan — never stack a second one.
+    const existingUpiMandate = await getMandateSummary(userId).catch(() => null);
+    if (existingUpiMandate?.status === "active" && !access.cancelAtPeriodEnd) {
+      return res.status(409).json({
+        error: "Auto-renew is already on for your plan.",
+        code: "AUTOPAY_ALREADY_ON",
+        autopay: true,
+        cancelAtPeriodEnd: false,
       });
     }
 
