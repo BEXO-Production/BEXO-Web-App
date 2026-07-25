@@ -606,3 +606,22 @@ export const supportTicketEvents = pgTable("support_ticket_events", {
   meta: jsonb("meta").notNull().default({}),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });
+
+/** Marketing site Contact Us → BEXO Admin CRM Leads. */
+export const marketingLeads = pgTable("marketing_leads", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: text("name").notNull(),
+  email: text("email").notNull(),
+  phone: text("phone"),
+  subject: text("subject"),
+  message: text("message").notNull(),
+  source: text("source").notNull().default("marketing_contact"),
+  pageUrl: text("page_url"),
+  // new | contacted | qualified | closed | spam
+  status: text("status").notNull().default("new"),
+  ipHash: text("ip_hash"),
+  notes: text("notes"),
+  assignedStaffId: uuid("assigned_staff_id").references(() => staffUsers.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});

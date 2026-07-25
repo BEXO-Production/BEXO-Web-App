@@ -15,6 +15,7 @@ import { usePricing, type PublicPricingPlan } from '../hooks/use-pricing';
 import { apiUrl } from '../lib/api';
 import { portfolioHostname } from '../lib/platform';
 import { BillingAddressFields } from '../components/BillingAddressFields';
+import { ContactSupportCard } from '../components/ContactSupportCard';
 
 declare global {
   interface Window {
@@ -816,7 +817,7 @@ export default function Step9Plan() {
     const MAX_ADDON_UI = 20;
     const addonRemainingSlots = Math.max(0, MAX_ADDON_UI - currentAddonBlocks);
     return (
-      <div className="flex flex-col h-full max-w-lg w-full mx-auto justify-center pb-10 animate-in fade-in slide-in-from-right-4">
+      <div className="flex flex-col h-full w-full max-w-md lg:max-w-5xl mx-auto pb-10 animate-in fade-in slide-in-from-right-4">
         <button 
           onClick={() => setLocation('/dashboard')}
           className="flex items-center text-slate-500 hover:text-slate-900 mb-6 transition-colors w-fit text-sm font-medium"
@@ -834,7 +835,8 @@ export default function Step9Plan() {
           </div>
         )}
 
-        <div className="space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 lg:gap-6 lg:items-start space-y-6 lg:space-y-0">
+          <div className="space-y-6 min-w-0">
           <Card className="p-6 bg-white border border-slate-200 shadow-sm relative overflow-hidden">
             <div className="absolute top-0 right-0 bg-indigo-50 text-indigo-600 font-bold px-3 py-1 text-xs rounded-bl-lg">
               ACTIVE
@@ -890,7 +892,9 @@ export default function Step9Plan() {
               </div>
             </div>
           </Card>
+          </div>
 
+          <div className="space-y-6 min-w-0 lg:sticky lg:top-6">
           <Card className="p-6 bg-white border border-slate-200 shadow-sm">
             <div className="flex items-start justify-between gap-3 mb-4">
               <h3 className="text-xs font-bold tracking-[0.12em] text-slate-900 uppercase">
@@ -1297,6 +1301,9 @@ export default function Step9Plan() {
               </p>
             )}
           </Card>
+
+          <ContactSupportCard />
+          </div>
         </div>
       </div>
     );
@@ -1306,7 +1313,7 @@ export default function Step9Plan() {
   // MAIN PLAN SELECTION VIEW — new 4-plan catalog + free flow
   // ──────────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-full max-w-2xl w-full mx-auto justify-center pb-10">
+    <div className="flex flex-col h-full w-full max-w-md lg:max-w-5xl mx-auto justify-center pb-10">
       <div className="mb-8 text-center">
         <h1 className="font-serif text-2xl sm:text-3xl md:text-4xl font-bold text-slate-900 mb-3 tracking-tight">
           {isBillingManagement ? 'Choose Your Plan' : 'Activate Your Account'}

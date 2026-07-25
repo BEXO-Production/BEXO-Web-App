@@ -49,6 +49,7 @@ import { issueStaffInvite } from "../lib/staffInvite";
 import Razorpay from "razorpay";
 import { registerAdminExtras } from "./adminExtras";
 import { registerAdminSupport } from "./adminSupport";
+import { registerAdminMarketingLeads } from "./marketing";
 import { registerAdminActivation } from "./adminActivation";
 
 const router: IRouter = Router();
@@ -2285,6 +2286,7 @@ router.get(
 );
 
 registerAdminSupport(router);
+registerAdminMarketingLeads(router);
 registerAdminExtras(router);
 registerAdminActivation(router);
 

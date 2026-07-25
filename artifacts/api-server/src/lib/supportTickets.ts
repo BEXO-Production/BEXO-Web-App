@@ -39,7 +39,7 @@ export type TicketStatus = (typeof TICKET_STATUSES)[number];
 export const TICKET_PRIORITIES = ["low", "normal", "high"] as const;
 export type TicketPriority = (typeof TICKET_PRIORITIES)[number];
 
-export const TICKET_CHANNELS = ["phone", "email", "other"] as const;
+export const TICKET_CHANNELS = ["phone", "email", "other", "app"] as const;
 export type TicketChannel = (typeof TICKET_CHANNELS)[number];
 
 export function isTicketStatus(value: string): value is TicketStatus {

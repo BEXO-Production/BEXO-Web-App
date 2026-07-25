@@ -4,6 +4,8 @@ import authRouter from "./auth";
 import profileRouter from "./profile";
 import paymentsRouter from "./payments";
 import upiAutopayRouter from "./upiAutopay";
+import supportRouter from "./support";
+import marketingRouter from "./marketing";
 import pricingRouter from "./pricing";
 import analyticsRouter from "./analytics";
 import geoRouter from "./geo";
@@ -23,5 +25,7 @@ router.use("/analytics", analyticsRouter);
 router.use("/geo", geoRouter);
 router.use("/admin", adminRouter);
 router.use("/outreach", outreachRouter);
+router.use("/support", supportRouter);
+router.use("/marketing", marketingRouter);
 
 export default router;

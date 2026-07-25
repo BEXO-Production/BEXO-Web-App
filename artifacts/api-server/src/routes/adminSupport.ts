@@ -274,7 +274,7 @@ export function registerAdminSupport(router: IRouter) {
           return;
         }
         if (!isTicketChannel(channelRaw)) {
-          res.status(400).json({ error: "channel must be phone | email | other" });
+          res.status(400).json({ error: "channel must be phone | email | other | app" });
           return;
         }
         if (!isTicketPriority(priorityRaw)) {
