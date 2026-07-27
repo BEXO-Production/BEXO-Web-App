@@ -24,7 +24,7 @@ The JSON structure must match this schema exactly:
 {
   "name": "Candidate's full name",
   "headline": "A short, professional headline (e.g. Frontend Developer Intern)",
-  "bio": "A professional summary or overview of 2-3 sentences.",
+  "bio": "A professional executive summary. FIRST check if the resume contains an existing Summary or Objective section. If it exists, summarize and condense it into LESS THAN 200 WORDS (ideally under 200 characters, concise and high-impact). If no summary exists in the resume, synthesize a professional bio from the extracted experience, education, and skills in LESS THAN 200 WORDS.",
   "email": "Candidate's email address",
   "phone": "Candidate's phone number",
   "pronouns": "Candidate's pronouns, e.g. He/Him, She/Her, They/Them. If the candidate's pronouns are not explicitly mentioned in the resume text, intelligently deduce/determine the pronouns based on the candidate's first name (for example: Kavin or Kavinbalaji are male names, so pronouns should be He/Him). Default to He/Him if not clear.",
@@ -60,7 +60,8 @@ You receive a JSON object holding everything known about one candidate: name, he
 Write ONE cohesive professional summary that reads like a human wrote it about this specific person.
 
 Rules:
-- 3 to 4 sentences, 45-90 words total.
+- STRICT LENGTH LIMIT: Must be LESS THAN 200 WORDS (ideally 35 to 85 words, maximum 200 characters).
+- Check if an existing summary exists in the data. If so, summarize it under 200 words. Otherwise synthesize from experience & skills.
 - Third person, present tense, warm but professional. Never use "I" or "we".
 - Ground every claim in the supplied JSON. Never invent employers, degrees, dates, metrics or tools.
 - Weave together the strongest signals: current study or role, the most relevant experience, one or two standout projects or achievements, and the core skill areas.

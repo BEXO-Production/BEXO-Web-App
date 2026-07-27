@@ -28,7 +28,7 @@ const SKILL_CATEGORIES = [
 
 const MAX_SKILLS_UI = 40;
 
-const SUMMARY_MAX_LENGTH = 150;
+const SUMMARY_MAX_LENGTH = 800;
 
 const limitSummary = (value = '') => {
   const normalized = value.trim().replace(/\s+/g, ' ');
@@ -36,7 +36,7 @@ const limitSummary = (value = '') => {
 
   const shortened = normalized.slice(0, SUMMARY_MAX_LENGTH + 1);
   const lastSpace = shortened.lastIndexOf(' ');
-  return `${shortened.slice(0, lastSpace > 100 ? lastSpace : SUMMARY_MAX_LENGTH - 1).trimEnd()}…`;
+  return `${shortened.slice(0, lastSpace > 600 ? lastSpace : SUMMARY_MAX_LENGTH - 1).trimEnd()}…`;
 };
 
 export default function Step6Review() {
