@@ -6,12 +6,12 @@ import { cn } from '../design-system/primitives';
 import { apiUrl } from '../lib/api';
 
 const PARSING_STEPS = [
-  { time: "0.0s", text: "⚡ Initializing AI Resilience Engine (Gemini 1.5 / Grok)" },
-  { time: "1.8s", text: "📄 Reading PDF text layout, contact details & links" },
-  { time: "3.6s", text: "🎓 Extracting education history, degrees & institutions" },
-  { time: "5.4s", text: "💼 Mapping work experience, roles & key achievements" },
-  { time: "7.2s", text: "✍️ Synthesizing micro bio (<30 characters)" },
-  { time: "9.0s", text: "🚀 Compiling portfolio database & skills catalog" }
+  { time: "0.0s", text: "✨ Reading document text & layout..." },
+  { time: "1.8s", text: "📄 Extracting contact details & links..." },
+  { time: "3.6s", text: "🎓 Mapping education & graduation dates..." },
+  { time: "5.4s", text: "💼 Structuring work experience & accomplishments..." },
+  { time: "7.2s", text: "✍️ Creating micro profile bio (<30 chars)..." },
+  { time: "9.0s", text: "🚀 Finalizing portfolio database..." }
 ];
 
 /** Shown whenever parsing could not complete. Never surface provider errors. */
@@ -314,7 +314,7 @@ export default function Step5Resume() {
           "relative border-2 border-dashed rounded-3xl p-8 text-center transition-all duration-300",
           status === 'idle' ? "border-slate-300 hover:border-blue-500 bg-white hover:bg-blue-50/50 cursor-pointer" :
           (status === 'success' || status === 'transitioning') ? "border-green-500 bg-green-50/30" :
-          "border-blue-500 bg-blue-50/30"
+          "border-indigo-300 bg-indigo-50/20"
         )}
         onClick={() => status === 'idle' && fileInputRef.current?.click()}
       >
@@ -344,7 +344,7 @@ export default function Step5Resume() {
         {(status === 'uploading' || status === 'parsing') && (
           <div className="flex flex-col items-center animate-in fade-in zoom-in-95 w-full">
             {/* Custom Scanning Animation */}
-            <div className="relative w-28 h-36 bg-slate-50 border border-slate-200 rounded-2xl shadow-sm flex flex-col justify-between p-3.5 overflow-hidden mb-6 group bg-[linear-gradient(to_bottom,rgba(248,250,252,0.8),rgba(241,245,249,0.8))]">
+            <div className="relative w-28 h-36 bg-white border border-slate-200 rounded-2xl shadow-xs flex flex-col justify-between p-3.5 overflow-hidden mb-6 group">
               <div className="absolute left-0 right-0 h-0.5 bg-indigo-500 animate-scan-laser shadow-[0_0_8px_rgba(99,102,241,0.6)]" />
               <div className="space-y-2 relative z-10">
                 <div className="h-2 w-3/4 bg-slate-200 rounded-full" />
@@ -359,19 +359,19 @@ export default function Step5Resume() {
               </div>
             </div>
 
-            <div className="w-full max-w-sm bg-slate-900 text-slate-100 rounded-2xl p-4 text-left shadow-lg border border-slate-800 space-y-3 font-mono text-xs">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                <span className="text-[11px] text-indigo-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-indigo-400 animate-ping" />
-                  AI Work / Thought Log
+            {/* Themed Light Indigo AI Progress Box */}
+            <div className="w-full max-w-sm bg-gradient-to-b from-indigo-50/90 to-white text-slate-800 rounded-2xl p-4 text-left shadow-sm border border-indigo-100 space-y-2.5 font-sans text-xs">
+              <div className="flex items-center justify-between border-b border-indigo-100/80 pb-2">
+                <span className="text-[11px] text-indigo-600 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-indigo-500 animate-ping" />
+                  ✨ AI Resume Intelligence
                 </span>
-                <span className="text-[10px] text-slate-500 font-medium">[{elapsedTime}s]</span>
+                <span className="text-[10px] text-indigo-500 font-medium">Processing</span>
               </div>
-              <div className="space-y-1.5 max-h-36 overflow-y-auto">
+              <div className="space-y-2 max-h-36 overflow-y-auto">
                 {PARSING_STEPS.slice(0, parsingStep + 1).map((step, i) => (
-                  <div key={i} className="flex items-center gap-2 text-slate-300 animate-in fade-in slide-in-from-bottom-1">
-                    <span className="text-slate-500 text-[10px] min-w-[36px]">[{step.time}]</span>
-                    <span className={i === parsingStep ? "text-indigo-300 font-semibold" : "text-slate-400"}>
+                  <div key={i} className="flex items-center gap-2 text-slate-700 animate-in fade-in slide-in-from-bottom-1 font-medium">
+                    <span className={i === parsingStep ? "text-indigo-600 font-bold" : "text-slate-500"}>
                       {step.text}
                     </span>
                   </div>
@@ -379,7 +379,7 @@ export default function Step5Resume() {
               </div>
             </div>
             
-            <div className="w-full max-w-xs mt-4 h-1.5 bg-indigo-50 rounded-full overflow-hidden">
+            <div className="w-full max-w-xs mt-4 h-1.5 bg-indigo-100/70 rounded-full overflow-hidden">
               <div 
                 className={cn(
                   "h-full bg-indigo-600 rounded-full transition-all duration-1000 ease-out",
@@ -389,7 +389,7 @@ export default function Step5Resume() {
             </div>
             <p className="text-slate-400 text-xs mt-3 flex items-center gap-1.5 mb-2">
               <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-500" />
-              Analyzing resume layout & synthesizing profile data...
+              Building your portfolio data...
             </p>
           </div>
         )}
@@ -404,32 +404,32 @@ export default function Step5Resume() {
             </h3>
             
             {extractedSummary && (
-              <div className="w-full max-w-sm bg-gradient-to-br from-slate-900 to-indigo-950 text-white rounded-2xl p-4 mt-3 text-left shadow-xl border border-indigo-900/50 space-y-3">
-                <div className="flex items-center justify-between border-b border-indigo-900/60 pb-2">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-400 flex items-center gap-1.5">
-                    <Lightbulb className="w-3.5 h-3.5 text-amber-400" />
-                    Personalized Extracted Insights
+              <div className="w-full max-w-sm bg-gradient-to-br from-indigo-50/80 to-white text-slate-900 rounded-2xl p-4 mt-3 text-left shadow-sm border border-indigo-100 space-y-3 font-sans">
+                <div className="flex items-center justify-between border-b border-indigo-100/80 pb-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-600 flex items-center gap-1.5">
+                    <Lightbulb className="w-3.5 h-3.5 text-amber-500" />
+                    Extracted Profile Summary
                   </span>
-                  <span className="text-[10px] text-emerald-400 font-bold bg-emerald-950/60 border border-emerald-800/60 px-2 py-0.5 rounded-full">
+                  <span className="text-[10px] text-emerald-700 font-bold bg-emerald-100/80 border border-emerald-200 px-2.5 py-0.5 rounded-full">
                     ✓ Ready
                   </span>
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700/60">
-                    <span className="text-slate-400 block text-[10px] uppercase font-bold">Skills Found</span>
-                    <strong className="text-sm text-indigo-300 font-bold">{extractedSummary.skillsCount} Skills</strong>
-                    <p className="text-[10px] text-slate-400 truncate mt-0.5">{extractedSummary.skillsSample.join(', ')}</p>
+                  <div className="bg-white p-2.5 rounded-xl border border-indigo-100/80">
+                    <span className="text-slate-500 block text-[10px] uppercase font-bold tracking-wider">Skills Mapped</span>
+                    <strong className="text-sm text-indigo-700 font-bold">{extractedSummary.skillsCount} Skills</strong>
+                    <p className="text-[10px] text-slate-500 truncate mt-0.5 font-medium">{extractedSummary.skillsSample.join(', ')}</p>
                   </div>
-                  <div className="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700/60">
-                    <span className="text-slate-400 block text-[10px] uppercase font-bold">Experience & Edu</span>
-                    <strong className="text-sm text-indigo-300 font-bold">{extractedSummary.expCount} Roles · {extractedSummary.eduCount} Edu</strong>
-                    <p className="text-[10px] text-slate-400 truncate mt-0.5">Timeline structured</p>
+                  <div className="bg-white p-2.5 rounded-xl border border-indigo-100/80">
+                    <span className="text-slate-500 block text-[10px] uppercase font-bold tracking-wider">Experience & Edu</span>
+                    <strong className="text-sm text-indigo-700 font-bold">{extractedSummary.expCount} Roles · {extractedSummary.eduCount} Edu</strong>
+                    <p className="text-[10px] text-slate-500 truncate mt-0.5 font-medium">Timeline verified</p>
                   </div>
                 </div>
-                <div className="bg-indigo-900/40 p-2.5 rounded-xl border border-indigo-800/50 text-xs">
-                  <span className="text-indigo-300 block text-[10px] uppercase font-bold">Micro Bio (&lt; 30 chars)</span>
-                  <p className="text-slate-200 text-[11px] leading-relaxed mt-1">
-                    Created {extractedSummary.bioWordCount} words ({extractedSummary.bioLength} characters) high-impact summary.
+                <div className="bg-white p-2.5 rounded-xl border border-indigo-100 text-xs">
+                  <span className="text-indigo-600 block text-[10px] uppercase font-bold tracking-wider">Micro Bio (&lt; 30 chars)</span>
+                  <p className="text-slate-700 text-xs font-semibold leading-relaxed mt-0.5">
+                    {data.bio || "Full-Stack Software Dev"}
                   </p>
                 </div>
               </div>
