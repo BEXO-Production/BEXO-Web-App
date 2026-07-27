@@ -1662,46 +1662,67 @@ router.get(
 
 function parseCouponBody(body: any, partial = false) {
   const patch: Record<string, unknown> = {};
-  if (!partial || body?.code !== undefined) {
-    const code = String(body?.code || "")
-      .toUpperCase()
-      .trim();
-    if (!partial && !code) throw new Error("code required");
-    if (code) patch.code = code;
+
+  const code = String(body?.code || "").toUpperCase().trim();
+  if (!partial && !code) throw new Error("code required");
+  if (code || !partial) patch.code = code;
+
+  if (!partial || body?.description !== undefined) {
+    patch.description = body?.description || null;
   }
-  if (body?.description !== undefined) patch.description = body.description || null;
-  if (body?.discountType !== undefined) patch.discountType = String(body.discountType);
-  if (body?.percentOff !== undefined) {
-    patch.percentOff = body.percentOff === null || body.percentOff === "" ? null : Number(body.percentOff);
+  if (!partial || body?.discountType !== undefined) {
+    patch.discountType = String(body?.discountType || "percent");
   }
-  if (body?.inrOff !== undefined) {
-    patch.inrOff = body.inrOff === null || body.inrOff === "" ? null : Number(body.inrOff);
+  if (!partial || body?.percentOff !== undefined) {
+    patch.percentOff =
+      body?.percentOff === null || body?.percentOff === "" || body?.percentOff === undefined
+        ? null
+        : Number(body.percentOff);
   }
-  if (body?.planPrices !== undefined) {
+  if (!partial || body?.inrOff !== undefined) {
+    patch.inrOff =
+      body?.inrOff === null || body?.inrOff === "" || body?.inrOff === undefined
+        ? null
+        : Number(body.inrOff);
+  }
+  if (!partial || body?.planPrices !== undefined) {
     patch.planPrices =
-      body.planPrices && typeof body.planPrices === "object" ? body.planPrices : null;
+      body?.planPrices && typeof body.planPrices === "object" ? body.planPrices : null;
   }
-  if (body?.allowedPlans !== undefined) {
-    if (body.allowedPlans == null || body.allowedPlans === "") patch.allowedPlans = null;
-    else if (Array.isArray(body.allowedPlans)) patch.allowedPlans = body.allowedPlans.map(String);
-    else if (typeof body.allowedPlans === "string") {
+  if (!partial || body?.allowedPlans !== undefined) {
+    if (body?.allowedPlans == null || body?.allowedPlans === "") {
+      patch.allowedPlans = null;
+    } else if (Array.isArray(body.allowedPlans)) {
+      patch.allowedPlans = body.allowedPlans.map(String);
+    } else if (typeof body.allowedPlans === "string") {
       patch.allowedPlans = body.allowedPlans
         .split(",")
         .map((s: string) => s.trim())
         .filter(Boolean);
+    } else {
+      patch.allowedPlans = null;
     }
   }
-  if (body?.firstCustomerOnly !== undefined) patch.firstCustomerOnly = !!body.firstCustomerOnly;
-  if (body?.appliesOnce !== undefined) patch.appliesOnce = !!body.appliesOnce;
-  if (body?.isActive !== undefined) patch.isActive = !!body.isActive;
-  if (body?.maxUses !== undefined) {
-    patch.maxUses = body.maxUses === null || body.maxUses === "" ? null : Number(body.maxUses);
+  if (!partial || body?.firstCustomerOnly !== undefined) {
+    patch.firstCustomerOnly = !!body?.firstCustomerOnly;
   }
-  if (body?.validFrom !== undefined) {
-    patch.validFrom = body.validFrom ? new Date(body.validFrom) : null;
+  if (!partial || body?.validFrom !== undefined) {
+    patch.validFrom = body?.validFrom ? new Date(body.validFrom) : null;
   }
-  if (body?.validUntil !== undefined) {
-    patch.validUntil = body.validUntil ? new Date(body.validUntil) : null;
+  if (!partial || body?.validUntil !== undefined) {
+    patch.validUntil = body?.validUntil ? new Date(body.validUntil) : null;
+  }
+  if (!partial || body?.maxUses !== undefined) {
+    patch.maxUses =
+      body?.maxUses === null || body?.maxUses === "" || body?.maxUses === undefined
+        ? null
+        : Number(body.maxUses);
+  }
+  if (!partial || body?.isActive !== undefined) {
+    patch.isActive = body?.isActive !== undefined ? !!body.isActive : true;
+  }
+  if (!partial || body?.appliesOnce !== undefined) {
+    patch.appliesOnce = body?.appliesOnce !== undefined ? !!body.appliesOnce : true;
   }
   return patch;
 }
