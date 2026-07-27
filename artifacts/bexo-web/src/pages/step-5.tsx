@@ -10,7 +10,7 @@ const PARSING_STEPS = [
   { time: "1.8s", text: "📄 Reading PDF text layout, contact details & links" },
   { time: "3.6s", text: "🎓 Extracting education history, degrees & institutions" },
   { time: "5.4s", text: "💼 Mapping work experience, roles & key achievements" },
-  { time: "7.2s", text: "✍️ Synthesizing executive bio (<200 words / max 200 chars)" },
+  { time: "7.2s", text: "✍️ Synthesizing micro bio (<30 characters)" },
   { time: "9.0s", text: "🚀 Compiling portfolio database & skills catalog" }
 ];
 
@@ -153,21 +153,16 @@ export default function Step5Resume() {
       const github = contactLinks.find((l: any) => l.name?.toLowerCase().includes("github"))?.url || "";
       const portfolio = contactLinks.find((l: any) => !l.name?.toLowerCase().includes("linkedin") && !l.name?.toLowerCase().includes("github"))?.url || "";
 
-      let bioText = parsed.bio || '';
+      let bioText = parsed.bio || parsed.headline || '';
       if (!bioText) {
-        const latestEdu = parsed.education && parsed.education.length > 0 ? `${parsed.education[0].degree} at ${parsed.education[0].institution}` : '';
-        const latestExp = parsed.experience && parsed.experience.length > 0 ? `${parsed.experience[0].role} at ${parsed.experience[0].company}` : '';
+        const latestExp = parsed.experience && parsed.experience.length > 0 ? parsed.experience[0].role : '';
         const candidateName = parsed.name || data.name || '';
-        bioText = `${candidateName} is an ambitious professional`;
-        if (latestEdu) bioText += ` studying ${latestEdu}`;
-        if (latestExp) bioText += ` with experience as a ${latestExp}`;
-        bioText += '.';
+        bioText = latestExp || candidateName || 'Software Engineer';
       }
 
-      // Enforce strict bio word/letter summary ceiling (< 200 words / ~200 chars)
-      const words = bioText.trim().split(/\s+/);
-      if (words.length > 180) {
-        bioText = words.slice(0, 180).join(' ') + '...';
+      // Enforce strict bio character ceiling (< 30 characters)
+      if (bioText.trim().length >= 30) {
+        bioText = bioText.trim().slice(0, 28).trim();
       }
 
       const allSkills = (parsed.skills || []).map((sk: any) => typeof sk === 'string' ? sk : (sk.name || sk.title || '')).filter(Boolean);
@@ -432,7 +427,7 @@ export default function Step5Resume() {
                   </div>
                 </div>
                 <div className="bg-indigo-900/40 p-2.5 rounded-xl border border-indigo-800/50 text-xs">
-                  <span className="text-indigo-300 block text-[10px] uppercase font-bold">Executive Bio (&lt; 200 words)</span>
+                  <span className="text-indigo-300 block text-[10px] uppercase font-bold">Micro Bio (&lt; 30 chars)</span>
                   <p className="text-slate-200 text-[11px] leading-relaxed mt-1">
                     Created {extractedSummary.bioWordCount} words ({extractedSummary.bioLength} characters) high-impact summary.
                   </p>

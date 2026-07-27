@@ -24,7 +24,7 @@ The JSON structure must match this schema exactly:
 {
   "name": "Candidate's full name",
   "headline": "A short, professional headline (e.g. Frontend Developer Intern)",
-  "bio": "A professional executive summary. FIRST check if the resume contains an existing Summary or Objective section. If it exists, summarize and condense it into LESS THAN 200 WORDS (ideally under 200 characters, concise and high-impact). If no summary exists in the resume, synthesize a professional bio from the extracted experience, education, and skills in LESS THAN 200 WORDS.",
+  "bio": "A micro professional summary. STRICT MANDATORY LENGTH CEILING: MUST BE LESS THAN 30 CHARACTERS TOTAL (e.g. 'Senior React & Node Dev', 'Full-Stack Software Dev', 'AI & Cloud Engineer'). Condense the candidate's core identity into UNDER 30 CHARACTERS.",
   "email": "Candidate's email address",
   "phone": "Candidate's phone number",
   "pronouns": "Candidate's pronouns, e.g. He/Him, She/Her, They/Them. If the candidate's pronouns are not explicitly mentioned in the resume text, intelligently deduce/determine the pronouns based on the candidate's first name (for example: Kavin or Kavinbalaji are male names, so pronouns should be He/Him). Default to He/Him if not clear.",
@@ -57,19 +57,13 @@ For skills: extract from Skills / Technologies / Tools / Languages sections, and
 const SUMMARY_SYSTEM_PROMPT = `You write the "About" summary for a student/early-career portfolio website.
 You receive a JSON object holding everything known about one candidate: name, headline, education, experience, projects, certificates, achievements and skills.
 
-Write ONE cohesive professional summary that reads like a human wrote it about this specific person.
-
 Rules:
-- STRICT LENGTH LIMIT: Must be LESS THAN 200 WORDS (ideally 35 to 85 words, maximum 200 characters).
-- Check if an existing summary exists in the data. If so, summarize it under 200 words. Otherwise synthesize from experience & skills.
-- Third person, present tense, warm but professional. Never use "I" or "we".
-- Ground every claim in the supplied JSON. Never invent employers, degrees, dates, metrics or tools.
-- Weave together the strongest signals: current study or role, the most relevant experience, one or two standout projects or achievements, and the core skill areas.
-- Name real technologies and organisations from the data instead of generic phrases like "various technologies".
-- No bullet points, no headings, no markdown, no emoji, no closing call to action.
+- STRICT MANDATORY LENGTH CEILING: MUST BE LESS THAN 30 CHARACTERS TOTAL (e.g. max 28 characters, single concise micro-tagline).
+- Never exceed 29 characters total.
+- No bullet points, no headings, no markdown, no emoji.
 
 Return ONLY valid JSON in exactly this shape:
-{ "bio": "the summary text" }`;
+{ "bio": "the micro summary text" }`;
 
 /** Hard ceiling on prompt size so one huge PDF cannot stall a worker slot. */
 const MAX_RESUME_CHARS = Number(process.env.AI_MAX_RESUME_CHARS || 24_000);
