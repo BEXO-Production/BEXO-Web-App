@@ -54,12 +54,11 @@ The JSON structure must match this schema exactly:
 Fill every field with information extracted from the resume. If a category has no data, return an empty array or empty string. Extra links must be extracted with their names and full URLs.
 For skills: extract from Skills / Technologies / Tools / Languages sections, and also pull distinct technologies mentioned in projects. Prefer 8–25 concise skill names. Use category technical for programming/frameworks, tools for software, soft for interpersonal, languages for spoken languages.`;
 
-const SUMMARY_SYSTEM_PROMPT = `You write the "About" summary for a student/early-career portfolio website.
+const SUMMARY_SYSTEM_PROMPT = `You write the "About" tagline or summary for a student/early-career portfolio website.
 You receive a JSON object holding everything known about one candidate: name, headline, education, experience, projects, certificates, achievements and skills.
 
 Rules:
-- STRICT MANDATORY LENGTH CEILING: MUST BE LESS THAN 30 CHARACTERS TOTAL (e.g. max 28 characters, single concise micro-tagline).
-- Never exceed 29 characters total.
+- Write a concise, impactful tagline or summary (10 to 200 characters total).
 - No bullet points, no headings, no markdown, no emoji.
 
 Return ONLY valid JSON in exactly this shape:
@@ -260,7 +259,10 @@ function buildCascade(): CascadeCall[] {
     const models = uniqueModels([
       process.env.OPENROUTER_MODEL || "nvidia/nemotron-3-super-120b-a12b:free",
       process.env.OPENROUTER_BACKUP_MODEL || "openai/gpt-oss-20b:free",
-    ]).slice(0, 2);
+      // Kept as a third tier so the configured final fallback is only used
+      // after each provider's preferred model has had a chance to respond.
+      process.env.OPENROUTER_BACKUP_MODEL_2 || "google/gemma-2-9b-it:free",
+    ]).slice(0, 3);
 
     models.forEach((model, tier) => {
       cascade.push({
@@ -444,8 +446,8 @@ export async function synthesizeProfileSummary(parsed: ParsedResumeData): Promis
     buildSummaryContext(parsed),
     (payload) => {
       const bio = typeof payload?.bio === "string" ? payload.bio.trim() : "";
-      // Guard against one-liners and runaway essays.
-      if (bio.length < 80 || bio.length > 1200) return null;
+      // Guard against empty output and runaway essays.
+      if (bio.length < 5 || bio.length > 500) return null;
       return bio;
     },
     "resume_summary",

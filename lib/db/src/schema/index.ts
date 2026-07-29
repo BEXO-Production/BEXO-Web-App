@@ -51,6 +51,11 @@ export const profiles = pgTable("profiles", {
   completionPct: integer("completion_pct").default(0),
   subdomain: text("subdomain").unique(),
   templateId: text("template_id").default("minimal"),
+  // Private preference shared by the mobile and web share-card studios.
+  // Keep it separate from the public portfolio theme fields on `users`.
+  cardDesign: jsonb("card_design")
+    .notNull()
+    .default({ background: "forest", font: "jakarta" }),
   isPremium: boolean("is_premium").default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });

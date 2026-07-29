@@ -32,7 +32,11 @@ const CRITICAL: Array<{ key: string; alts?: string[]; note?: string }> = [
   { key: "SMTP_PASS" },
   { key: "FRONTEND_URL", alts: ["WEB_URL"] },
   { key: "PLATFORM_DOMAIN", alts: ["BEXO_PLATFORM_DOMAIN"] },
-  { key: "OPENROUTER_API_KEY", note: "primary AI resume parse" },
+  {
+    key: "AI_PROVIDER_KEY",
+    alts: ["GOOGLE_API", "GOOGLE_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY", "GROK_API_KEY", "Grok_API_KEY"],
+    note: "at least one resume AI provider is required",
+  },
 ];
 
 const RECOMMENDED: Array<{ key: string; alts?: string[]; note?: string }> = [

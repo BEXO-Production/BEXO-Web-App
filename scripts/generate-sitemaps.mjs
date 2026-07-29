@@ -11,7 +11,10 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = path.resolve(__dirname, "../artifacts/bexo-web/public");
-const ORIGIN = "https://atbexo.com";
+// These files are published with the dashboard Firebase site. `atbexo.com`
+// intentionally redirects its apex to marketing, so it must never be used as
+// the API source or canonical origin for this dashboard sitemap.
+const ORIGIN = process.env.SITEMAP_ORIGIN || "https://dash.mybexo.com";
 const TODAY = new Date().toISOString().slice(0, 10);
 
 function escapeXml(value) {

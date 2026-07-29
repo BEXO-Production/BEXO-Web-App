@@ -9,6 +9,8 @@ type PublicProfile = {
     headline?: string;
     careerGoal?: string;
     bio?: string;
+    themeColor?: string;
+    themeBg?: string;
   };
   user: {
     name?: string;
@@ -16,6 +18,8 @@ type PublicProfile = {
     photoUrl?: string;
     resumeUrl?: string;
     openToHire?: boolean;
+    themeColor?: string;
+    themeBg?: string;
   };
   aboutEntries?: any[];
   educationEntries?: any[];

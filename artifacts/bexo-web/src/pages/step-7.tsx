@@ -21,6 +21,7 @@ export const PENDING_TEMPLATE_KEY = 'bexo_pending_template';
 const THEMES = [
   { id: 'blue', label: 'Navy', hex: 'bg-blue-600', textHex: 'text-blue-600' },
   { id: 'emerald', label: 'Emerald', hex: 'bg-emerald-600', textHex: 'text-emerald-600' },
+  { id: 'amber', label: 'Gold', hex: 'bg-amber-500', textHex: 'text-amber-500' },
   { id: 'rose', label: 'Rose', hex: 'bg-rose-600', textHex: 'text-rose-600' },
   { id: 'violet', label: 'Violet', hex: 'bg-violet-600', textHex: 'text-violet-600' },
 ];

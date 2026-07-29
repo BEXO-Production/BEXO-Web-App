@@ -105,6 +105,21 @@ const THEMES = [
   { id: 'violet', label: 'Violet', hex: 'bg-violet-600', textHex: 'text-violet-600' },
 ];
 
+const CARD_BACKGROUNDS = [
+  { id: 'electric', label: 'Electric', preview: 'linear-gradient(135deg, #3D74FF, #1E48C8)' },
+  { id: 'ink', label: 'Ink', preview: 'linear-gradient(135deg, #2A2B31, #101114)' },
+  { id: 'paper', label: 'Paper', preview: 'linear-gradient(135deg, #FFFFFF, #EAE7E0)' },
+  { id: 'midnight', label: 'Midnight', preview: 'linear-gradient(135deg, #1C2E64, #0B1128)' },
+  { id: 'forest', label: 'Forest', preview: 'linear-gradient(135deg, #184F43, #0C2823)' },
+  { id: 'clay', label: 'Clay', preview: 'linear-gradient(135deg, #A8553F, #652C23)' },
+] as const;
+
+const CARD_FONTS = [
+  { id: 'jakarta', label: 'Jakarta', className: 'font-sans' },
+  { id: 'editorial', label: 'Editorial', className: 'font-serif' },
+  { id: 'mono', label: 'Mono', className: 'font-mono' },
+] as const;
+
 export const PLAN_DISPLAY_NAMES: Record<string, string> = {
   free: 'Free',
   identity: 'Identity',
@@ -1733,6 +1748,15 @@ export default function Dashboard() {
     toast({
       title: 'Background Updated',
       description: `Background style set to ${id.toUpperCase()}`,
+    });
+  };
+
+  const handleCardDesignSelect = (patch: Partial<typeof data.cardDesign>) => {
+    const next = { ...data.cardDesign, ...patch };
+    updateData({ cardDesign: next });
+    toast({
+      title: 'Share card updated',
+      description: 'The same card style is ready in your BEXO mobile app.',
     });
   };
 
@@ -5203,6 +5227,93 @@ export default function Dashboard() {
                         </div>
                       </Card>
                     )}
+
+                    <Card className="overflow-hidden border border-slate-200 bg-white shadow-sm">
+                      <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_17rem]">
+                        <div className="p-4 sm:p-5">
+                          <div className="flex items-start gap-3">
+                            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-950 text-white">
+                              <Share2 className="h-4 w-4" />
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-bold text-slate-900">Business card</h3>
+                              <p className="mt-0.5 max-w-xl text-xs leading-relaxed text-slate-500">
+                                Your name and role stay on the front. The reverse keeps only a scannable QR and your portfolio link.
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                            <div>
+                              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Background</p>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {CARD_BACKGROUNDS.map((background) => {
+                                  const selected = data.cardDesign.background === background.id;
+                                  return (
+                                    <button
+                                      key={background.id}
+                                      type="button"
+                                      onClick={() => handleCardDesignSelect({ background: background.id })}
+                                      title={background.label}
+                                      className={cn(
+                                        'flex h-9 w-9 items-center justify-center rounded-full border-2 transition-transform hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2',
+                                        selected ? 'border-slate-950' : 'border-white shadow-sm ring-1 ring-slate-200',
+                                      )}
+                                      style={{ background: background.preview }}
+                                    >
+                                      {selected && <Check className={cn('h-3.5 w-3.5', background.id === 'paper' ? 'text-slate-900' : 'text-white')} />}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                            <div>
+                              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Name type</p>
+                              <div className="mt-2 flex gap-2">
+                                {CARD_FONTS.map((font) => {
+                                  const selected = data.cardDesign.font === font.id;
+                                  return (
+                                    <button
+                                      key={font.id}
+                                      type="button"
+                                      onClick={() => handleCardDesignSelect({ font: font.id })}
+                                      className={cn(
+                                        'min-h-9 flex-1 rounded-lg border px-2 text-[11px] font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2',
+                                        font.className,
+                                        selected ? 'border-slate-950 bg-slate-950 text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
+                                      )}
+                                    >
+                                      {font.label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                          <p className="mt-4 text-[11px] text-slate-400">Style choices sync across web and mobile. Export the card image from the mobile app.</p>
+                        </div>
+
+                        {(() => {
+                          const background = CARD_BACKGROUNDS.find((item) => item.id === data.cardDesign.background) ?? CARD_BACKGROUNDS[0];
+                          const typeface = CARD_FONTS.find((item) => item.id === data.cardDesign.font) ?? CARD_FONTS[0];
+                          return (
+                            <div className="flex items-center bg-slate-50 p-5 lg:p-4">
+                              <div className="aspect-[1.586/1] w-full rounded-xl p-5 shadow-[0_16px_28px_-18px_rgba(15,23,42,0.72)]" style={{ background: background.preview }}>
+                                <div className="flex h-full flex-col justify-between">
+                                  <div className="flex items-center justify-between text-[10px] font-bold tracking-[0.18em] text-white/85"><span>BEXO</span><span>PORTFOLIO</span></div>
+                                  <div>
+                                    <div className="mb-3 h-px w-8 bg-white/35" />
+                                    <p className={cn('truncate text-xl font-semibold tracking-tight text-white', typeface.className)}>{data.name || 'Your name'}</p>
+                                    <p className="mt-1 line-clamp-1 text-[11px] text-white/70">{data.aboutEntries[0]?.title || 'Portfolio'}</p>
+                                  </div>
+                                  <p className="truncate text-[10px] text-white/70">{data.handle ? `${data.handle}.${PLATFORM_DOMAIN}` : 'yourname.atbexo.com'}</p>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </Card>
 
                     {/* Template picker sticky left + live preview fills remaining width */}
                     <div className="grid grid-cols-1 gap-4 items-start lg:grid-cols-12">

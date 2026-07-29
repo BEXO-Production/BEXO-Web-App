@@ -59,6 +59,11 @@ export type CanBuyData = {
   lifetime: boolean;
 };
 
+export type CardDesign = {
+  background: 'electric' | 'ink' | 'paper' | 'midnight' | 'forest' | 'clay';
+  font: 'jakarta' | 'editorial' | 'mono';
+};
+
 export type OnboardingData = {
   phone: string;
   phoneVerifiedAt?: string | Date | null;
@@ -78,6 +83,7 @@ export type OnboardingData = {
   generatedResumeUrl?: string | null;
   defaultResume?: 'generated' | 'uploaded';
   photoUrl: string;
+  bio?: string;
   aboutEntries: AboutEntry[];
   educationEntries: EducationEntry[];
   projectEntries: ProjectEntry[];
@@ -91,6 +97,7 @@ export type OnboardingData = {
   templateId: string;
   themeColor: string;
   themeBg: string;
+  cardDesign: CardDesign;
   visitedTabs: string[];
   openToHire: boolean;
   storageQuotaBytes: number;
@@ -134,6 +141,7 @@ const defaultData: OnboardingData = {
   resumeFileSize: 0,
   resumeUrl: '',
   photoUrl: '',
+  bio: '',
   aboutEntries: [],
   educationEntries: [],
   projectEntries: [],
@@ -154,6 +162,7 @@ const defaultData: OnboardingData = {
   templateId: 'cura-futuri',
   themeColor: 'blue',
   themeBg: 'grid',
+  cardDesign: { background: 'forest', font: 'jakarta' },
   visitedTabs: [],
   openToHire: false,
   storageQuotaBytes: 10485760, // 10MB default
@@ -342,6 +351,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
             : result.user.photoUrl || prev.photoUrl,
           pronouns: result.profile.pronouns ?? prev.pronouns,
           nationality: result.profile.nationality ?? prev.nationality,
+          bio: result.profile.bio ?? prev.bio,
           resumeUrl: result.user.resumeUrl || prev.resumeUrl,
           uploadedResumeUrl: result.user.uploadedResumeUrl !== undefined ? result.user.uploadedResumeUrl : prev.uploadedResumeUrl,
           generatedResumeUrl: result.user.generatedResumeUrl !== undefined ? result.user.generatedResumeUrl : prev.generatedResumeUrl,
@@ -363,6 +373,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
           templateId: result.user?.templateId || prev.templateId,
           themeColor: result.user?.themeColor || prev.themeColor,
           themeBg: result.user?.themeBg || prev.themeBg,
+          cardDesign: result.profile?.cardDesign ?? prev.cardDesign,
           hasCompletedOnboarding: !!(result.user?.onboardingCompletedAt || (result.profile?.handle && result.plan)),
           payments: result.payments || prev.payments,
           resumeParsesThisMonth: result.user?.resumeParsesThisMonth !== undefined ? result.user.resumeParsesThisMonth : prev.resumeParsesThisMonth,

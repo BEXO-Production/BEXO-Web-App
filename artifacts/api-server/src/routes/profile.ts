@@ -52,6 +52,33 @@ const pdf = require("pdf-parse");
 
 const router = Router();
 
+const CARD_BACKGROUNDS = new Set([
+  "forest",
+  "electric",
+  "ink",
+  "paper",
+  "midnight",
+  "clay",
+  "champagne",
+  "rose",
+  "violet",
+  "titanium",
+]);
+const CARD_FONTS = new Set(["jakarta", "editorial", "mono", "outfit", "space"]);
+
+/**
+ * Card styling is a small private preference, not an arbitrary JSON bag. The
+ * strict allow-list keeps the database constraint and both clients in lockstep.
+ */
+function parseCardDesign(value: unknown): { background: string; font: string } | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = value as Record<string, unknown>;
+  const background = typeof candidate.background === "string" ? candidate.background : "";
+  const font = typeof candidate.font === "string" ? candidate.font : "";
+  if (!CARD_BACKGROUNDS.has(background) || !CARD_FONTS.has(font)) return null;
+  return { background, font };
+}
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 15 * 1024 * 1024 } // 15MB limit to support larger PDFs/images
@@ -474,7 +501,7 @@ router.patch("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<v
   const userId = req.user!.id;
     const { 
       name, dob, email, photoUrl, resumeUrl, handle, headline, careerGoal, bio, completionPct, profilePhotoAssetId,
-      openToHire, templateId, themeColor, themeBg, pronouns, nationality,
+      openToHire, templateId, themeColor, themeBg, pronouns, nationality, cardDesign,
       aboutEntries, educationEntries, experienceEntries, projectEntries, certificateEntries, achievementEntries, researchEntries, skillEntries, contactData
     } = req.body;
     try {
@@ -586,6 +613,14 @@ router.patch("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<v
     if (nationality !== undefined) {
       profileUpdates.nationality =
         typeof nationality === "string" ? nationality.trim().slice(0, 80) || null : null;
+    }
+    if (cardDesign !== undefined) {
+      const parsedCardDesign = parseCardDesign(cardDesign);
+      if (!parsedCardDesign) {
+        res.status(400).json({ error: "Card style must use a supported background and font." });
+        return;
+      }
+      profileUpdates.cardDesign = parsedCardDesign;
     }
     if (completionPct !== undefined) profileUpdates.completionPct = completionPct;
     // Keep profile.templateId in sync — subdomain router prefers this field.
