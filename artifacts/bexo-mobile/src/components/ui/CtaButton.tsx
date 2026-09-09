@@ -1,7 +1,8 @@
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { Pressable, Text } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
-import * as Haptics from "expo-haptics";
 import { Feather } from "@expo/vector-icons";
+import { Orbit } from "@/components/ui/Loaders";
+import { feel } from "@/lib/haptics";
 import { useTheme } from "@/lib/theme-context";
 import { fonts } from "@/lib/fonts";
 

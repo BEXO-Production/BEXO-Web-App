@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Modal,
   Platform,
   Pressable,
@@ -15,12 +14,22 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 import * as WebBrowser from "expo-web-browser";
 import * as Clipboard from "expo-clipboard";
-import * as Haptics from "expo-haptics";
 import { Feather } from "@expo/vector-icons";
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import Animated, {
+  interpolate,
+  interpolateColor,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
 import { Screen } from "@/components/Screen";
 import { SectionLabel } from "@/components/ui/Controls";
-import { Rise } from "@/components/ui/Motion";
+import { Press, useBreathe, usePopOnChange } from "@/components/ui/Press";
+import { Reveal, ScrollStage, useScrollProgress, useStage } from "@/components/ui/ScrollStage";
+import { LoadingBlock, Orbit } from "@/components/ui/Loaders";
+import { LightSweep } from "@/components/ui/Effects";
+import { feel } from "@/lib/haptics";
 import { ease } from "@/lib/motion";
 import { useProfile } from "@/lib/use-profile";
 import { useUpdateProfile } from "@/lib/profile-api";
@@ -72,8 +81,18 @@ export default function Portfolio() {
   const [webViewLoading, setWebViewLoading] = useState(true);
   const [webViewFailed, setWebViewFailed] = useState(false);
   const [previewCollapsed, setPreviewCollapsed] = useState(false);
+  const [justPublished, setJustPublished] = useState(false);
+  /** Measured once so the title can collapse to exactly its own height. */
+  const [titleHeight, setTitleHeight] = useState(58);
   const collapseProgress = useSharedValue(0);
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<Animated.ScrollView>(null);
+
+  /**
+   * The customization panel's scroll offset, owned here rather than inside the
+   * stage so the pinned header above it can condense against the same value.
+   */
+  const stage = useStage();
+  const condense = useScrollProgress(96, stage);
 
   useEffect(() => {
     collapseProgress.value = withTiming(previewCollapsed ? 1 : 0, {
@@ -134,30 +153,44 @@ export default function Portfolio() {
 
   const publish = useCallback(() => {
     if (!handle) {
+      feel.warn();
       toast("Claim a handle first from the onboarding wizard");
       return;
     }
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    // The wind-up half of the publish score plays on touch, so the phone is
+    // already moving while the request is in flight.
+    feel.publish();
     updateProfile.mutate(
       { templateId, themeColor: colorId, themeBg: backgroundId },
       {
         onSuccess: () => {
+          feel.celebrate();
+          setJustPublished(true);
           toast(`Published live to ${handle}.atbexo.com`);
           setWebViewKey((k) => k + 1);
         },
         onError: (err) => {
+          feel.error();
           toast(err.message || "Failed to publish changes");
         },
       },
     );
   }, [handle, templateId, colorId, backgroundId, updateProfile, toast]);
 
+  // The success state is a beat, not a mode — it hands the button back after
+  // the confirmation has been read.
+  useEffect(() => {
+    if (!justPublished) return;
+    const id = setTimeout(() => setJustPublished(false), 2200);
+    return () => clearTimeout(id);
+  }, [justPublished]);
+
   const openLiveInBrowser = useCallback(async () => {
     if (!site) {
+      feel.warn();
       toast("No live site published yet");
       return;
     }
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     try {
       await WebBrowser.openBrowserAsync(`https://${site}`);
     } catch {
@@ -168,13 +201,12 @@ export default function Portfolio() {
   const copyLiveLink = useCallback(() => {
     if (!site) return;
     Clipboard.setStringAsync(`https://${site}`);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    feel.success();
     toast("Link copied to clipboard");
   }, [site, toast]);
 
   const shareLiveSite = useCallback(async () => {
     if (!site) return;
-    Haptics.selectionAsync().catch(() => {});
     try {
       await Share.share({
         title: `${data?.user?.name ?? "Portfolio"} on BEXO`,
@@ -195,13 +227,49 @@ export default function Portfolio() {
     transform: [{ rotate: `${collapseProgress.value * 180}deg` }],
   }));
 
+  /**
+   * The screen title folds away over the first 96pt of scroll, handing its
+   * space to the preview. Height, opacity and the container's own gap all
+   * collapse together, so the pinned zone closes up rather than leaving a hole.
+   */
+  const titleAnimatedStyle = useAnimatedStyle(() => ({
+    height: interpolate(condense.value, [0, 1], [titleHeight, 0]),
+    marginBottom: interpolate(condense.value, [0, 1], [0, -14]),
+    opacity: interpolate(condense.value, [0, 0.55], [1, 0], "clamp"),
+    transform: [{ translateY: -condense.value * 8 }],
+  }));
+
+  /** The pinned zone earns its separator only once content is beneath it. */
+  const pinnedChromeStyle = useAnimatedStyle(() => ({
+    borderBottomColor: `rgba(${dark ? "255,255,255" : "22,23,27"},${0.02 + condense.value * 0.1})`,
+    shadowOpacity: condense.value * (dark ? 0.5 : 0.14),
+  }));
+
+  /** A hairline of parallax: the frame settles as the panel slides under it. */
+  const previewFrameStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: 1 - condense.value * 0.012 }],
+  }));
+
+  const unsavedDotStyle = useBreathe(hasUnsavedChanges);
+  const liveDotStyle = useBreathe(!!site, 0.22, 1800);
+  const publishPop = usePopOnChange(justPublished);
+  const templatePop = usePopOnChange(templateId);
+
+  const togglePreview = useCallback(() => {
+    setPreviewCollapsed((wasCollapsed) => {
+      if (wasCollapsed) feel.reveal();
+      else feel.dismiss();
+      return !wasCollapsed;
+    });
+  }, []);
+
   const revealPreview = useCallback(() => {
     scrollRef.current?.scrollTo({ y: 0, animated: true });
     if (previewCollapsed) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      feel.reveal();
       setPreviewCollapsed(false);
     } else {
-      Haptics.selectionAsync().catch(() => {});
+      feel.snap();
     }
   }, [previewCollapsed]);
 
@@ -209,61 +277,77 @@ export default function Portfolio() {
     <Screen style={{ paddingHorizontal: 0 }} edges={["top"]}>
       <View style={{ flex: 1 }}>
         {/* ── PINNED ZONE — header, domain pill & live preview never scroll away ── */}
-        <View
-          style={{
-            paddingHorizontal: layout.screenX,
-            paddingTop: 16,
-            paddingBottom: 14,
-            gap: 14,
-            backgroundColor: c.paper,
-            borderBottomWidth: 1,
-            borderBottomColor: c.border,
-            zIndex: 2,
-            ...shadow.low,
-          }}
+        <Animated.View
+          style={[
+            {
+              paddingHorizontal: layout.screenX,
+              paddingTop: 16,
+              paddingBottom: 14,
+              gap: 14,
+              backgroundColor: c.paper,
+              borderBottomWidth: 1,
+              zIndex: 2,
+              shadowColor: "#000",
+              shadowRadius: 18,
+              shadowOffset: { width: 0, height: 8 },
+              elevation: 6,
+            },
+            pinnedChromeStyle,
+          ]}
         >
           {/* Header section with live domain pill and quick actions */}
           <View style={{ gap: 14 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <View style={{ gap: 3 }}>
-                <Text
-                  style={{
-                    fontFamily: fonts.sans700,
-                    fontSize: 10.5,
-                    letterSpacing: 2,
-                    textTransform: "uppercase",
-                    color: c.faint,
-                  }}
-                >
-                  Portfolio &amp; Layout
-                </Text>
-                <Text
-                  style={{
-                    fontFamily: fonts.serif600,
-                    fontSize: 29,
-                    lineHeight: 34,
-                    letterSpacing: -0.8,
-                    color: c.ink,
-                  }}
-                >
-                  Website
-                </Text>
-              </View>
+            <Animated.View style={[{ overflow: "hidden" }, titleAnimatedStyle]}>
+              <View
+                onLayout={(e) => {
+                  const h = Math.round(e.nativeEvent.layout.height);
+                  if (h > 0 && h !== titleHeight) setTitleHeight(h);
+                }}
+                style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
+              >
+                <View style={{ gap: 3 }}>
+                  <Text
+                    style={{
+                      fontFamily: fonts.sans700,
+                      fontSize: 10.5,
+                      letterSpacing: 2,
+                      textTransform: "uppercase",
+                      color: c.faint,
+                    }}
+                  >
+                    Portfolio &amp; Layout
+                  </Text>
+                  <Text
+                    style={{
+                      fontFamily: fonts.serif600,
+                      fontSize: 29,
+                      lineHeight: 34,
+                      letterSpacing: -0.8,
+                      color: c.ink,
+                    }}
+                  >
+                    Website
+                  </Text>
+                </View>
 
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                {site ? (
-                  <>
-                    <CircleBtn icon="copy" onPress={copyLiveLink} label="Copy link" />
-                    <CircleBtn icon="share-2" onPress={shareLiveSite} label="Share" />
-                    <CircleBtn icon="external-link" onPress={openLiveInBrowser} label="Open site" />
-                  </>
-                ) : null}
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  {site ? (
+                    <>
+                      <CircleBtn icon="copy" onPress={copyLiveLink} label="Copy link" />
+                      <CircleBtn icon="share-2" onPress={shareLiveSite} label="Share" />
+                      <CircleBtn icon="external-link" onPress={openLiveInBrowser} label="Open site" />
+                    </>
+                  ) : null}
+                </View>
               </View>
-            </View>
+            </Animated.View>
 
             {/* Subdomain pill banner */}
-            <Pressable
+            <Press
               onPress={copyLiveLink}
+              haptic={false}
+              weight="card"
+              accessibilityLabel="Copy live site link"
               style={{
                 flexDirection: "row",
                 alignItems: "center",
@@ -277,13 +361,16 @@ export default function Portfolio() {
               }}
             >
               <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
-                <View
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: 4,
-                    backgroundColor: site ? c.success : c.faint,
-                  }}
+                <Animated.View
+                  style={[
+                    {
+                      width: 8,
+                      height: 8,
+                      borderRadius: 4,
+                      backgroundColor: site ? c.success : c.faint,
+                    },
+                    liveDotStyle,
+                  ]}
                 />
                 <Text style={{ fontFamily: fonts.mono500, fontSize: 13, color: c.ink }}>
                   {site ? `${site}` : "Draft · No subdomain claimed"}
@@ -312,7 +399,7 @@ export default function Portfolio() {
                 </View>
                 <Feather name="chevron-right" size={14} color={c.faint} />
               </View>
-            </Pressable>
+            </Press>
           </View>
 
           {/* ── BROWSER MOCKUP SHOWCASE ──────────────────────────────────────── */}
@@ -340,26 +427,26 @@ export default function Portfolio() {
               </Text>
             </View>
 
-            <View
-              style={{
-                borderRadius: 22,
-                overflow: "hidden",
-                borderWidth: 1,
-                borderColor: dark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.12)",
-                backgroundColor: template.dark ? "#090B10" : "#E3E3DB",
-                shadowColor: "#000",
-                shadowOpacity: dark ? 0.6 : 0.16,
-                shadowRadius: 26,
-                shadowOffset: { width: 0, height: 12 },
-                elevation: 10,
-              }}
+            <Animated.View
+              style={[
+                {
+                  borderRadius: 22,
+                  overflow: "hidden",
+                  borderWidth: 1,
+                  borderColor: dark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.12)",
+                  backgroundColor: template.dark ? "#090B10" : "#E3E3DB",
+                  shadowColor: "#000",
+                  shadowOpacity: dark ? 0.6 : 0.16,
+                  shadowRadius: 26,
+                  shadowOffset: { width: 0, height: 12 },
+                  elevation: 10,
+                },
+                previewFrameStyle,
+              ]}
             >
               {/* macOS Chrome Header Bar */}
               <Pressable
-                onPress={() => {
-                  Haptics.selectionAsync().catch(() => {});
-                  setPreviewCollapsed((v) => !v);
-                }}
+                onPress={togglePreview}
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
@@ -414,7 +501,7 @@ export default function Portfolio() {
                   <Pressable
                     onPress={(e) => {
                       e.stopPropagation();
-                      Haptics.selectionAsync().catch(() => {});
+                      feel.snap();
                       setViewMode((m) => (m === "studio" ? "live" : "studio"));
                     }}
                     style={{
@@ -439,7 +526,7 @@ export default function Portfolio() {
                   <Pressable
                     onPress={(e) => {
                       e.stopPropagation();
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                      feel.reveal();
                       setFullScreenOpen(true);
                     }}
                     hitSlop={6}
@@ -504,10 +591,7 @@ export default function Portfolio() {
                         },
                       ]}
                     >
-                      <ActivityIndicator color={accent} size="small" />
-                      <Text style={{ fontFamily: fonts.sans500, fontSize: 11, color: c.muted }}>
-                        Loading live bundle…
-                      </Text>
+                      <LoadingBlock label="Loading live bundle" tint={accent} />
                     </View>
                   ) : null}
                   {webViewFailed ? (
@@ -527,8 +611,9 @@ export default function Portfolio() {
                       <Text style={{ fontFamily: fonts.sans600, fontSize: 13, color: c.ink, textAlign: "center" }}>
                         Live preview server offline
                       </Text>
-                      <Pressable
+                      <Press
                         onPress={() => setViewMode("studio")}
+                        haptic="commit"
                         style={{
                           paddingVertical: 8,
                           paddingHorizontal: 16,
@@ -539,7 +624,7 @@ export default function Portfolio() {
                         <Text style={{ fontFamily: fonts.sans700, fontSize: 12, color: "#fff" }}>
                           Switch to Studio View
                         </Text>
-                      </Pressable>
+                      </Press>
                     </View>
                   ) : null}
                 </View>
@@ -556,8 +641,8 @@ export default function Portfolio() {
                   onOpenFull={() => setFullScreenOpen(true)}
                 />
               )}
+              </Animated.View>
             </Animated.View>
-          </View>
 
           {!previewCollapsed ? (
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 4 }}>
@@ -566,7 +651,12 @@ export default function Portfolio() {
               </Text>
               {hasUnsavedChanges ? (
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: "#F59E0B" }} />
+                  <Animated.View
+                    style={[
+                      { width: 6, height: 6, borderRadius: 3, backgroundColor: "#F59E0B" },
+                      unsavedDotStyle,
+                    ]}
+                  />
                   <Text style={{ fontFamily: fonts.sans600, fontSize: 11, color: "#F59E0B" }}>
                     Unsaved tweaks
                   </Text>
@@ -574,23 +664,24 @@ export default function Portfolio() {
               ) : null}
             </View>
           ) : null}
-        </View>
-      </View>
+          </View>
+        </Animated.View>
 
-      {/* ── SCROLLABLE ZONE — template, colours, type & background live below the pinned preview ── */}
-      <ScrollView
-        ref={scrollRef}
-        style={{ flex: 1 }}
-        contentContainerStyle={{
-          paddingHorizontal: layout.screenX,
-          paddingTop: 18,
-          paddingBottom: layout.navBarSpace + 60,
-          gap: 22,
-        }}
-        showsVerticalScrollIndicator={false}
-      >
+        {/* ── SCROLLABLE ZONE — template, colours, type & background live below the pinned preview ── */}
+        <ScrollStage
+          ref={scrollRef}
+          stage={stage}
+          style={{ flex: 1 }}
+          contentContainerStyle={{
+            paddingHorizontal: layout.screenX,
+            paddingTop: 18,
+            paddingBottom: layout.navBarSpace + 60,
+            gap: 22,
+          }}
+          showsVerticalScrollIndicator={false}
+        >
         {/* ── PAGE TEMPLATE SELECTOR (Faithful to Image 1) ─────────────────── */}
-        <Rise duration={340}>
+        <Reveal index={0}>
         <View
           style={{
             borderRadius: 20,
@@ -620,12 +711,13 @@ export default function Portfolio() {
             {SITE_TEMPLATES.map((option) => {
               const active = option.id === templateId;
               return (
-                <Pressable
+                <Press
                   key={option.id}
-                  onPress={() => {
-                    Haptics.selectionAsync().catch(() => {});
-                    setTemplateId(option.id);
-                  }}
+                  weight="card"
+                  haptic="pop"
+                  accessibilityLabel={`Use the ${option.name} template`}
+                  accessibilityState={{ selected: active }}
+                  onPress={() => setTemplateId(option.id)}
                   style={{
                     flexDirection: "row",
                     alignItems: "center",
@@ -641,17 +733,25 @@ export default function Portfolio() {
                       : dark
                         ? "rgba(255,255,255,0.03)"
                         : "#FFFFFF",
+                    // The chosen layout lifts off the card behind it.
+                    shadowColor: "#6366F1",
+                    shadowOpacity: active ? 0.22 : 0,
+                    shadowRadius: 14,
+                    shadowOffset: { width: 0, height: 6 },
+                    elevation: active ? 4 : 0,
                   }}
                 >
-                  {/* Miniature Browser Mockup */}
-                  <TemplateThumbnail
-                    templateId={option.id}
-                    userName={data?.user?.name || "Kavin Balaji"}
-                    photoUrl={data?.user?.photoUrl}
-                    accent={accent}
-                    width={92}
-                    height={64}
-                  />
+                  {/* Miniature Browser Mockup — the live one gets the pop */}
+                  <Animated.View style={active ? templatePop : undefined}>
+                    <TemplateThumbnail
+                      templateId={option.id}
+                      userName={data?.user?.name || "Kavin Balaji"}
+                      photoUrl={data?.user?.photoUrl}
+                      accent={accent}
+                      width={92}
+                      height={64}
+                    />
+                  </Animated.View>
 
                   {/* Template Details */}
                   <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
@@ -701,14 +801,15 @@ export default function Portfolio() {
                     </Text>
 
                     {/* DEMO Action link */}
-                    <Pressable
+                    <Press
+                      haptic="lift"
+                      weight="control"
                       onPress={() => {
-                        Haptics.selectionAsync().catch(() => {});
                         setTemplateId(option.id);
                         setFullScreenOpen(true);
                       }}
-                      hitSlop={4}
-                      style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 }}
+                      hitSlop={6}
+                      style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2, alignSelf: "flex-start" }}
                     >
                       <Feather name="eye" size={10} color="#6366F1" />
                       <Text
@@ -722,42 +823,20 @@ export default function Portfolio() {
                       >
                         Demo
                       </Text>
-                    </Pressable>
+                    </Press>
                   </View>
 
                   {/* Active Indicator Checkmark */}
-                  {active ? (
-                    <View
-                      style={{
-                        width: 22,
-                        height: 22,
-                        borderRadius: 11,
-                        alignItems: "center",
-                        justifyContent: "center",
-                        backgroundColor: "#6366F1",
-                      }}
-                    >
-                      <Feather name="check" size={13} color="#fff" />
-                    </View>
-                  ) : (
-                    <View
-                      style={{
-                        width: 22,
-                        height: 22,
-                        borderRadius: 11,
-                        borderWidth: 1.5,
-                        borderColor: c.border,
-                      }}
-                    />
-                  )}
-                </Pressable>
+                  <SelectDot active={active} color="#6366F1" />
+                </Press>
               );
             })}
           </View>
 
           {/* Open Live Portfolio button matching Image 1 */}
-          <Pressable
+          <Press
             onPress={openLiveInBrowser}
+            haptic="lift"
             style={{
               flexDirection: "row",
               alignItems: "center",
@@ -782,12 +861,12 @@ export default function Portfolio() {
             >
               Open Live Portfolio
             </Text>
-          </Pressable>
+          </Press>
         </View>
-        </Rise>
+        </Reveal>
 
         {/* ── ACCENT COLOUR ────────────────────────────────────────────────── */}
-        <View style={{ gap: 12 }}>
+        <Reveal index={1} style={{ gap: 12 }}>
           <View style={{ flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" }}>
             <SectionLabel>Accent colour</SectionLabel>
             <Text style={{ fontFamily: fonts.sans500, fontSize: 12, color: c.faint }}>
@@ -796,63 +875,31 @@ export default function Portfolio() {
           </View>
 
           <View style={{ flexDirection: "row", gap: 14 }}>
-            {SITE_COLORS.map((option) => {
-              const active = option.id === colorId;
-              return (
-                <Pressable
-                  key={option.id}
-                  accessibilityLabel={option.label}
-                  onPress={() => {
-                    Haptics.selectionAsync().catch(() => {});
-                    setColorId(option.id);
-                  }}
-                  style={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: 22,
-                    padding: 3,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    borderWidth: 2.5,
-                    borderColor: active ? option.hex : "transparent",
-                    transform: [{ scale: active ? 1.08 : 1 }],
-                  }}
-                >
-                  <View
-                    style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 16,
-                      backgroundColor: option.hex,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      shadowColor: option.hex,
-                      shadowOpacity: active ? 0.6 : 0.2,
-                      shadowRadius: active ? 10 : 3,
-                      shadowOffset: { width: 0, height: 2 },
-                    }}
-                  >
-                    {active ? <Feather name="check" size={14} color="#fff" /> : null}
-                  </View>
-                </Pressable>
-              );
-            })}
+            {SITE_COLORS.map((option) => (
+              <Swatch
+                key={option.id}
+                hex={option.hex}
+                label={option.label}
+                active={option.id === colorId}
+                onPress={() => setColorId(option.id)}
+              />
+            ))}
           </View>
-        </View>
+        </Reveal>
 
         {/* ── TYPEFACE ─────────────────────────────────────────────────────── */}
-        <View style={{ gap: 12 }}>
+        <Reveal index={2} haptic style={{ gap: 12 }}>
           <SectionLabel>Typeface</SectionLabel>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
             {SITE_FONT_IDS.map((option) => {
               const active = option.id === fontId;
               return (
-                <Pressable
+                <Press
                   key={option.id}
-                  onPress={() => {
-                    Haptics.selectionAsync().catch(() => {});
-                    setFontId(option.id);
-                  }}
+                  haptic="select"
+                  accessibilityState={{ selected: active }}
+                  restScale={active ? 1.04 : 1}
+                  onPress={() => setFontId(option.id)}
                   style={{
                     paddingVertical: 10,
                     paddingHorizontal: 16,
@@ -875,25 +922,25 @@ export default function Portfolio() {
                     {option.name}
                   </Text>
                   {active ? <Feather name="check" size={13} color={accent} /> : null}
-                </Pressable>
+                </Press>
               );
             })}
           </View>
-        </View>
+        </Reveal>
 
         {/* ── BACKGROUND PATTERN ───────────────────────────────────────────── */}
-        <View style={{ gap: 12 }}>
+        <Reveal index={3} haptic style={{ gap: 12 }}>
           <SectionLabel>Background pattern</SectionLabel>
           <View style={{ gap: 9 }}>
             {SITE_BACKGROUNDS.map((option) => {
               const active = option.id === backgroundId;
               return (
-                <Pressable
+                <Press
                   key={option.id}
-                  onPress={() => {
-                    Haptics.selectionAsync().catch(() => {});
-                    setBackgroundId(option.id);
-                  }}
+                  weight="card"
+                  haptic="pop"
+                  accessibilityState={{ selected: active }}
+                  onPress={() => setBackgroundId(option.id)}
                   style={{
                     flexDirection: "row",
                     alignItems: "center",
@@ -914,63 +961,80 @@ export default function Portfolio() {
                       {option.description}
                     </Text>
                   </View>
-                  <View
-                    style={{
-                      width: 22,
-                      height: 22,
-                      borderRadius: 11,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      backgroundColor: active ? accent : c.deep,
-                    }}
-                  >
-                    {active ? <Feather name="check" size={12} color="#fff" /> : null}
-                  </View>
-                </Pressable>
+                  <SelectDot active={active} color={accent} idleFilled />
+                </Press>
               );
             })}
           </View>
-        </View>
+        </Reveal>
 
         {/* ── PUBLISH CTA BAR ──────────────────────────────────────────────── */}
-        <Pressable
-          onPress={publish}
-          disabled={updateProfile.isPending}
-          style={{
-            minHeight: 54,
-            borderRadius: 999,
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 10,
-            backgroundColor: hasUnsavedChanges ? accent : c.cta,
-            shadowColor: hasUnsavedChanges ? accent : "#000",
-            shadowOpacity: hasUnsavedChanges ? 0.4 : 0.25,
-            shadowRadius: 16,
-            shadowOffset: { width: 0, height: 8 },
-            elevation: 8,
-          }}
-        >
-          {updateProfile.isPending ? (
-            <ActivityIndicator color="#fff" size="small" />
-          ) : (
-            <Feather name="upload-cloud" size={18} color="#fff" />
-          )}
-          <Text style={{ fontFamily: fonts.sans700, fontSize: 15, color: "#fff" }}>
-            {updateProfile.isPending
-              ? "Publishing portfolio…"
-              : hasUnsavedChanges
-                ? `Publish changes to ${handle ?? "site"}`
-                : `Published · ${handle ? `${handle}.atbexo.com` : "Live"}`}
-          </Text>
-        </Pressable>
-      </ScrollView>
+        <Reveal index={4}>
+          <Animated.View style={publishPop}>
+            <Press
+              onPress={publish}
+              haptic={false}
+              weight="control"
+              disabled={updateProfile.isPending}
+              accessibilityLabel={
+                hasUnsavedChanges ? "Publish changes" : "Portfolio is published"
+              }
+              style={{
+                minHeight: 54,
+                borderRadius: 999,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 10,
+                overflow: "hidden",
+                backgroundColor: justPublished
+                  ? c.success
+                  : hasUnsavedChanges
+                    ? accent
+                    : c.cta,
+                shadowColor: justPublished ? c.success : hasUnsavedChanges ? accent : "#000",
+                shadowOpacity: hasUnsavedChanges || justPublished ? 0.4 : 0.25,
+                shadowRadius: 16,
+                shadowOffset: { width: 0, height: 8 },
+                elevation: 8,
+              }}
+            >
+              {/* A gleam crosses the button only while there is something to
+                  publish — the one moment the eye should be drawn here. */}
+              {hasUnsavedChanges && !updateProfile.isPending && !justPublished ? (
+                <LightSweep width={windowWidth} height={54} delay={900} duration={2100} opacity={0.22} />
+              ) : null}
+
+              {updateProfile.isPending ? (
+                <Orbit size={19} color="#fff" thickness={2} />
+              ) : (
+                <Feather
+                  name={justPublished ? "check-circle" : hasUnsavedChanges ? "upload-cloud" : "globe"}
+                  size={18}
+                  color="#fff"
+                />
+              )}
+              <Text style={{ fontFamily: fonts.sans700, fontSize: 15, color: "#fff" }}>
+                {updateProfile.isPending
+                  ? "Publishing portfolio…"
+                  : justPublished
+                    ? "Live — changes are up"
+                    : hasUnsavedChanges
+                      ? `Publish changes to ${handle ?? "site"}`
+                      : `Published · ${handle ? `${handle}.atbexo.com` : "Live"}`}
+              </Text>
+            </Press>
+          </Animated.View>
+        </Reveal>
+        </ScrollStage>
       </View>
 
       {/* ── FLOATING QUICK-ACCESS BUTTON — jump back to the pinned preview,
           re-expanding it first if it's been collapsed for more editing room ── */}
-      <Pressable
+      <Press
         onPress={revealPreview}
+        haptic={false}
+        weight="icon"
         accessibilityLabel="Back to live preview"
         hitSlop={6}
         style={{
@@ -994,7 +1058,7 @@ export default function Portfolio() {
         }}
       >
         <Feather name={previewCollapsed ? "eye" : "settings"} size={20} color="#fff" />
-      </Pressable>
+      </Press>
 
       {/* ── FULL-SCREEN INTERACTIVE PREVIEW MODAL ─────────────────────────── */}
       <Modal
@@ -1018,8 +1082,14 @@ export default function Portfolio() {
               backgroundColor: template.dark ? "rgba(10,13,20,0.92)" : "rgba(235,232,223,0.92)",
             }}
           >
-            <Pressable
-              onPress={() => setFullScreenOpen(false)}
+            <Press
+              onPress={() => {
+                feel.dismiss();
+                setFullScreenOpen(false);
+              }}
+              haptic={false}
+              weight="icon"
+              accessibilityLabel="Close preview"
               style={{
                 width: 36,
                 height: 36,
@@ -1030,7 +1100,7 @@ export default function Portfolio() {
               }}
             >
               <Feather name="x" size={18} color={template.dark ? "#fff" : "#111"} />
-            </Pressable>
+            </Press>
 
             <View style={{ alignItems: "center", gap: 2 }}>
               <Text
@@ -1049,8 +1119,11 @@ export default function Portfolio() {
 
             <View style={{ flexDirection: "row", gap: 8 }}>
               {site ? (
-                <Pressable
+                <Press
                   onPress={openLiveInBrowser}
+                  haptic="lift"
+                  weight="icon"
+                  accessibilityLabel="Open live site"
                   style={{
                     width: 36,
                     height: 36,
@@ -1061,7 +1134,7 @@ export default function Portfolio() {
                   }}
                 >
                   <Feather name="external-link" size={16} color={template.dark ? "#fff" : "#111"} />
-                </Pressable>
+                </Press>
               ) : (
                 <View style={{ width: 36 }} />
               )}
@@ -1102,9 +1175,11 @@ function CircleBtn({
 }) {
   const { c } = useTheme();
   return (
-    <Pressable
+    <Press
       accessibilityLabel={label}
       onPress={onPress}
+      haptic="lift"
+      weight="icon"
       hitSlop={6}
       style={{
         width: 38,
@@ -1118,6 +1193,116 @@ function CircleBtn({
       }}
     >
       <Feather name={icon} size={15} color={c.muted} />
-    </Pressable>
+    </Press>
+  );
+}
+
+/**
+ * An accent swatch. The chosen one sits proudly forward — a spring-driven
+ * scale rather than a static transform, so switching colours reads as the new
+ * one stepping up and the old one stepping back.
+ */
+function Swatch({
+  hex,
+  label,
+  active,
+  onPress,
+}: {
+  hex: string;
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  const pop = usePopOnChange(active ? hex : null, 0.22);
+
+  return (
+    <Press
+      accessibilityLabel={label}
+      accessibilityState={{ selected: active }}
+      onPress={onPress}
+      haptic="pop"
+      weight="icon"
+      restScale={active ? 1.08 : 1}
+      style={{
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        padding: 3,
+        alignItems: "center",
+        justifyContent: "center",
+        borderWidth: 2.5,
+        borderColor: active ? hex : "transparent",
+      }}
+    >
+      <Animated.View
+        style={[
+          {
+            width: 32,
+            height: 32,
+            borderRadius: 16,
+            backgroundColor: hex,
+            alignItems: "center",
+            justifyContent: "center",
+            shadowColor: hex,
+            shadowOpacity: active ? 0.6 : 0.2,
+            shadowRadius: active ? 10 : 3,
+            shadowOffset: { width: 0, height: 2 },
+          },
+          active ? pop : undefined,
+        ]}
+      >
+        {active ? <Feather name="check" size={14} color="#fff" /> : null}
+      </Animated.View>
+    </Press>
+  );
+}
+
+/**
+ * The selection dot. The tick does not simply appear — it springs in from
+ * nothing while the disc fills, which is what makes a choice feel *made*
+ * rather than merely recorded.
+ */
+function SelectDot({
+  active,
+  color,
+  idleFilled = false,
+}: {
+  active: boolean;
+  color: string;
+  idleFilled?: boolean;
+}) {
+  const { c } = useTheme();
+  const p = useSharedValue(active ? 1 : 0);
+
+  useEffect(() => {
+    p.value = active
+      ? withSpring(1, { damping: 11, stiffness: 260, mass: 0.5 })
+      : withTiming(0, { duration: 160, easing: ease.soft });
+  }, [active, p]);
+
+  const idleFill = idleFilled ? c.deep : "transparent";
+  const disc = useAnimatedStyle(() => ({
+    backgroundColor: interpolateColor(p.value, [0, 1], [idleFill, color]),
+    borderColor: c.border,
+    borderWidth: interpolate(p.value, [0, 1], [1.5, 0]),
+    transform: [{ scale: interpolate(p.value, [0, 1], [0.9, 1]) }],
+  }));
+
+  const tick = useAnimatedStyle(() => ({
+    opacity: p.value,
+    transform: [{ scale: p.value }, { rotate: `${interpolate(p.value, [0, 1], [-35, 0])}deg` }],
+  }));
+
+  return (
+    <Animated.View
+      style={[
+        { width: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center" },
+        disc,
+      ]}
+    >
+      <Animated.View style={tick}>
+        <Feather name="check" size={12.5} color="#fff" />
+      </Animated.View>
+    </Animated.View>
   );
 }
