@@ -81,7 +81,7 @@ export default function Portfolio() {
       (opt) => opt.hex === data?.user?.themeColor || opt.id === data?.user?.themeColor,
     );
     if (color) setColorId(color.id);
-    if (data?.user?.themeBg) setBackgroundId(data.user.themeBg);
+    if (data?.user?.themeBg) setBackgroundId(data?.user?.themeBg);
   }, [
     data?.user?.templateId,
     data?.profile?.templateId,
@@ -110,9 +110,9 @@ export default function Portfolio() {
   // Detect whether the user has customized any settings from current server truth
   const hasUnsavedChanges = useMemo(() => {
     if (!data?.user) return false;
-    const serverTemplate = data.profile?.templateId || data.user.templateId || "nico-palmer";
-    const serverColor = data.user.themeColor || "blue";
-    const serverBg = data.user.themeBg || "grid";
+    const serverTemplate = data?.profile?.templateId || data?.user?.templateId || "nico-palmer";
+    const serverColor = data?.user?.themeColor || "blue";
+    const serverBg = data?.user?.themeBg || "grid";
     return (
       templateId !== serverTemplate ||
       colorId !== serverColor ||

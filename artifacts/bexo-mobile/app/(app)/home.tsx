@@ -280,7 +280,7 @@ export default function Home() {
             >
               {data?.user?.photoUrl ? (
                 <Image
-                  source={{ uri: data.user.photoUrl }}
+                  source={{ uri: data?.user?.photoUrl }}
                   style={{ width: "100%", height: "100%" }}
                   resizeMode="cover"
                 />
@@ -439,11 +439,11 @@ export default function Home() {
                     }}
                   >
                     <Text style={{ fontFamily: fonts.sans600, fontSize: 11.5, color: c.accentSoft }}>
-                      {planLabel(data.plan, data.isPremium)}
+                      {planLabel(data?.plan ?? "", data?.isPremium ?? false)}
                     </Text>
                   </View>
                 </View>
-                <StorageBar used={data.user.storageUsedBytes} quota={data.user.storageQuotaBytes} />
+                <StorageBar used={data?.user?.storageUsedBytes ?? 0} quota={data?.user?.storageQuotaBytes ?? 0} />
                 {limits ? (
                   <Text style={{ fontFamily: fonts.sans400, fontSize: 12, color: c.muted }}>
                     {limits.updatesRemaining} of {limits.updatesPerMonth} monthly updates left ·{" "}

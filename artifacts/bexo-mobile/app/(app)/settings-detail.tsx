@@ -299,7 +299,9 @@ function StorageDetail() {
   }
   if (!data) return null;
 
-  const pct = data.storageQuotaBytes > 0 ? Math.min(100, (data.storageUsedBytes / data.storageQuotaBytes) * 100) : 0;
+  const quotaBytes = Number(data?.storageQuotaBytes ?? 0);
+  const usedBytes = Number(data?.storageUsedBytes ?? 0);
+  const pct = quotaBytes > 0 ? Math.min(100, (usedBytes / quotaBytes) * 100) : 0;
 
   return (
     <Rise
@@ -316,10 +318,10 @@ function StorageDetail() {
       <View style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between" }}>
         <View style={{ gap: 2 }}>
           <Text style={{ fontFamily: fonts.serif600, fontSize: 30, color: c.ink }}>
-            {formatBytes(data.storageUsedBytes)}
+            {formatBytes(usedBytes)}
           </Text>
           <Text style={{ fontFamily: fonts.sans400, fontSize: 12, color: c.muted }}>
-            of {formatBytes(data.storageQuotaBytes)} used
+            of {formatBytes(quotaBytes)} used
           </Text>
         </View>
       </View>

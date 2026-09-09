@@ -96,7 +96,7 @@ export default function OnboardingWizard() {
   const handleAvailable = handle.length >= 3 && handleCheck?.available === true;
 
   useEffect(() => {
-    if (!data) return;
+    if (!data?.user) return;
     if (data.user.name && !name) setName(data.user.name);
     if (data.user.photoUrl) setPhotoSaved(true);
     if (data.user.uploadedResumeUrl) setResumeSaved(true);

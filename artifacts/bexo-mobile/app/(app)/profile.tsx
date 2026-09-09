@@ -24,12 +24,12 @@ export default function Profile() {
 
   if (!data?.user || !data?.profile) return null;
 
-  const name = data.user.name ?? "Your name";
-  const handle = data.profile.handle ?? null;
-  const photoUrl = data.user.photoUrl ?? data.profile?.cardDesign?.photoUrl ?? null;
+  const name = data?.user?.name ?? "Your name";
+  const handle = data?.profile?.handle ?? null;
+  const photoUrl = data?.user?.photoUrl ?? data?.profile?.cardDesign?.photoUrl ?? null;
   const unread = leads?.unread ?? 0;
-  const usedBytes = Number(data.user.storageUsedBytes ?? 0);
-  const quotaBytes = Number(data.user.storageQuotaBytes ?? 0);
+  const usedBytes = Number(data?.user?.storageUsedBytes ?? 0);
+  const quotaBytes = Number(data?.user?.storageQuotaBytes ?? 0);
   const storagePct = quotaBytes > 0 ? Math.min(100, (usedBytes / quotaBytes) * 100) : 0;
 
   const rows: Row[] = [
@@ -38,10 +38,10 @@ export default function Profile() {
     { title: "Analytics", subtitle: "Views, visitors, traffic sources", icon: "bar-chart-2", go: () => router.push("/(app)/analytics") },
     { title: "Notifications", subtitle: "Requests and enquiries", icon: "bell", go: () => router.push("/(app)/notifications") },
     { title: "Storage & files", subtitle: `${formatBytes(usedBytes)} of ${formatBytes(quotaBytes)} used`, icon: "hard-drive", go: () => router.push("/(app)/settings-detail?key=storage") },
-    { title: "Billing", subtitle: data.isPremium ? `${data.plan} · ${data.billingPeriod ?? "—"}` : "Free plan", icon: "credit-card", go: () => router.push("/(app)/settings-detail?key=billing") },
+    { title: "Billing", subtitle: data?.isPremium ? `${data?.plan} · ${data?.billingPeriod ?? "—"}` : "Free plan", icon: "credit-card", go: () => router.push("/(app)/settings-detail?key=billing") },
     { title: "Account & security", subtitle: "Phone, email, sessions", icon: "shield", go: () => router.push("/(app)/settings-detail?key=account") },
-    { title: "Instant Networking", subtitle: data.user.autoConnect ?? true ? "Auto-Connect on" : "Manual approval", icon: "zap", go: () => router.push("/(app)/settings-detail?key=auto-connect") },
-    { title: "Hiring status", subtitle: data.user.openToHire ? "Open to hire" : "Not looking", icon: "briefcase", go: () => router.push("/(app)/settings-detail?key=hiring") },
+    { title: "Instant Networking", subtitle: data?.user?.autoConnect ?? true ? "Auto-Connect on" : "Manual approval", icon: "zap", go: () => router.push("/(app)/settings-detail?key=auto-connect") },
+    { title: "Hiring status", subtitle: data?.user?.openToHire ? "Open to hire" : "Not looking", icon: "briefcase", go: () => router.push("/(app)/settings-detail?key=hiring") },
   ];
 
   return (

@@ -107,13 +107,13 @@ export function useUpdateProfile() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (patch: ProfilePatch) =>
-      customFetch<ProfileResponse>("/api/profile", {
+      customFetch<{ success: boolean; message?: string }>("/api/profile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),
       }),
-    onSuccess: (data) => {
-      queryClient.setQueryData(["profile"], data);
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["profile"] });
     },
   });
 }
