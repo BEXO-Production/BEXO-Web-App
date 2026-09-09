@@ -15,6 +15,7 @@ import {
 } from "@workspace/db";
 import { eq, and, desc, gt, sql, inArray } from "drizzle-orm";
 import { logger } from "../lib/logger";
+import { appOrigin } from "../lib/platform";
 import { MARKETING_DEMO_HANDLE, getMarketingDemoProfile, isMarketingDemoHandle } from "../lib/marketingDemoProfile";
 import { invalidatePortfolioRenderCache } from "../lib/portfolioRenderCache";
 import multer from "multer";
@@ -70,13 +71,55 @@ const CARD_FONTS = new Set(["jakarta", "editorial", "mono", "outfit", "space"]);
  * Card styling is a small private preference, not an arbitrary JSON bag. The
  * strict allow-list keeps the database constraint and both clients in lockstep.
  */
-function parseCardDesign(value: unknown): { background: string; font: string } | null {
+const CARD_ACCENTS = new Set(["auto", "emerald", "sky", "amber", "rose", "violet"]);
+const CARD_HEADLINES = new Set(["network", "connect", "story", "work"]);
+/** How the card's picture is cut. Not every brand is a person — a logo wants a
+ * square or a rounded tile, not a portrait circle. */
+const CARD_PHOTO_SHAPES = new Set(["circle", "rounded", "squircle", "square", "arch", "hexagon"]);
+
+export interface CardDesign {
+  background: string;
+  font: string;
+  accent?: string;
+  headline?: string;
+  photoShape?: string;
+  /** A user-uploaded picture or logo; falls back to the profile photo. */
+  photoUrl?: string | null;
+  fields?: Record<string, boolean>;
+}
+
+function parseCardDesign(value: unknown): CardDesign | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const candidate = value as Record<string, unknown>;
   const background = typeof candidate.background === "string" ? candidate.background : "";
   const font = typeof candidate.font === "string" ? candidate.font : "";
   if (!CARD_BACKGROUNDS.has(background) || !CARD_FONTS.has(font)) return null;
-  return { background, font };
+
+  const design: CardDesign = { background, font };
+
+  if (typeof candidate.accent === "string" && CARD_ACCENTS.has(candidate.accent)) {
+    design.accent = candidate.accent;
+  }
+  if (typeof candidate.headline === "string" && CARD_HEADLINES.has(candidate.headline)) {
+    design.headline = candidate.headline;
+  }
+  if (typeof candidate.photoShape === "string" && CARD_PHOTO_SHAPES.has(candidate.photoShape)) {
+    design.photoShape = candidate.photoShape;
+  }
+  if (typeof candidate.photoUrl === "string" || candidate.photoUrl === null) {
+    const url = candidate.photoUrl === null ? null : String(candidate.photoUrl).trim();
+    // Only our own storage — never let the card point at an arbitrary host.
+    if (url === null || url === "" || /^https?:\/\//i.test(url)) design.photoUrl = url || null;
+  }
+  if (candidate.fields && typeof candidate.fields === "object" && !Array.isArray(candidate.fields)) {
+    const fields: Record<string, boolean> = {};
+    for (const [key, val] of Object.entries(candidate.fields as Record<string, unknown>)) {
+      if (typeof val === "boolean" && /^[a-zA-Z]{1,32}$/.test(key)) fields[key] = val;
+    }
+    design.fields = fields;
+  }
+
+  return design;
 }
 
 const upload = multer({
@@ -219,6 +262,12 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<voi
       user: {
         id: user.id,
         phone: user.phone,
+        // The identity printed on the card's QR — the app needs it to draw its
+        // own code, and the scanner resolves it back to this user.
+        cardCode: user.cardCode,
+        // The exact string the card's QR encodes. Computed here so the app
+        // never has to guess the platform domain.
+        cardUrl: `${appOrigin()}/c/${user.cardCode}?src=qr`,
         phoneVerifiedAt: user.phoneVerifiedAt,
         name: user.name,
         email: user.email,
@@ -235,6 +284,7 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<voi
         storageQuotaBytes: subscriptionState.storageQuotaBytes,
         storageBonusBytes: subscriptionState.storageBonusBytes,
         openToHire: user.openToHire ?? false,
+        autoConnect: user.autoConnect ?? true,
         templateId: user.templateId ?? 'minimal',
         themeColor: user.themeColor ?? 'blue',
         themeBg: user.themeBg ?? 'grid',
@@ -501,7 +551,7 @@ router.patch("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<v
   const userId = req.user!.id;
     const { 
       name, dob, email, photoUrl, resumeUrl, handle, headline, careerGoal, bio, completionPct, profilePhotoAssetId,
-      openToHire, templateId, themeColor, themeBg, pronouns, nationality, cardDesign,
+      openToHire, autoConnect, templateId, themeColor, themeBg, pronouns, nationality, cardDesign,
       aboutEntries, educationEntries, experienceEntries, projectEntries, certificateEntries, achievementEntries, researchEntries, skillEntries, contactData
     } = req.body;
     try {
@@ -547,6 +597,7 @@ router.patch("/", requireAuth, async (req: AuthenticatedRequest, res): Promise<v
       // a generated URL can never clobber a real upload.
       if (profilePhotoAssetId !== undefined) userUpdates.profilePhotoAssetId = profilePhotoAssetId;
       if (openToHire !== undefined) userUpdates.openToHire = !!openToHire;
+      if (autoConnect !== undefined) userUpdates.autoConnect = !!autoConnect;
       if (templateId !== undefined) userUpdates.templateId = templateId;
       if (themeColor !== undefined) userUpdates.themeColor = themeColor;
       if (themeBg !== undefined) userUpdates.themeBg = themeBg;

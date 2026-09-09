@@ -123,11 +123,13 @@ export type OnboardingData = {
   isInPaymentGrace?: boolean;
   isPausedForVisitors?: boolean;
   overStorage?: boolean;
+  autoConnect?: boolean;
 };
 
 const defaultData: OnboardingData = {
   phone: '',
   phoneVerifiedAt: null,
+  autoConnect: true,
   name: '',
   dob: '',
   handle: '',
@@ -367,6 +369,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
           contactData: result.contactData || prev.contactData,
           plan: result.plan !== undefined ? result.plan : prev.plan,
           openToHire: result.user?.openToHire !== undefined ? result.user.openToHire : prev.openToHire,
+          autoConnect: result.user?.autoConnect !== undefined ? result.user.autoConnect : prev.autoConnect ?? true,
           storageQuotaBytes: result.user?.storageQuotaBytes !== undefined ? result.user.storageQuotaBytes : prev.storageQuotaBytes,
           storageBonusBytes: result.user?.storageBonusBytes !== undefined ? result.user.storageBonusBytes : prev.storageBonusBytes,
           isPremium: result.isPremium !== undefined ? result.isPremium : prev.isPremium,

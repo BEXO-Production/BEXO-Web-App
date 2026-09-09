@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import express, { type Express } from "express";
 import cors from "cors";
@@ -10,15 +11,24 @@ import { subdomainRouter, marketingDemoStatic } from "./middlewares/subdomainRou
 import { renderPortfolioForHandle } from "./middlewares/subdomainRouter";
 import { registerSitemapRoutes } from "./routes/sitemap";
 import { createRateLimiter } from "./middlewares/rateLimit";
+import { errorHandler, notFoundHandler } from "./middlewares/errorHandler";
+import { requestId } from "./middlewares/requestId";
+import { securityHeaders } from "./middlewares/securityHeaders";
+import cardRedirectRouter from "./routes/cardRedirect";
 
 const app: Express = express();
 
 // Cloudflare Worker / load balancers set X-Forwarded-Host for portfolio subdomains.
 app.set("trust proxy", true);
 
+// Must precede pino-http so every log line for the request carries the same id.
+app.use(requestId);
+app.use(securityHeaders);
+
 app.use(
   pinoHttp({
     logger,
+    genReqId: (req) => (req as typeof req & { id?: string }).id ?? randomUUID(),
     serializers: {
       req(req) {
         return {
@@ -224,6 +234,10 @@ app.use("/api/render/:handle", async (req, res) => {
   });
 });
 
+// Proprietary BEXO Identity ID & Dynamic Routing:
+// Resolves /c/:cardCode for physical NFC cards and physical/digital QR codes.
+app.use("/c", cardRedirectRouter);
+
 app.get("/", (req, res) => {
   res.json({
     status: "ok",
@@ -236,5 +250,12 @@ app.get("/", (req, res) => {
 });
 
 app.use("/api", router);
+
+// Unmatched API routes must return JSON, not Express's default HTML page —
+// both clients parse every /api response as JSON.
+app.use("/api", notFoundHandler);
+
+// Terminal error handler. Registered last so it catches anything the routes throw.
+app.use(errorHandler);
 
 export default app;

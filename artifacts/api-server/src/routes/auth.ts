@@ -2,10 +2,10 @@ import { Router } from "express";
 import Redis from "ioredis";
 import jwt from "jsonwebtoken";
 import { randomUUID } from "crypto";
-import { db, users, profiles } from "@workspace/db";
-import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { OTP_MAX_TTL_SECONDS } from "../lib/userRetention";
+import { resolveUserSessionForPhone } from "../lib/authSession";
+import { verifyWidgetAccessToken } from "../lib/msg91Widget";
 
 const router = Router();
 
@@ -118,7 +118,9 @@ class RedisOrMemoryStore {
 const store = new RedisOrMemoryStore();
 
 const phonePattern = /^\d{10,15}$/;
-const otpPattern = /^\d{6}$/;
+/** 4 digits — matches the MSG91 OTP Widget's configured OTP length (Widget Settings). */
+const OTP_LENGTH = 4;
+const otpPattern = /^\d{4}$/;
 /** Wrong OTP attempts before lockout. */
 const OTP_VERIFY_MAX_ATTEMPTS = 3;
 /** Lock + fail-counter window after hitting the attempt limit. */
@@ -169,7 +171,7 @@ router.post("/phone/otp", async (req, res): Promise<void> => {
   const existingOtp = await store.get(`otp:${phone}`);
   let otp = existingOtp;
   if (!otp) {
-    otp = Math.floor(100000 + Math.random() * 900000).toString();
+    otp = Math.floor(1000 + Math.random() * 9000).toString();
     // OTP lives only in Redis — never persist unverified phones to Postgres.
     // Cap TTL at 30 minutes per retention policy (default 5 minutes).
     const ttl = Math.min(300, OTP_MAX_TTL_SECONDS);
@@ -289,7 +291,7 @@ router.post("/phone/otp/verify", async (req, res): Promise<void> => {
   const otp = typeof rawOtp === "string" ? rawOtp.replace(/\D/g, "") : "";
 
   if (!phonePattern.test(phone) || !otpPattern.test(otp)) {
-    res.status(400).json({ error: "Enter a valid phone number and 6-digit verification code." });
+    res.status(400).json({ error: `Enter a valid phone number and ${OTP_LENGTH}-digit verification code.` });
     return;
   }
 
@@ -320,7 +322,7 @@ router.post("/phone/otp/verify", async (req, res): Promise<void> => {
 
     // 2. Verify OTP code against cached OTP
     const cachedOtp = await store.get(`otp:${phone}`);
-    const isDevelopmentBypass = process.env.NODE_ENV !== "production" && otp === "111111";
+    const isDevelopmentBypass = process.env.NODE_ENV !== "production" && otp === "1111";
 
     if (!isDevelopmentBypass && otp !== cachedOtp) {
       const failCount = await store.incr(verifyFailKey, OTP_VERIFY_LOCK_SECONDS);
@@ -360,90 +362,19 @@ router.post("/phone/otp/verify", async (req, res): Promise<void> => {
     await store.del(verifyFailKey);
     await store.del(verifyLockKey);
 
-    // Find or create user
-    let user = (await db.select().from(users).where(eq(users.phone, phone)).limit(1))[0];
-    let isNewUser = false;
-    let hasCompletedOnboarding = false;
-
-    // If an already-signed-in user verifies a phone that belongs to a
-    // different account, refuse with a clear 409 instead of silently
-    // switching sessions or colliding on the unique phone column.
-    const authHeader = req.headers.authorization;
-    if (user && authHeader?.startsWith("Bearer ")) {
-      try {
-        const secretForCheck = process.env.JWT_SECRET;
-        if (secretForCheck) {
-          const decoded = jwt.verify(authHeader.slice(7), secretForCheck) as { id?: string };
-          if (decoded?.id && decoded.id !== user.id) {
-            res.status(409).json({
-              error: "This number is already registered to another BEXO account. Log out and sign in with that number instead.",
-              code: "PHONE_TAKEN",
-            });
-            return;
-          }
-        }
-      } catch {
-        // Expired/invalid token — treat as a normal unauthenticated sign-in.
-      }
-    }
-
-    if (!user) {
-      isNewUser = true;
-      try {
-        const inserted = await db.insert(users).values({
-          phone,
-          phoneVerifiedAt: new Date(),
-        }).returning();
-        user = inserted[0];
-      } catch (error) {
-        // Two verification requests can complete together. In that case, reuse
-        // the account created by the other request instead of returning a 500.
-        if ((error as { code?: string }).code !== "23505") throw error;
-        user = (await db.select().from(users).where(eq(users.phone, phone)).limit(1))[0];
-        if (!user) throw error;
-        isNewUser = false;
-      }
-      logger.info({ userId: user.id, phone }, "Created new user on verification");
-    } else {
-      // Update verification timestamp
-      await db.update(users).set({
-        phoneVerifiedAt: new Date()
-      }).where(eq(users.id, user.id));
-
-      // Check if they completed onboarding (profile exists and has a handle)
-      const userProfile = await db.select().from(profiles).where(eq(profiles.userId, user.id)).limit(1);
-      if (userProfile.length > 0 && userProfile[0].handle) {
-        hasCompletedOnboarding = true;
-      }
+    const session = await resolveUserSessionForPhone(phone, req.headers.authorization);
+    if (session.status !== 200) {
+      res.status(session.status).json(session.body);
+      return;
     }
 
     // Consume the OTP code
     await store.del(`otp:${phone}`);
 
-    // Generate JWT token
-    const secret = process.env.JWT_SECRET;
-    if (!secret) {
-      res.status(500).json({ error: "Server auth is misconfigured." });
-      return;
-    }
-    const accessToken = jwt.sign({ id: user.id }, secret, { expiresIn: "7d" });
-
-    const responseData = {
-      accessToken,
-      isNewUser,
-      hasCompletedOnboarding,
-      user: {
-        id: user.id,
-        phone: user.phone,
-        name: user.name,
-        email: user.email,
-      }
-    };
-
     // Cache the verified response for 30s keyed by phone+otp (double-submit only)
-    await store.set(`verified_session:${phone}:${otp}`, JSON.stringify(responseData), "EX", 30);
+    await store.set(`verified_session:${phone}:${otp}`, JSON.stringify(session.body), "EX", 30);
 
-    res.json(responseData);
+    res.json(session.body);
   } catch (err: any) {
     const dbDown = isDatabaseUnavailable(err);
     logger.error(
@@ -461,6 +392,61 @@ router.post("/phone/otp/verify", async (req, res): Promise<void> => {
         requestId,
       });
     }
+  }
+});
+
+// POST /auth/phone/widget-verify
+//
+// The primary phone sign-in path as of the MSG91 OTP Widget migration: the
+// client (web widget or the mobile WebView wrapper) sends and verifies the
+// OTP itself via MSG91 directly — SMS primary, WhatsApp fallback, per the
+// widget's Channels Configuration — and hands us the resulting widget access
+// token. We confirm that token server-side with MSG91, then run the exact
+// same account resolution the old custom-OTP flow used.
+//
+// `/phone/otp` and `/phone/otp/verify` above are kept only as a fallback
+// while the widget rollout is verified end-to-end; nothing new should call
+// them once this path is live.
+router.post("/phone/widget-verify", async (req, res): Promise<void> => {
+  const requestId = randomUUID();
+  const widgetToken = typeof req.body?.widgetToken === "string" ? req.body.widgetToken : "";
+
+  if (!widgetToken) {
+    res.status(400).json({ error: "Missing verification token." });
+    return;
+  }
+
+  try {
+    const verification = await verifyWidgetAccessToken(widgetToken);
+    if (!verification.verified || !verification.identifier) {
+      res.status(400).json({
+        error: verification.error || "That verification code is invalid or expired.",
+        code: "OTP_INVALID",
+      });
+      return;
+    }
+
+    const phone = normalizePhone(verification.identifier);
+    if (!phonePattern.test(phone)) {
+      logger.error({ identifier: verification.identifier }, "MSG91 widget returned an unrecognized identifier shape");
+      res.status(400).json({ error: "Couldn't confirm that phone number. Please try again." });
+      return;
+    }
+
+    const session = await resolveUserSessionForPhone(phone, req.headers.authorization);
+    res.status(session.status).json(session.body);
+  } catch (err: any) {
+    const dbDown = isDatabaseUnavailable(err);
+    logger.error(
+      { err, requestId, isDatabaseError: dbDown, errorMessage: err?.message },
+      "Widget verification failed",
+    );
+    res.status(dbDown ? 503 : 500).json({
+      error: dbDown
+        ? "Our database is temporarily unreachable. Please try again in a few seconds."
+        : "We couldn't complete verification right now. Please try again in a moment.",
+      requestId,
+    });
   }
 });
 

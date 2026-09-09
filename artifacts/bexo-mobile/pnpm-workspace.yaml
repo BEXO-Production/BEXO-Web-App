@@ -1,0 +1,2 @@
+fetchRetries: 5
+fetchTimeout: 300000

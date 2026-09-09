@@ -9,6 +9,7 @@
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck",
     "dev:server": "pnpm --filter @workspace/api-server run dev",
     "dev:web": "PORT=5173 BASE_PATH=/ pnpm --filter @workspace/bexo-web run dev",
+    "dev:mobile": "pnpm --filter @workspace/bexo-mobile run start",
     "dev": "pnpm dev:server & pnpm dev:web"
   },
   "private": true,

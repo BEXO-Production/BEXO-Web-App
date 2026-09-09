@@ -1,9 +1,14 @@
+import { sql } from "drizzle-orm";
 import { pgTable, uuid, text, timestamp, date, integer, boolean, bigint, unique, jsonb, real } from "drizzle-orm/pg-core";
 
 // 1. Users Table
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
   phone: text("phone").unique().notNull(),
+  // Public, unguessable id printed on the card's QR. Minted by the database
+  // (`gen_card_code()`), never derived from the handle — a handle can change,
+  // and a printed card cannot.
+  cardCode: text("card_code").notNull().default(sql`gen_card_code()`),
   phoneVerifiedAt: timestamp("phone_verified_at", { withTimezone: true }),
   email: text("email").unique(),
   oauthProvider: text("oauth_provider"),
@@ -19,6 +24,7 @@ export const users = pgTable("users", {
   storageQuotaBytes: bigint("storage_quota_bytes", { mode: "number" }).default(10485760), // 10MB free tier default
   storageBonusBytes: bigint("storage_bonus_bytes", { mode: "number" }).default(0), // stacked add-on storage (e.g. yearly on lifetime)
   openToHire: boolean("open_to_hire").default(false),
+  autoConnect: boolean("auto_connect").notNull().default(true),
   templateId: text("template_id").default("minimal"),
   themeColor: text("theme_color").default("blue"),
   themeBg: text("theme_bg").default("grid"),
@@ -629,4 +635,29 @@ export const marketingLeads = pgTable("marketing_leads", {
   assignedStaffId: uuid("assigned_staff_id").references(() => staffUsers.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
+// 37. Connections — one row per ordered pair; `requester` scanned `addressee`.
+export const connections = pgTable("connections", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  requesterId: uuid("requester_id").references(() => users.id).notNull(),
+  addresseeId: uuid("addressee_id").references(() => users.id).notNull(),
+  status: text("status").notNull().default("pending"), // pending | accepted | declined
+  source: text("source").notNull().default("qr"), // qr | nfc | link | manual
+  note: text("note"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  respondedAt: timestamp("responded_at", { withTimezone: true }),
+}, (table) => {
+  return {
+    pairUnique: unique("connections_pair_key").on(table.requesterId, table.addresseeId),
+  };
+});
+
+// 38. Card scans — every tap/scan of a card, connection or not.
+export const cardScans = pgTable("card_scans", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  cardOwnerId: uuid("card_owner_id").references(() => users.id).notNull(),
+  scannerId: uuid("scanner_id").references(() => users.id),
+  source: text("source").notNull().default("qr"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

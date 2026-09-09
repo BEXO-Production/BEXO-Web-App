@@ -2,10 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useOnboarding } from '../context/OnboardingContext';
 import { useLocation } from 'wouter';
 import { Input, Label } from '../design-system/primitives';
-import { Loader2, ArrowRight, ShieldCheck } from 'lucide-react';
-import { FaWhatsapp } from 'react-icons/fa';
+import { Loader2, ArrowRight, ShieldCheck, MessageSquare } from 'lucide-react';
 import { usePageSeo } from '../hooks/use-page-seo';
 import { apiUrl } from '../lib/api';
+import { OTP_LENGTH } from '../lib/otp';
+import { sendWidgetOtp, verifyWidgetOtp } from '../lib/msg91Widget';
 import { PLATFORM_DOMAIN, resolveMarketingOrigin } from '../lib/platform';
 import { track } from '../lib/track';
 import { AuthBackgroundVideo } from '../components/AuthBackgroundVideo';
@@ -24,7 +25,7 @@ export default function Login() {
   
   const [phone, setPhone] = useState('');
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
-  const [otp, setOtp] = useState(['', '', '', '', '', '']);
+  const [otp, setOtp] = useState<string[]>(Array(OTP_LENGTH).fill(''));
   const [isSending, setIsSending] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [cooldown, setCooldown] = useState(0);
@@ -33,6 +34,9 @@ export default function Login() {
   const [isSwooshingSend, setIsSwooshingSend] = useState(false);
   const [isSwooshingVerify, setIsSwooshingVerify] = useState(false);
   const isSubmittingOtp = useRef(false);
+  // MSG91 hands this back from sendOtp so a later verifyOtp/retryOtp call
+  // ties to the same challenge rather than an ambiguous "most recent" one.
+  const reqIdRef = useRef<string | undefined>(undefined);
 
   usePageSeo({
     title: "Sign in to BEXO",
@@ -74,21 +78,12 @@ export default function Login() {
     }
     setPhoneError('');
     setIsSwooshingSend(true);
-    
+
     try {
       const formattedPhone = getFormattedPhone(phone);
-      
-      const res = await fetch(apiUrl('/api/auth/phone/otp'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: formattedPhone })
-      });
-      
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to send OTP');
-      }
-      
+      const { reqId } = await sendWidgetOtp(formattedPhone);
+      reqIdRef.current = reqId;
+
       setIsSwooshingSend(false);
       setStep('otp');
       setCooldown(30);
@@ -104,26 +99,31 @@ export default function Login() {
   };
 
   const verifyOtpCode = async (otpCode: string) => {
-    if (isSubmittingOtp.current || !/^\d{6}$/.test(otpCode)) return;
+    if (isSubmittingOtp.current || otpCode.length !== OTP_LENGTH || !/^\d+$/.test(otpCode)) return;
     isSubmittingOtp.current = true;
     setOtpError('');
     setIsVerifying(true);
     setIsSwooshingVerify(true);
-    
+
     try {
       const formattedPhone = getFormattedPhone(phone);
-      
-      const res = await fetch(apiUrl('/api/auth/phone/otp/verify'), {
+
+      // MSG91 verifies the OTP itself and hands back a short-lived widget
+      // token; our server independently confirms that token with MSG91
+      // before it will ever mint a BEXO session from it (widget-verify.ts).
+      const widgetToken = await verifyWidgetOtp(otpCode, reqIdRef.current);
+
+      const res = await fetch(apiUrl('/api/auth/phone/widget-verify'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: formattedPhone, otp: otpCode })
+        body: JSON.stringify({ widgetToken })
       });
-      
+
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         throw new Error(errorData.error || 'Invalid OTP');
       }
-      
+
       const responseData = await res.json();
       localStorage.setItem('token', responseData.accessToken);
       setToken(responseData.accessToken);
@@ -159,8 +159,8 @@ export default function Login() {
     e.preventDefault();
     if (isSubmittingOtp.current) return;
     const otpCode = otp.join('');
-    if (otpCode.length < 6) {
-      setOtpError('Please enter the complete 6-digit verification code.');
+    if (otpCode.length < OTP_LENGTH) {
+      setOtpError(`Please enter the complete ${OTP_LENGTH}-digit verification code.`);
       return;
     }
     await verifyOtpCode(otpCode);
@@ -176,26 +176,26 @@ export default function Login() {
     const digits = value.replace(/\D/g, '');
     if (value && !digits) return;
     const newOtp = [...otp];
-    digits.slice(0, 6 - index).split('').forEach((digit, offset) => {
+    digits.slice(0, OTP_LENGTH - index).split('').forEach((digit, offset) => {
       newOtp[index + offset] = digit;
     });
     if (!digits) newOtp[index] = '';
     setOtp(newOtp);
     setOtpError('');
 
-    const nextIndex = Math.min(index + Math.max(digits.length, 1), 5);
+    const nextIndex = Math.min(index + Math.max(digits.length, 1), OTP_LENGTH - 1);
     window.requestAnimationFrame(() => document.getElementById(`login-otp-${nextIndex}`)?.focus());
 
-    // Auto-submit OTP when fully entered (6 digits)
+    // Auto-submit OTP when fully entered
     const otpCode = newOtp.join('');
-    if (otpCode.length === 6 && !isSubmittingOtp.current) {
+    if (otpCode.length === OTP_LENGTH && !isSubmittingOtp.current) {
       verifyOtpCode(otpCode);
     }
   };
 
   const handlePaste = (index: number, e: React.ClipboardEvent<HTMLInputElement>) => {
     e.preventDefault();
-    const pastedDigits = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6 - index);
+    const pastedDigits = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, OTP_LENGTH - index);
     if (!pastedDigits) return;
 
     const newOtp = [...otp];
@@ -206,9 +206,9 @@ export default function Login() {
     setOtpError('');
 
     const otpCode = newOtp.join('');
-    const nextIndex = Math.min(index + pastedDigits.length, 5);
+    const nextIndex = Math.min(index + pastedDigits.length, OTP_LENGTH - 1);
     window.requestAnimationFrame(() => document.getElementById(`login-otp-${nextIndex}`)?.focus());
-    if (otpCode.length === 6) verifyOtpCode(otpCode);
+    if (otpCode.length === OTP_LENGTH) verifyOtpCode(otpCode);
   };
 
   const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -251,7 +251,7 @@ export default function Login() {
               Sign in to your<br className="sm:hidden" /> next opportunity
             </h1>
             <p className="text-[12px] sm:text-[13px] text-white/72 max-w-[18rem] sm:max-w-xs mx-auto leading-relaxed">
-              Verify with WhatsApp, then publish on{" "}
+              Verify with SMS, then publish on{" "}
               <span className="font-semibold text-sky-200">
                 yourname.
                 {PLATFORM_DOMAIN === "localhost" ? "atbexo.com" : PLATFORM_DOMAIN}
@@ -311,7 +311,7 @@ export default function Login() {
               </button>
 
               <p className="text-center text-[10px] leading-relaxed text-white/45 px-2">
-                By continuing you agree to receive a one-time WhatsApp code. No spam — just access.
+                By continuing you agree to receive a one-time SMS code. No spam — just access.
               </p>
             </form>
           ) : (
@@ -331,16 +331,17 @@ export default function Login() {
                 </div>
 
                 <p className="text-xs text-white/70 leading-relaxed">
-                  6-digit OTP sent to{" "}
+                  {OTP_LENGTH}-digit code sent to{" "}
                   <span className="font-semibold text-white">+91 {phone}</span>
                 </p>
 
-                <div className="flex items-center gap-2.5 rounded-2xl border border-emerald-300/25 bg-emerald-400/10 px-3.5 py-3 text-xs font-medium text-emerald-100 backdrop-blur-md shadow-[inset_0_1px_0_0_rgba(255,255,255,0.12)]">
-                  <FaWhatsapp className="h-4 w-4 text-emerald-300 shrink-0" aria-hidden="true" />
-                  <span>Open WhatsApp — your code is waiting.</span>
+                <div className="flex items-center gap-2.5 rounded-2xl border border-sky-300/25 bg-sky-400/10 px-3.5 py-3 text-xs font-medium text-sky-100 backdrop-blur-md shadow-[inset_0_1px_0_0_rgba(255,255,255,0.12)]">
+                  <MessageSquare className="h-4 w-4 text-sky-300 shrink-0" aria-hidden="true" />
+                  <span>Check your SMS inbox — your code is waiting.</span>
                 </div>
 
-                <div className="grid grid-cols-6 gap-1.5 sm:gap-2.5 pt-0.5">
+                {/* Static class so Tailwind's compiler picks it up — see OTP_LENGTH's doc comment for why this can't be templated. */}
+                <div className="grid grid-cols-4 gap-1.5 sm:gap-2.5 pt-0.5">
                   {otp.map((digit, idx) => (
                     <Input
                       key={idx}

@@ -70,3 +70,7 @@ lib/db/scripts/delete_*.mjs
 # Large source footage (use public/assets/auth-background.mp4)
 Background.MP4
 Background_faststart.mp4
+
+# Untracked config & secrets
+env
+.claude/

@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useOnboarding } from '../context/OnboardingContext';
 import { Input, Label } from '../design-system/primitives';
-import { Loader2, ArrowRight, ShieldCheck } from 'lucide-react';
+import { Loader2, ArrowRight, ShieldCheck, MessageSquare } from 'lucide-react';
 import { useLocation } from 'wouter';
-import { FaWhatsapp } from 'react-icons/fa';
 import { apiUrl } from '../lib/api';
+import { OTP_LENGTH } from '../lib/otp';
+import { sendWidgetOtp, verifyWidgetOtp } from '../lib/msg91Widget';
 
 /**
  * Step 1 — phone verification inside the cinematic onboarding shell.
@@ -23,7 +24,7 @@ export default function Step1Phone() {
 
   const [phone, setPhone] = useState(data.phone);
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
-  const [otp, setOtp] = useState(['', '', '', '', '', '']);
+  const [otp, setOtp] = useState<string[]>(Array(OTP_LENGTH).fill(''));
   const [isSending, setIsSending] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [cooldown, setCooldown] = useState(0);
@@ -32,6 +33,7 @@ export default function Step1Phone() {
   const [isSwooshingSend, setIsSwooshingSend] = useState(false);
   const [isSwooshingVerify, setIsSwooshingVerify] = useState(false);
   const isSubmittingOtp = useRef(false);
+  const reqIdRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     let timer: number;
@@ -60,17 +62,8 @@ export default function Step1Phone() {
 
     try {
       const formattedPhone = getFormattedPhone(phone);
-
-      const res = await fetch(apiUrl('/api/auth/phone/otp'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: formattedPhone }),
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to send OTP');
-      }
+      const { reqId } = await sendWidgetOtp(formattedPhone);
+      reqIdRef.current = reqId;
 
       setIsSwooshingSend(false);
       setStep('otp');
@@ -89,7 +82,7 @@ export default function Step1Phone() {
   };
 
   const verifyOtpCode = async (otpCode: string) => {
-    if (isSubmittingOtp.current || !/^\d{6}$/.test(otpCode)) return;
+    if (isSubmittingOtp.current || otpCode.length !== OTP_LENGTH || !/^\d+$/.test(otpCode)) return;
     isSubmittingOtp.current = true;
     setOtpError('');
     setIsVerifying(true);
@@ -97,11 +90,12 @@ export default function Step1Phone() {
 
     try {
       const formattedPhone = getFormattedPhone(phone);
+      const widgetToken = await verifyWidgetOtp(otpCode, reqIdRef.current);
 
-      const res = await fetch(apiUrl('/api/auth/phone/otp/verify'), {
+      const res = await fetch(apiUrl('/api/auth/phone/widget-verify'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: formattedPhone, otp: otpCode }),
+        body: JSON.stringify({ widgetToken }),
       });
 
       if (!res.ok) {
@@ -138,8 +132,8 @@ export default function Step1Phone() {
     e.preventDefault();
     if (isSubmittingOtp.current) return;
     const otpCode = otp.join('');
-    if (otpCode.length < 6) {
-      setOtpError('Please enter the complete 6-digit verification code.');
+    if (otpCode.length < OTP_LENGTH) {
+      setOtpError(`Please enter the complete ${OTP_LENGTH}-digit verification code.`);
       return;
     }
     await verifyOtpCode(otpCode);
@@ -155,25 +149,25 @@ export default function Step1Phone() {
     const digits = value.replace(/\D/g, '');
     if (value && !digits) return;
     const newOtp = [...otp];
-    digits.slice(0, 6 - index).split('').forEach((digit, offset) => {
+    digits.slice(0, OTP_LENGTH - index).split('').forEach((digit, offset) => {
       newOtp[index + offset] = digit;
     });
     if (!digits) newOtp[index] = '';
     setOtp(newOtp);
     setOtpError('');
 
-    const nextIndex = Math.min(index + Math.max(digits.length, 1), 5);
+    const nextIndex = Math.min(index + Math.max(digits.length, 1), OTP_LENGTH - 1);
     window.requestAnimationFrame(() => document.getElementById(`otp-${nextIndex}`)?.focus());
 
     const otpCode = newOtp.join('');
-    if (otpCode.length === 6 && !isSubmittingOtp.current) {
+    if (otpCode.length === OTP_LENGTH && !isSubmittingOtp.current) {
       verifyOtpCode(otpCode);
     }
   };
 
   const handlePaste = (index: number, e: React.ClipboardEvent<HTMLInputElement>) => {
     e.preventDefault();
-    const pastedDigits = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6 - index);
+    const pastedDigits = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, OTP_LENGTH - index);
     if (!pastedDigits) return;
 
     const newOtp = [...otp];
@@ -184,9 +178,9 @@ export default function Step1Phone() {
     setOtpError('');
 
     const otpCode = newOtp.join('');
-    const nextIndex = Math.min(index + pastedDigits.length, 5);
+    const nextIndex = Math.min(index + pastedDigits.length, OTP_LENGTH - 1);
     window.requestAnimationFrame(() => document.getElementById(`otp-${nextIndex}`)?.focus());
-    if (otpCode.length === 6) verifyOtpCode(otpCode);
+    if (otpCode.length === OTP_LENGTH) verifyOtpCode(otpCode);
   };
 
   const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -206,15 +200,15 @@ export default function Step1Phone() {
     <div className="flex flex-col flex-1 justify-center w-full max-w-md mx-auto min-w-0 py-2">
       <div className="mb-5 space-y-1.5">
         <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-sky-600">
-          WhatsApp secure entry
+          SMS secure entry
         </p>
         <h1 className="font-serif text-[1.55rem] font-bold text-slate-900 tracking-tight leading-tight">
           {step === 'phone' ? 'Verify your number' : 'Enter your code'}
         </h1>
         <p className="text-sm text-slate-500 leading-relaxed">
           {step === 'phone'
-            ? 'We send a one-time code on WhatsApp — no passwords to remember.'
-            : `6-digit OTP sent to +91 ${phone}`}
+            ? 'We send a one-time code by SMS — no passwords to remember.'
+            : `${OTP_LENGTH}-digit code sent to +91 ${phone}`}
         </p>
       </div>
 
@@ -273,9 +267,9 @@ export default function Step1Phone() {
         </form>
       ) : (
         <form onSubmit={handleVerifyOtp} className="space-y-5 animate-in fade-in slide-in-from-right-2 duration-300">
-          <div className="flex items-center gap-2.5 rounded-2xl border border-emerald-200 bg-emerald-50 px-3.5 py-3 text-xs font-medium text-emerald-800">
-            <FaWhatsapp className="h-4 w-4 text-emerald-600 shrink-0" aria-hidden="true" />
-            <span>Open WhatsApp — your code is waiting.</span>
+          <div className="flex items-center gap-2.5 rounded-2xl border border-sky-200 bg-sky-50 px-3.5 py-3 text-xs font-medium text-sky-800">
+            <MessageSquare className="h-4 w-4 text-sky-600 shrink-0" aria-hidden="true" />
+            <span>Check your SMS inbox — your code is waiting.</span>
           </div>
 
           <div className="space-y-2">
@@ -292,7 +286,8 @@ export default function Step1Phone() {
               </button>
             </div>
 
-            <div className="grid grid-cols-6 gap-1.5 sm:gap-2">
+            {/* Static class so Tailwind picks it up — see OTP_LENGTH doc comment */}
+            <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
               {otp.map((digit, i) => (
                 <Input
                   key={i}
@@ -317,7 +312,7 @@ export default function Step1Phone() {
           <button
             type="submit"
             className={primaryBtn}
-            disabled={otp.join('').length < 6 || isVerifying || isSwooshingVerify}
+            disabled={otp.join('').length < OTP_LENGTH || isVerifying || isSwooshingVerify}
           >
             {isVerifying || isSwooshingVerify ? (
               <>

@@ -27,10 +27,23 @@ export function detectDevice(ua: string | undefined | null): "mobile" | "desktop
 
 export function referrerHostOf(referrer: string | undefined | null): string {
   if (!referrer) return "";
+  const trimmed = referrer.trim();
+  // Internal attribution channels from card / QR / NFC engine
+  if (trimmed.startsWith("bexo:")) {
+    return trimmed;
+  }
+  // Convert legacy third-party QR domains if present to native attribution
+  if (/qr-codes\.io/i.test(trimmed)) {
+    return "bexo:qr";
+  }
   try {
-    return new URL(referrer).hostname.replace(/^www\./, "").slice(0, 120);
+    const host = new URL(trimmed).hostname.replace(/^www\./, "").slice(0, 120);
+    if (/qr-codes\.io/i.test(host)) {
+      return "bexo:qr";
+    }
+    return host;
   } catch {
-    return "";
+    return trimmed.slice(0, 120);
   }
 }
 

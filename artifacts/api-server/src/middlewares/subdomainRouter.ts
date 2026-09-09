@@ -132,9 +132,8 @@ export async function subdomainRouter(req: Request, res: Response, next: NextFun
     req.get("x-bexo-host"),
   );
 
-  // API calls from a rendered template must reach the API routes, not be
-  // interpreted as template assets.
-  if (req.path.startsWith("/api/")) {
+  // API calls and card routing from a rendered template or apex must pass through.
+  if (req.path.startsWith("/api/") || req.path.startsWith("/c/")) {
     return next();
   }
 

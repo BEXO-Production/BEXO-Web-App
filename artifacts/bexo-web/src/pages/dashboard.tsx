@@ -48,6 +48,12 @@ import {
   MousePointerClick,
   Mail,
   BadgeCheck,
+  Laptop,
+  Tablet,
+  Smartphone,
+  Zap,
+  ShieldCheck,
+  RefreshCw,
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { AssetPreviewModal, PreviewTarget } from '../components/AssetPreviewModal';
@@ -225,6 +231,9 @@ export default function Dashboard() {
   }, [setLocation]);
   // Fullscreen "try this template with your data" preview (free users included)
   const [previewTemplateId, setPreviewTemplateId] = useState<string | null>(null);
+  const [previewDevice, setPreviewDevice] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
+  const [iframeRefreshKey, setIframeRefreshKey] = useState(0);
+  const [copiedLiveLink, setCopiedLiveLink] = useState(false);
   const [showLoginToast, setShowLoginToast] = useState(false);
   
   // FAB & Update State
@@ -2319,46 +2328,89 @@ export default function Dashboard() {
   );
 
   const renderCreativeMockup = (accentBg: string) => (
-    <div className="w-full h-full bg-slate-50 border border-slate-200/60 rounded-lg p-2 flex flex-col gap-2 relative overflow-hidden select-none">
-      {/* Top half: featured block */}
-      <div className={`w-full h-1/2 rounded-md ${accentBg} p-1.5 flex flex-col justify-between relative overflow-hidden text-[9px] font-bold text-white`}>
-        {/* Glow overlay */}
-        <div className="absolute inset-0 bg-gradient-to-tr from-black/40 via-transparent to-transparent z-0" />
-        <div className="relative z-10 flex justify-between items-start">
-          <div className="w-4 h-4 rounded-full bg-white/20" />
-          <div className="h-1 w-6 bg-white/40 rounded-sm" />
+    <div className="w-full h-full bg-[#090B10] border border-slate-800 rounded-lg p-2 flex flex-col justify-between relative overflow-hidden select-none">
+      <div className="absolute top-0 right-0 w-14 h-14 bg-indigo-500/20 rounded-full blur-xl pointer-events-none" />
+      <div className="flex items-center justify-between z-10">
+        <div className="flex items-center gap-1">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="text-[7px] font-bold text-slate-400 uppercase tracking-wider">SPA</span>
         </div>
-        <div className="relative z-10 h-1.5 w-16 bg-white/90 rounded-sm" />
+        <div className="w-4 h-4 rounded-full border border-indigo-400/40 overflow-hidden bg-slate-800">
+          {data.photoUrl ? (
+            <img src={data.photoUrl} alt="" className="w-full h-full object-cover" />
+          ) : (
+            <span className="text-[7px] text-white flex items-center justify-center h-full font-bold">
+              {data.name?.charAt(0) || 'K'}
+            </span>
+          )}
+        </div>
       </div>
-      {/* Bottom half: cards row */}
-      <div className="w-full h-1/2 flex gap-1.5">
-        <div className="w-1/2 bg-white border border-slate-200/60 rounded-sm p-1 flex flex-col justify-between">
-          <div className="h-1.5 w-6 bg-slate-400 rounded-sm" />
-          <div className="h-1 w-8 bg-slate-300 rounded-sm" />
+      <div className="space-y-0.5 z-10">
+        <div className="h-1.5 w-14 bg-white/90 rounded-sm font-bold" />
+        <div className="h-1 w-9 bg-slate-500/70 rounded-sm" />
+      </div>
+      <div className={`h-2 w-12 rounded-full ${accentBg} opacity-90 z-10 shadow-sm`} />
+    </div>
+  );
+
+  const renderSierraMockup = (accentBg: string) => (
+    <div className="w-full h-full bg-[#0D1117] border border-slate-800 rounded-lg p-1.5 flex gap-1.5 relative overflow-hidden select-none">
+      <div className="flex-1 flex flex-col justify-between py-0.5">
+        <span className="text-[6px] font-mono text-slate-400 tracking-wider">CHAPTER [I]</span>
+        <div className="space-y-0.5">
+          <div className="h-1.5 w-12 bg-white/90 rounded-sm" />
+          <div className="h-1 w-8 bg-slate-400/50 rounded-sm" />
         </div>
-        <div className="w-1/2 bg-white border border-slate-200/60 rounded-sm p-1 flex flex-col justify-between">
-          <div className="h-1.5 w-5 bg-slate-400 rounded-sm" />
-          <div className="h-1 w-8 bg-slate-300 rounded-sm" />
-        </div>
+        <div className="h-1.5 w-10 bg-slate-700 rounded-sm" />
+      </div>
+      <div className="w-[42%] rounded-md bg-slate-800 border border-slate-700/60 overflow-hidden relative">
+        {data.photoUrl ? (
+          <img src={data.photoUrl} alt="" className="w-full h-full object-cover opacity-85 filter contrast-125" />
+        ) : (
+          <div className="absolute inset-1 rounded-sm bg-gradient-to-b from-slate-700 to-slate-900" />
+        )}
       </div>
     </div>
   );
 
-  const renderNicoMockup = (accentBg: string) => (
-    <div className="w-full h-full bg-[#e8e8e0] border border-slate-300/50 rounded-lg p-1.5 flex gap-1.5 relative overflow-hidden select-none">
-      <div className="flex-1 flex flex-col justify-between py-0.5">
-        <div className="h-1 w-8 bg-slate-400/70 rounded-sm" />
-        <div className="space-y-0.5">
-          <div className="h-2 w-14 bg-slate-800 rounded-sm" />
-          <div className="h-1 w-10 bg-slate-400/60 rounded-sm" />
+  const renderNicoMockup = (accentBg: string) => {
+    const parts = (data.name || 'Kavin Balaji').trim().split(/\s+/);
+    const firstName = parts[0]?.toUpperCase() || 'KAVIN';
+    const lastName = parts[1]?.toUpperCase() || 'BALAJI';
+    return (
+      <div className="w-full h-full bg-[#E3E3DB] border border-slate-300/60 rounded-lg p-1.5 flex gap-1.5 relative overflow-hidden select-none">
+        {/* Subtle mini wave lines */}
+        <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-40" viewBox="0 0 96 56" preserveAspectRatio="none">
+          <path d="M 0 16 Q 16 12, 32 16 T 64 16 T 96 16" fill="none" stroke="#000" strokeWidth="0.8" />
+          <path d="M 0 34 Q 16 30, 32 34 T 64 34 T 96 34" fill="none" stroke="#000" strokeWidth="0.8" />
+        </svg>
+        <div className="flex-1 flex flex-col justify-between py-0.5 z-10 min-w-0">
+          <div className="h-0.5 w-6 bg-slate-600/60 rounded-full" />
+          <div className="space-y-0.5">
+            <div className="text-[7.5px] font-black text-slate-900 leading-none uppercase tracking-tighter truncate font-sans">
+              {firstName}
+            </div>
+            <div className="text-[7.5px] font-black text-slate-900 leading-none uppercase tracking-tighter truncate font-sans">
+              {lastName}
+            </div>
+          </div>
+          <div className="flex gap-1 items-center">
+            <div className="h-2 w-8 rounded-sm bg-slate-900" />
+            <div className="h-2 w-5 rounded-sm border border-slate-400/50 bg-white/40" />
+          </div>
         </div>
-        <div className={`h-2 w-10 rounded-sm ${accentBg} opacity-80`} />
+        <div className="w-[42%] rounded-md bg-slate-200/90 border border-dashed border-slate-900/60 overflow-hidden relative shrink-0">
+          {data.photoUrl ? (
+            <img src={data.photoUrl} alt="" className="w-full h-full object-cover" />
+          ) : (
+            <div className="absolute inset-1 rounded-sm bg-gradient-to-b from-slate-200 to-slate-400/50 flex items-center justify-center font-bold text-[8px] text-slate-600">
+              {firstName.charAt(0)}
+            </div>
+          )}
+        </div>
       </div>
-      <div className="w-[42%] rounded-md bg-slate-300/80 border border-dashed border-slate-400/60 overflow-hidden relative">
-        <div className="absolute inset-1 rounded-sm bg-gradient-to-b from-slate-200 to-slate-400/50" />
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="relative min-h-[100dvh] w-full overflow-x-clip flex flex-col transition-colors duration-300 text-slate-800 bexo-mobile-shell bexo-app-shell">
@@ -5152,6 +5204,57 @@ export default function Dashboard() {
                     </p>
                   </Card>
                   </div>
+
+                  {/* Instant Networking (Auto-Connect) Card */}
+                  <Card className="p-5 bg-white border border-slate-200 shadow-sm space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="space-y-1">
+                        <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                          <Zap className="w-4 h-4 text-amber-500" /> Instant Networking (Auto-Connect)
+                        </h3>
+                        <p className="text-slate-500 text-xs leading-relaxed max-w-2xl">
+                          Automatically establish mutual connections when another person taps or scans your digital card or QR code, without requiring manual request approval.
+                        </p>
+                      </div>
+                      <div className="shrink-0 flex items-center gap-3">
+                        <span className="text-xs font-semibold text-slate-600">
+                          {data.autoConnect ? 'Instant Mode' : 'Manual Approval'}
+                        </span>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={!!data.autoConnect}
+                          onClick={async () => {
+                            const nextVal = !data.autoConnect;
+                            const ok = await updateData({ autoConnect: nextVal });
+                            if (ok) {
+                              toast({
+                                title: nextVal ? 'Instant Networking Enabled' : 'Manual Approval Mode',
+                                description: nextVal
+                                  ? 'Card scans now instantly establish reciprocal connections in your network.'
+                                  : 'Incoming taps or scans will wait for your explicit acceptance.',
+                              });
+                            }
+                          }}
+                          className={cn(
+                            "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2",
+                            data.autoConnect ? "bg-indigo-600" : "bg-slate-200"
+                          )}
+                        >
+                          <span
+                            className={cn(
+                              "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                              data.autoConnect ? "translate-x-5" : "translate-x-0"
+                            )}
+                          />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 pt-2 border-t border-slate-100 text-[11px] text-slate-400">
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                      <span>Secured by BEXO Identity Engine · Card codes route uniquely to your portfolio</span>
+                    </div>
+                  </Card>
                   </div>
                 )}
 
@@ -5360,7 +5463,7 @@ export default function Dashboard() {
                                       fallback={
                                         <div className="w-full h-full p-1">
                                           {tpl.id === 'cura-futuri' && renderCreativeMockup(accentBg)}
-                                          {tpl.id === 'sierra-montana' && renderAcademicMockup(accentBg)}
+                                          {tpl.id === 'sierra-montana' && renderSierraMockup(accentBg)}
                                           {tpl.id === 'nico-palmer' && renderNicoMockup(accentBg)}
                                         </div>
                                       }
@@ -5421,15 +5524,94 @@ export default function Dashboard() {
                         </a>
                       </Card>
 
-                      <div className="lg:col-span-8 xl:col-span-9 flex flex-col gap-2 min-w-0">
-                        <div className="flex items-center justify-between px-1">
-                          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Live Preview</span>
-                          <span className="text-[11px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full font-medium truncate max-w-[55%]">
-                            {demoPreviewHost}
-                          </span>
+                      <div className="lg:col-span-8 xl:col-span-9 flex flex-col gap-3 min-w-0">
+                        {/* Top bar with device switcher, live host badge, and actions */}
+                        <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs font-bold text-slate-900 uppercase tracking-wider">Live Preview</span>
+                            {/* Device Switcher Pills */}
+                            <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200/80">
+                              <button
+                                type="button"
+                                onClick={() => setPreviewDevice('desktop')}
+                                className={cn(
+                                  "flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all",
+                                  previewDevice === 'desktop'
+                                    ? "bg-white text-indigo-600 shadow-sm"
+                                    : "text-slate-500 hover:text-slate-800"
+                                )}
+                              >
+                                <Laptop className="w-3.5 h-3.5" /> Desktop
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setPreviewDevice('tablet')}
+                                className={cn(
+                                  "flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all",
+                                  previewDevice === 'tablet'
+                                    ? "bg-white text-indigo-600 shadow-sm"
+                                    : "text-slate-500 hover:text-slate-800"
+                                )}
+                              >
+                                <Tablet className="w-3.5 h-3.5" /> Tablet
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setPreviewDevice('mobile')}
+                                className={cn(
+                                  "flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all",
+                                  previewDevice === 'mobile'
+                                    ? "bg-white text-indigo-600 shadow-sm"
+                                    : "text-slate-500 hover:text-slate-800"
+                                )}
+                              >
+                                <Smartphone className="w-3.5 h-3.5" /> Mobile
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            {/* Copy Link Button */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const targetUrl = data.isPremium ? correctVisitUrl : livePortfolioHref;
+                                navigator.clipboard?.writeText(targetUrl);
+                                setCopiedLiveLink(true);
+                                setTimeout(() => setCopiedLiveLink(false), 2000);
+                                toast({ title: 'Link copied', description: targetUrl });
+                              }}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-[11px] font-semibold text-slate-600 shadow-sm transition-colors"
+                            >
+                              {copiedLiveLink ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+                              <span>{copiedLiveLink ? 'Copied' : 'Copy'}</span>
+                            </button>
+
+                            {/* Reload Button */}
+                            <button
+                              type="button"
+                              onClick={() => setIframeRefreshKey(k => k + 1)}
+                              title="Refresh preview"
+                              className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-500 shadow-sm transition-colors"
+                            >
+                              <RefreshCw className="w-3.5 h-3.5" />
+                            </button>
+
+                            {/* Open in new tab */}
+                            <a
+                              href={data.isPremium ? correctVisitUrl : pathPortfolioUrl(handleString)}
+                              target="_blank"
+                              rel="noreferrer"
+                              title="Open live site in new tab"
+                              className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-500 shadow-sm transition-colors"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                          </div>
                         </div>
 
-                        <div className="rounded-2xl overflow-hidden border border-slate-200 shadow-lg bg-white">
+                        {/* macOS Browser Mockup with Traffic Lights */}
+                        <div className="rounded-2xl overflow-hidden border border-slate-200 shadow-lg bg-slate-950/5">
                           <div className="h-9 bg-slate-100 border-b border-slate-200 flex items-center px-3 gap-2 shrink-0">
                             <div className="flex items-center gap-1.5">
                               <span className="w-2.5 h-2.5 rounded-full bg-red-400" />
@@ -5437,36 +5619,78 @@ export default function Dashboard() {
                               <span className="w-2.5 h-2.5 rounded-full bg-green-400" />
                             </div>
                             <div className="flex-1 mx-2">
-                              <div className="h-5 bg-white rounded-md border border-slate-200 flex items-center px-2.5 gap-1.5">
-                                <Globe className="w-3 h-3 text-slate-400 shrink-0" />
-                                <span className="text-[11px] text-slate-500 font-medium truncate">
-                                  {demoPreviewHost}
+                              <div className="h-5 bg-white rounded-md border border-slate-200 flex items-center px-2.5 gap-1.5 max-w-sm mx-auto">
+                                <Lock className="w-2.5 h-2.5 text-emerald-500 shrink-0" />
+                                <span className="text-[11px] text-slate-500 font-mono truncate">
+                                  {data.handle ? `${data.handle}.${PLATFORM_DOMAIN}` : demoPreviewHost}
                                 </span>
                               </div>
                             </div>
                           </div>
 
-                          <div className="relative w-full overflow-hidden h-[min(58vh,560px)] lg:h-[min(70vh,760px)]">
-                            <iframe
-                              key={`${activeTemplateId}-${data.themeColor || 'indigo'}-${data.themeBg || 'grid'}-demo`}
-                              src={getTemplatePreviewUrl(activeTemplateId, data.handle)}
-                              title="Live Portfolio Preview"
-                              className="absolute top-0 left-0 border-0 bg-white"
-                              style={{
-                                width: '200%',
-                                height: '200%',
-                                transform: 'scale(0.5)',
-                                transformOrigin: 'top left',
-                                pointerEvents: 'none'
-                              }}
-                              sandbox="allow-scripts allow-same-origin"
-                            />
+                          {/* Responsive Device Viewport Frame */}
+                          <div className="relative w-full overflow-hidden bg-slate-100 flex items-center justify-center p-2 sm:p-4 min-h-[min(58vh,560px)] lg:min-h-[min(70vh,760px)]">
+                            {previewDevice === 'desktop' && (
+                              <div className="relative w-full overflow-hidden h-[min(58vh,560px)] lg:h-[min(70vh,760px)] bg-white rounded-lg shadow-inner">
+                                <iframe
+                                  key={`${activeTemplateId}-${data.themeColor || 'indigo'}-${data.themeBg || 'grid'}-${iframeRefreshKey}-desktop`}
+                                  src={getTemplatePreviewUrl(activeTemplateId, data.handle)}
+                                  title="Live Portfolio Preview Desktop"
+                                  className="absolute top-0 left-0 border-0 bg-white"
+                                  style={{
+                                    width: '200%',
+                                    height: '200%',
+                                    transform: 'scale(0.5)',
+                                    transformOrigin: 'top left',
+                                  }}
+                                  sandbox="allow-scripts allow-same-origin"
+                                />
+                              </div>
+                            )}
+
+                            {previewDevice === 'tablet' && (
+                              <div className="relative w-[768px] max-w-full overflow-hidden h-[min(58vh,560px)] lg:h-[min(70vh,760px)] bg-white rounded-xl shadow-xl border-4 border-slate-800">
+                                <iframe
+                                  key={`${activeTemplateId}-${data.themeColor || 'indigo'}-${data.themeBg || 'grid'}-${iframeRefreshKey}-tablet`}
+                                  src={getTemplatePreviewUrl(activeTemplateId, data.handle)}
+                                  title="Live Portfolio Preview Tablet"
+                                  className="w-full h-full border-0 bg-white"
+                                  sandbox="allow-scripts allow-same-origin"
+                                />
+                              </div>
+                            )}
+
+                            {previewDevice === 'mobile' && (
+                              <div className="relative w-[380px] max-w-[92vw] overflow-hidden h-[min(65vh,640px)] bg-white rounded-[36px] shadow-2xl border-[8px] border-slate-900 flex flex-col">
+                                {/* Mobile notch / speaker bar */}
+                                <div className="h-6 bg-slate-900 flex items-center justify-center shrink-0">
+                                  <div className="w-16 h-3 bg-black rounded-full" />
+                                </div>
+                                <div className="flex-1 w-full overflow-hidden relative">
+                                  <iframe
+                                    key={`${activeTemplateId}-${data.themeColor || 'indigo'}-${data.themeBg || 'grid'}-${iframeRefreshKey}-mobile`}
+                                    src={getTemplatePreviewUrl(activeTemplateId, data.handle)}
+                                    title="Live Portfolio Preview Mobile"
+                                    className="w-full h-full border-0 bg-white"
+                                    sandbox="allow-scripts allow-same-origin"
+                                  />
+                                </div>
+                                <div className="h-4 bg-white flex items-center justify-center shrink-0">
+                                  <div className="w-28 h-1 bg-slate-300 rounded-full" />
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
 
-                        <p className="text-[11px] text-slate-400 text-center">
-                          Demos use the BEXO showcase at {demoPreviewHost}. Open Live Portfolio for your public URL.
-                        </p>
+                        <div className="flex flex-wrap items-center justify-between text-[11px] text-slate-400 px-1 gap-2">
+                          <span>
+                            Active layout: <strong className="text-slate-700 font-semibold capitalize">{activeTemplateMeta?.name}</strong>
+                          </span>
+                          <span>
+                            Demos update in real-time · Switch between Desktop, Tablet, and Mobile breakpoints above
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -6165,7 +6389,7 @@ export default function Dashboard() {
                     setShowFabMenu(false);
                     goView('updates', { updatesTab: 'parse' });
                   }}
-                  className="flex items-center gap-3 p-3 w-full hover:bg-slate-50 transition-colors group"
+                  className="flex items-center gap-3 p-3 w-full hover:bg-slate-50 transition-colors group border-b border-slate-100"
                 >
                   <div className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:bg-indigo-100 group-hover:scale-105 transition-all shrink-0">
                     <UploadCloud className="w-5 h-5" />
@@ -6173,6 +6397,40 @@ export default function Dashboard() {
                   <div className="text-left min-w-0">
                     <div className="font-semibold text-sm text-slate-900 group-hover:text-indigo-600 transition-colors">Parse My Resume</div>
                     <div className="text-[10px] text-slate-500 font-normal leading-tight">Secondary — AI auto-fill</div>
+                  </div>
+                </button>
+
+              <button 
+                  onClick={() => {
+                    setShowFabMenu(false);
+                    goView('settings', { settingsTab: 'design' });
+                  }}
+                  className="flex items-center gap-3 p-3 w-full hover:bg-slate-50 transition-colors group border-b border-slate-100"
+                >
+                  <div className="w-10 h-10 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center group-hover:bg-purple-100 group-hover:scale-105 transition-all shrink-0">
+                    <Layout className="w-5 h-5" />
+                  </div>
+                  <div className="text-left min-w-0">
+                    <div className="font-semibold text-sm text-slate-900 group-hover:text-purple-600 transition-colors">Website & Studio</div>
+                    <div className="text-[10px] text-slate-500 font-normal leading-tight">Switch layouts & preview live</div>
+                  </div>
+                </button>
+
+              <button 
+                  onClick={() => {
+                    setShowFabMenu(false);
+                    const targetUrl = data.isPremium ? correctVisitUrl : livePortfolioHref;
+                    navigator.clipboard?.writeText(targetUrl);
+                    toast({ title: 'Link copied', description: targetUrl });
+                  }}
+                  className="flex items-center gap-3 p-3 w-full hover:bg-slate-50 transition-colors group"
+                >
+                  <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center group-hover:bg-blue-100 group-hover:scale-105 transition-all shrink-0">
+                    <Copy className="w-5 h-5" />
+                  </div>
+                  <div className="text-left min-w-0">
+                    <div className="font-semibold text-sm text-slate-900 group-hover:text-blue-600 transition-colors">Copy Portfolio Link</div>
+                    <div className="text-[10px] text-slate-500 font-normal leading-tight truncate">{data.handle ? `${data.handle}.${PLATFORM_DOMAIN}` : 'Copy live link'}</div>
                   </div>
                 </button>
             </div>
