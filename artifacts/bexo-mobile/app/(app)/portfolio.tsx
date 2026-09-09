@@ -281,19 +281,7 @@ export default function Portfolio() {
     transform: [{ rotate: `${collapseProgress.value * 180}deg` }],
   }));
 
-  /**
-   * Everything the pinned zone gives back once it is fully condensed: the
-   * title, the caption strip, and the preview above its peek height.
-   *
-   * The scroller grows by exactly this much, which is why the same number is
-   * added as bottom padding below. Without it the collapse eats its own
-   * scroll distance — the content bottom rises to meet the taller viewport,
-   * the offset clamps, the header expands again, and the whole thing
-   * oscillates for the last screen of the page. With it, the spacer is
-   * consumed precisely as the header closes, so the publish button still
-   * lands flush at the bottom and nothing empty is ever on screen.
-   */
-  const reclaimedSpace = viewportHeight - PEEK + titleHeight + 22;
+
 
   /**
    * Mirrored to JS so the chrome bar knows which gesture it should offer:
@@ -831,7 +819,7 @@ export default function Portfolio() {
           contentContainerStyle={{
             paddingHorizontal: layout.screenX,
             paddingTop: 18,
-            paddingBottom: layout.navBarSpace + 60 + reclaimedSpace,
+            paddingBottom: layout.navBarSpace + 24,
             gap: 22,
           }}
           showsVerticalScrollIndicator={false}
