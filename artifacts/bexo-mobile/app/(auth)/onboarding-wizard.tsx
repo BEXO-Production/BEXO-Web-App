@@ -1045,7 +1045,7 @@ export default function OnboardingWizard() {
                               {template.id === "cura-futuri"
                                 ? "Dark · Dynamic"
                                 : template.id === "sierra-montana"
-                                  ? "Cinematic"
+                                  ? "Cream · Cinematic"
                                   : "Light · Editorial"}
                             </Text>
                           </View>

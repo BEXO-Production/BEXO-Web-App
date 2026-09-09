@@ -2,6 +2,7 @@ import React from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import { fonts } from "@/lib/fonts";
+import { templateDesign } from "@/lib/template-design";
 
 interface TemplateThumbnailProps {
   templateId: string;
@@ -33,6 +34,11 @@ export function TemplateThumbnail({
   const isSierra = templateId === "sierra-montana";
   const isNico = templateId === "nico-palmer";
 
+  // Canvas comes from the shipping template. Sierra Montana is cream
+  // (Modern Template-2, --bg #e4e3db), not the dark page drawn here before.
+  const design = templateDesign(templateId);
+  const onCanvas = design.dark ? "rgba(255,255,255,0.06)" : "rgba(10,10,10,0.05)";
+
   return (
     <View
       style={[
@@ -40,7 +46,7 @@ export function TemplateThumbnail({
         {
           width,
           height,
-          backgroundColor: isNico ? "#E8E8E0" : isSierra ? "#0D1117" : "#090B10",
+          backgroundColor: design.canvas,
         },
       ]}
     >
@@ -49,8 +55,8 @@ export function TemplateThumbnail({
         style={[
           styles.chromeBar,
           {
-            backgroundColor: isNico ? "#DCDCD3" : "rgba(255,255,255,0.06)",
-            borderBottomColor: isNico ? "rgba(0,0,0,0.08)" : "rgba(255,255,255,0.08)",
+            backgroundColor: onCanvas,
+            borderBottomColor: design.hairline,
           },
         ]}
       >
@@ -63,7 +69,7 @@ export function TemplateThumbnail({
           style={[
             styles.urlPill,
             {
-              backgroundColor: isNico ? "rgba(255,255,255,0.65)" : "rgba(255,255,255,0.08)",
+              backgroundColor: design.dark ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.65)",
             },
           ]}
         />
@@ -73,7 +79,7 @@ export function TemplateThumbnail({
       <View style={styles.viewport}>
         {/* ── NICO PALMER MINIATURE ── */}
         {isNico ? (
-          <View style={styles.nicoContainer}>
+          <View style={[styles.nicoContainer, { backgroundColor: design.canvas }]}>
             {/* Subtle mini wave line */}
             <Svg width="100%" height="100%" style={StyleSheet.absoluteFill}>
               <Path
@@ -124,8 +130,8 @@ export function TemplateThumbnail({
 
         {/* ── CURA FUTURI MINIATURE ── */}
         {isCura ? (
-          <View style={styles.curaContainer}>
-            <View style={styles.curaGlow} />
+          <View style={[styles.curaContainer, { backgroundColor: design.canvas }]}>
+            <View style={[styles.curaGlow, { backgroundColor: `${accent}26` }]} />
             <View style={styles.miniSplit}>
               <View style={styles.miniLeft}>
                 <View style={[styles.miniStatusDot, { backgroundColor: "#10B981" }]} />
@@ -156,29 +162,31 @@ export function TemplateThumbnail({
           </View>
         ) : null}
 
-        {/* ── SIERRA MONTANA MINIATURE ── */}
+        {/* ── SIERRA MONTANA MINIATURE ──
+            Cream canvas, Canopee-style serif name stacked first/last with the
+            surname in the accent, portrait to the right. */}
         {isSierra ? (
-          <View style={styles.sierraContainer}>
+          <View style={[styles.sierraContainer, { backgroundColor: design.canvas }]}>
             <View style={styles.miniSplit}>
               <View style={styles.miniLeft}>
-                <Text style={styles.miniRoman}>I. OVERVIEW</Text>
+                <Text style={[styles.miniRoman, { color: design.fgFaint }]}>I. OVERVIEW</Text>
                 <View style={styles.miniNameStack}>
-                  <Text numberOfLines={1} style={styles.miniSierraName}>
+                  <Text numberOfLines={1} style={[styles.miniSierraName, { color: design.fg }]}>
                     {firstName}
                   </Text>
-                  <Text numberOfLines={1} style={styles.miniSierraName}>
+                  <Text numberOfLines={1} style={[styles.miniSierraName, { color: accent }]}>
                     {lastName}
                   </Text>
                 </View>
-                <View style={styles.miniSierraBar} />
+                <View style={[styles.miniSierraBar, { backgroundColor: design.hairline }]} />
               </View>
 
-              <View style={styles.sierraFrame}>
+              <View style={[styles.sierraFrame, { borderColor: design.hairline }]}>
                 {photoUrl ? (
                   <Image source={{ uri: photoUrl }} style={styles.miniPhoto} />
                 ) : (
-                  <View style={[styles.miniPhotoFallback, { backgroundColor: "#1F2937" }]}>
-                    <Text style={[styles.miniInitials, { color: "#9CA3AF" }]}>{firstName[0]}</Text>
+                  <View style={[styles.miniPhotoFallback, { backgroundColor: onCanvas }]}>
+                    <Text style={[styles.miniInitials, { color: design.fgFaint }]}>{firstName[0]}</Text>
                   </View>
                 )}
               </View>

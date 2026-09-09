@@ -21,6 +21,7 @@ import Animated, {
   interpolate,
   interpolateColor,
   runOnJS,
+  useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
@@ -34,6 +35,7 @@ import { LoadingBlock, Orbit } from "@/components/ui/Loaders";
 import { LightSweep } from "@/components/ui/Effects";
 import { Celebration } from "@/components/ui/Celebration";
 import { feel } from "@/lib/haptics";
+import { templateAccent, templateDesign } from "@/lib/template-design";
 import { ease } from "@/lib/motion";
 import { useProfile } from "@/lib/use-profile";
 import { useUpdateProfile } from "@/lib/profile-api";
@@ -128,10 +130,26 @@ export default function Portfolio() {
     () => SITE_TEMPLATES.find((t) => t.id === templateId) ?? SITE_TEMPLATES[0],
     [templateId],
   );
-  const accent = useMemo(
+  /**
+   * Two different accents, and the distinction matters.
+   *
+   * `swatchAccent` is the platform's own colour — what the picker dot, the
+   * publish button and the app's chrome are painted with.
+   *
+   * `siteAccent` is what the chosen template will *actually* render for that
+   * id, re-tuned for its own canvas (Navy is a bright #7AA2F7 on Cura
+   * Futuri's near-black and a deep #375A96 on Nico Palmer's cream). The
+   * preview must use this one, or it promises a colour the published site
+   * will never show.
+   */
+  const swatchAccent = useMemo(
     () => SITE_COLORS.find((opt) => opt.id === colorId)?.hex ?? SITE_COLORS[0].hex,
     [colorId],
   );
+  const siteAccent = useMemo(() => templateAccent(templateId, colorId), [templateId, colorId]);
+  /** Canvas, hairlines and type colours of the layout being previewed. */
+  const siteDesign = useMemo(() => templateDesign(templateId), [templateId]);
+  const accent = swatchAccent;
   const siteFont = SITE_FONT_FAMILY[fontId] ?? fonts.serif600;
   const handle = data?.profile?.handle ?? null;
   const site = handle ? `${handle}.atbexo.com` : null;
@@ -222,14 +240,73 @@ export default function Portfolio() {
 
   const viewportHeight = Math.min(Math.max(windowWidth * 0.92, 340), 420);
 
-  const viewportAnimatedStyle = useAnimatedStyle(() => ({
-    height: viewportHeight * (1 - collapseProgress.value),
-    opacity: 1 - collapseProgress.value,
+  /**
+   * Scrolling the customization panel shrinks the preview to an informative
+   * peek of the portfolio's actual content (name, avatar photo, headline)
+   * rather than wasting the peek on the site's top header/nav bar.
+   */
+  const PEEK = 128;
+  const shrink = useScrollProgress(190, stage);
+
+  const viewportAnimatedStyle = useAnimatedStyle(() => {
+    const scrolled = interpolate(shrink.value, [0, 1], [viewportHeight, PEEK]);
+    // The manual toggle multiplies whatever the scroll has already done, so
+    // the two controls compose instead of fighting.
+    return {
+      height: Math.max(scrolled * (1 - collapseProgress.value), 0),
+      opacity: 1 - collapseProgress.value,
+    };
+  });
+
+  /**
+   * As the frame closes, we translate the content upward past the top navbar
+   * (which only contains the brand wordmark/hamburger) so that the prominent
+   * hero content — the user's name, portrait photo, and headline — becomes
+   * the focal point of the peek preview.
+   */
+  const previewContentStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: interpolate(shrink.value, [0, 1], [0, -70]) },
+      { scale: interpolate(shrink.value, [0, 1], [1, 0.86]) },
+    ],
+  }));
+
+  /** The caption strip under the frame is the first thing to go. */
+  const previewFooterStyle = useAnimatedStyle(() => ({
+    height: interpolate(shrink.value, [0, 0.5], [22, 0], "clamp"),
+    opacity: interpolate(shrink.value, [0, 0.35], [1, 0], "clamp"),
   }));
 
   const chevronAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ rotate: `${collapseProgress.value * 180}deg` }],
   }));
+
+  /**
+   * Everything the pinned zone gives back once it is fully condensed: the
+   * title, the caption strip, and the preview above its peek height.
+   *
+   * The scroller grows by exactly this much, which is why the same number is
+   * added as bottom padding below. Without it the collapse eats its own
+   * scroll distance — the content bottom rises to meet the taller viewport,
+   * the offset clamps, the header expands again, and the whole thing
+   * oscillates for the last screen of the page. With it, the spacer is
+   * consumed precisely as the header closes, so the publish button still
+   * lands flush at the bottom and nothing empty is ever on screen.
+   */
+  const reclaimedSpace = viewportHeight - PEEK + titleHeight + 22;
+
+  /**
+   * Mirrored to JS so the chrome bar knows which gesture it should offer:
+   * once shrunk, tapping it should restore the preview, not collapse it
+   * further into nothing.
+   */
+  const [isShrunk, setIsShrunk] = useState(false);
+  useAnimatedReaction(
+    () => shrink.value > 0.55,
+    (small, was) => {
+      if (small !== was) runOnJS(setIsShrunk)(small);
+    },
+  );
 
   /**
    * The screen title folds away over the first 96pt of scroll, handing its
@@ -303,12 +380,19 @@ export default function Portfolio() {
   }));
 
   const togglePreview = useCallback(() => {
+    // Shrunk by scrolling? The obvious intent of tapping it is "give it back",
+    // not "collapse it the rest of the way".
+    if (isShrunk) {
+      feel.reveal();
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
+      return;
+    }
     setPreviewCollapsed((wasCollapsed) => {
       if (wasCollapsed) feel.reveal();
       else feel.dismiss();
       return !wasCollapsed;
     });
-  }, []);
+  }, [isShrunk]);
 
   const revealPreview = useCallback(() => {
     scrollRef.current?.scrollTo({ y: 0, animated: true });
@@ -481,7 +565,7 @@ export default function Portfolio() {
                   overflow: "hidden",
                   borderWidth: 1,
                   borderColor: dark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.12)",
-                  backgroundColor: template.dark ? "#090B10" : "#E3E3DB",
+                  backgroundColor: siteDesign.canvas,
                   shadowColor: "#000",
                   shadowOpacity: dark ? 0.6 : 0.16,
                   shadowRadius: 26,
@@ -610,12 +694,18 @@ export default function Portfolio() {
               {/* Viewport Content — swipe sideways to deal the next layout */}
               <GestureDetector gesture={swipe}>
               <Animated.View style={[{ overflow: "hidden" }, viewportAnimatedStyle, dragStyle]}>
+              <Animated.View
+                style={[
+                  { height: viewportHeight, transformOrigin: "top center" },
+                  previewContentStyle,
+                ]}
+              >
               {viewMode === "live" && Platform.OS !== "web" ? (
-                <View style={{ flex: 1, backgroundColor: template.dark ? "#0B0D14" : "#FAF7F1" }}>
+                <View style={{ flex: 1, backgroundColor: siteDesign.canvas }}>
                   <WebView
                     key={webViewKey}
                     source={{ uri: livePreviewUrl }}
-                    style={{ flex: 1, backgroundColor: template.dark ? "#0B0D14" : "#FAF7F1" }}
+                    style={{ flex: 1, backgroundColor: siteDesign.canvas }}
                     onLoadStart={() => {
                       setWebViewLoading(true);
                       setWebViewFailed(false);
@@ -650,7 +740,7 @@ export default function Portfolio() {
                           alignItems: "center",
                           justifyContent: "center",
                           padding: 24,
-                          backgroundColor: template.dark ? "#0B0D14" : "#FAF7F1",
+                          backgroundColor: siteDesign.canvas,
                           gap: 12,
                         },
                       ]}
@@ -682,13 +772,14 @@ export default function Portfolio() {
                   data={data}
                   templateId={templateId}
                   colorId={colorId}
-                  accent={accent}
+                  accent={siteAccent}
                   siteFont={siteFont}
                   backgroundId={backgroundId}
                   site={site}
                   onOpenFull={() => setFullScreenOpen(true)}
                 />
               )}
+              </Animated.View>
               </Animated.View>
               </GestureDetector>
             </Animated.View>
@@ -700,13 +791,18 @@ export default function Portfolio() {
             <Celebration play={justPublished} tint={accent} originY={0.45} />
 
           {!previewCollapsed ? (
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 4, gap: 10 }}>
+            <Animated.View
+              style={[
+                { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 4, gap: 10, overflow: "hidden" },
+                previewFooterStyle,
+              ]}
+            >
               <TemplateDots
                 total={SITE_TEMPLATES.length}
                 activeIndex={SITE_TEMPLATES.findIndex((t) => t.id === templateId)}
                 accent={accent}
               />
-              <Text style={{ fontFamily: fonts.sans400, fontSize: 11.5, color: c.faint, flex: 1 }}>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.sans400, fontSize: 11.5, color: c.faint, flex: 1 }}>
                 Swipe the preview to switch layouts
               </Text>
               {hasUnsavedChanges ? (
@@ -722,7 +818,7 @@ export default function Portfolio() {
                   </Text>
                 </View>
               ) : null}
-            </View>
+            </Animated.View>
           ) : null}
           </View>
         </Animated.View>
@@ -735,7 +831,7 @@ export default function Portfolio() {
           contentContainerStyle={{
             paddingHorizontal: layout.screenX,
             paddingTop: 18,
-            paddingBottom: layout.navBarSpace + 60,
+            paddingBottom: layout.navBarSpace + 60 + reclaimedSpace,
             gap: 22,
           }}
           showsVerticalScrollIndicator={false}
@@ -807,7 +903,7 @@ export default function Portfolio() {
                       templateId={option.id}
                       userName={data?.user?.name || "Kavin Balaji"}
                       photoUrl={data?.user?.photoUrl}
-                      accent={accent}
+                      accent={templateAccent(option.id, colorId)}
                       width={92}
                       height={64}
                     />
@@ -859,6 +955,36 @@ export default function Portfolio() {
                     >
                       {option.note}
                     </Text>
+
+                    {/* What this layout will actually paint: its canvas, and
+                        the two typefaces the template licenses. */}
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 3 }}>
+                      <View
+                        style={{
+                          width: 9,
+                          height: 9,
+                          borderRadius: 2.5,
+                          backgroundColor: templateDesign(option.id).canvas,
+                          borderWidth: 1,
+                          borderColor: c.border,
+                        }}
+                      />
+                      <View
+                        style={{
+                          width: 9,
+                          height: 9,
+                          borderRadius: 2.5,
+                          backgroundColor: templateAccent(option.id, colorId),
+                        }}
+                      />
+                      <Text
+                        numberOfLines={1}
+                        style={{ fontFamily: fonts.mono500, fontSize: 9, color: c.faint, flex: 1 }}
+                      >
+                        {templateDesign(option.id).typefaces.display} ·{" "}
+                        {templateDesign(option.id).typefaces.body}
+                      </Text>
+                    </View>
 
                     {/* DEMO Action link */}
                     <Press
@@ -930,7 +1056,7 @@ export default function Portfolio() {
           <View style={{ flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" }}>
             <SectionLabel>Accent colour</SectionLabel>
             <Text style={{ fontFamily: fonts.sans500, fontSize: 12, color: c.faint }}>
-              {SITE_COLORS.find((o) => o.id === colorId)?.label}
+              {SITE_COLORS.find((o) => o.id === colorId)?.label} · as {template.name} paints it
             </Text>
           </View>
 
@@ -938,7 +1064,10 @@ export default function Portfolio() {
             {SITE_COLORS.map((option) => (
               <Swatch
                 key={option.id}
-                hex={option.hex}
+                // The dot shows the colour this template will actually render,
+                // which shifts between layouts — Navy is bright on Cura's
+                // near-black and deep on Nico's cream.
+                hex={templateAccent(templateId, option.id)}
                 label={option.label}
                 active={option.id === colorId}
                 onPress={() => setColorId(option.id)}
@@ -949,7 +1078,19 @@ export default function Portfolio() {
 
         {/* ── TYPEFACE ─────────────────────────────────────────────────────── */}
         <Reveal index={2} haptic style={{ gap: 12 }}>
-          <SectionLabel>Typeface</SectionLabel>
+          <View style={{ gap: 3 }}>
+            <SectionLabel>Preview typeface</SectionLabel>
+            {/* Honest labelling: this control is not published. `publish()`
+                sends templateId/themeColor/themeBg only — there is no
+                themeFont on the profile update — and each template ships its
+                own licensed faces ({template.name} uses{" "}
+                {siteDesign.typefaces.display}). So this restyles the preview
+                and nothing else. */}
+            <Text style={{ fontFamily: fonts.sans400, fontSize: 11.5, color: c.faint }}>
+              {template.name} publishes in {siteDesign.typefaces.display} ·{" "}
+              {siteDesign.typefaces.body}. This only restyles the preview here.
+            </Text>
+          </View>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
             {SITE_FONT_IDS.map((option) => {
               const active = option.id === fontId;
@@ -1127,7 +1268,7 @@ export default function Portfolio() {
         presentationStyle="pageSheet"
         onRequestClose={() => setFullScreenOpen(false)}
       >
-        <View style={{ flex: 1, backgroundColor: template.dark ? "#090B10" : "#E3E3DB" }}>
+        <View style={{ flex: 1, backgroundColor: siteDesign.canvas }}>
           {/* Modal header — floats over the page as real frosted glass, so the
               site keeps running underneath instead of being cropped by a bar. */}
           <BlurView

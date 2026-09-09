@@ -3,6 +3,6 @@
 export const ONBOARDING_TEMPLATES = [
   { id: "minimal", name: "Minimal", tag: "Free · clean canvas", dark: false },
   { id: "cura-futuri", name: "Cura Futuri", tag: "Dark editorial", dark: true },
-  { id: "sierra-montana", name: "Sierra Montana", tag: "Cinematic pages", dark: true },
+  { id: "sierra-montana", name: "Sierra Montana", tag: "Cream editorial", dark: false },
   { id: "nico-palmer", name: "Nico Palmer", tag: "Cream canvas", dark: false },
 ] as const;
