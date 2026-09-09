@@ -196,19 +196,42 @@ export default function SettingsDetail() {
 
         {key === "storage" ? <StorageDetail /> : null}
         {key === "billing" && profile ? (
-          <RowList
-            rows={[
-              { title: "Plan", subtitle: profile.isPremium ? "Active" : "Free plan", value: capitalize(profile.plan) },
-              profile.billingPeriod ? { title: "Billing period", subtitle: "How often you're charged", value: profile.billingPeriod } : null,
-              profile.expiresAt
-                ? {
-                    title: profile.cancelAtPeriodEnd ? "Access ends" : "Renews",
-                    subtitle: profile.autopay ? "Autopay enabled" : "Manual renewal",
-                    value: new Date(profile.expiresAt).toLocaleDateString(),
-                  }
-                : null,
-            ].filter(Boolean) as RowItem[]}
-          />
+          <>
+            <Pressable
+              onPress={() => router.push("/(app)/billing" as any)}
+              style={({ pressed }) => ({
+                borderRadius: 20,
+                backgroundColor: c.accent,
+                paddingVertical: 14,
+                paddingHorizontal: 18,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 10,
+                opacity: pressed ? 0.85 : 1,
+              })}
+            >
+              <Feather name="credit-card" size={17} color="#FFF" />
+              <Text style={{ fontFamily: fonts.sans600, fontSize: 14, color: "#FFF" }}>
+                Manage Billing, Invoices & Add-ons
+              </Text>
+              <Feather name="arrow-right" size={16} color="#FFF" />
+            </Pressable>
+
+            <RowList
+              rows={[
+                { title: "Plan", subtitle: profile.isPremium ? "Active" : "Free plan", value: capitalize(profile.plan) },
+                profile.billingPeriod ? { title: "Billing period", subtitle: "How often you're charged", value: profile.billingPeriod } : null,
+                profile.expiresAt
+                  ? {
+                      title: profile.cancelAtPeriodEnd ? "Access ends" : "Renews",
+                      subtitle: profile.autopay ? "Autopay enabled" : "Manual renewal",
+                      value: new Date(profile.expiresAt).toLocaleDateString(),
+                    }
+                  : null,
+              ].filter(Boolean) as RowItem[]}
+            />
+          </>
         ) : null}
         {key === "account" && profile ? (
           <RowList
@@ -352,6 +375,49 @@ function StorageDetail() {
         <Text style={{ fontFamily: fonts.sans400, fontSize: 13, color: c.muted }}>
           No files uploaded yet.
         </Text>
+      )}
+
+      {pct >= 80 && (
+        <View
+          style={{
+            borderRadius: 16,
+            padding: 16,
+            backgroundColor: "rgba(245, 158, 11, 0.08)",
+            borderWidth: 1,
+            borderColor: "rgba(245, 158, 11, 0.28)",
+            gap: 10,
+            marginTop: 4,
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Feather name="alert-triangle" size={16} color="#F59E0B" />
+            <Text style={{ fontFamily: fonts.sans700, fontSize: 13, color: "#F59E0B", flex: 1 }}>
+              Storage Running Low ({Math.round(pct)}%)
+            </Text>
+          </View>
+          <Text style={{ fontFamily: fonts.sans400, fontSize: 12, lineHeight: 17, color: c.muted }}>
+            You've used over 80% of your cloud storage. Expand anytime in +50 MB blocks without changing your plan.
+          </Text>
+          <Pressable
+            onPress={() => router.push("/(app)/billing" as any)}
+            style={({ pressed }) => ({
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              paddingVertical: 10,
+              paddingHorizontal: 14,
+              borderRadius: 12,
+              backgroundColor: c.accent,
+              opacity: pressed ? 0.85 : 1,
+            })}
+          >
+            <Feather name="hard-drive" size={14} color="#FFF" />
+            <Text style={{ fontFamily: fonts.sans600, fontSize: 13, color: "#FFF" }}>
+              Get Storage Add-on · ₹49/mo
+            </Text>
+          </Pressable>
+        </View>
       )}
     </Rise>
   );

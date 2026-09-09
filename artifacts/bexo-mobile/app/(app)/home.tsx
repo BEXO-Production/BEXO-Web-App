@@ -47,7 +47,7 @@ import { formatBytes } from "@/lib/format";
  * is nothing yet, the screen says so rather than inventing a number.
  */
 export default function Home() {
-  const { c, shadow } = useTheme();
+  const { c, shadow, dark } = useTheme();
   const { toast } = useOverlay();
   const { design, setDesign } = useCardDesign();
   const { tourStep, tourDone, nextTour, skipTour, presetId, applyPreset } = useTourState();
@@ -172,6 +172,10 @@ export default function Home() {
   );
   const totalNotifications = unreadLeads + pendingRequestsCount;
   const limits = data?.limits;
+  const storageUsed = Number(data?.user?.storageUsedBytes ?? 0);
+  const storageQuota = Number(data?.user?.storageQuotaBytes ?? 52428800);
+  const storagePercent = storageQuota > 0 ? (storageUsed / storageQuota) * 100 : 0;
+  const isStorageNearLimit = storagePercent >= 80;
 
   /** Recent activity — the newest movement in this person's real network. */
   const feed = useMemo(() => {
@@ -455,6 +459,92 @@ export default function Home() {
                   </Text>
                 ) : null}
               </Pressable>
+
+              {/* === 80%+ STORAGE ADD-ON SUGGESTION BANNER === */}
+              {isStorageNearLimit ? (
+                <Pressable
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    router.push("/(app)/billing");
+                  }}
+                  style={{
+                    borderRadius: 18,
+                    backgroundColor: dark ? "rgba(245,158,11,0.14)" : "rgba(245,158,11,0.09)",
+                    borderWidth: 1.2,
+                    borderColor: "rgba(245,158,11,0.38)",
+                    padding: 16,
+                    gap: 12,
+                    shadowColor: "#F59E0B",
+                    shadowOpacity: 0.15,
+                    shadowRadius: 10,
+                    elevation: 3,
+                  }}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                      <View
+                        style={{
+                          width: 28,
+                          height: 28,
+                          borderRadius: 14,
+                          backgroundColor: "rgba(245,158,11,0.22)",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <Feather name="alert-triangle" size={14} color="#D97706" />
+                      </View>
+                      <Text style={{ fontFamily: fonts.sans700, fontSize: 13.5, color: c.ink }}>
+                        Storage {storagePercent.toFixed(0)}% Full
+                      </Text>
+                    </View>
+
+                    <View
+                      style={{
+                        paddingHorizontal: 8,
+                        paddingVertical: 2.5,
+                        borderRadius: 999,
+                        backgroundColor: "rgba(245,158,11,0.2)",
+                      }}
+                    >
+                      <Text style={{ fontFamily: fonts.mono700, fontSize: 10.5, color: "#D97706" }}>
+                        80%+ USED
+                      </Text>
+                    </View>
+                  </View>
+
+                  <Text style={{ fontFamily: fonts.sans400, fontSize: 12, lineHeight: 17, color: c.muted }}>
+                    You’ve used {formatBytes(storageUsed)} of your {formatBytes(storageQuota)} limit. Avoid upload failures by adding storage blocks.
+                  </Text>
+
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      paddingHorizontal: 12,
+                      paddingVertical: 9,
+                      borderRadius: 10,
+                      backgroundColor: dark ? "rgba(255,255,255,0.06)" : "#FFFFFF",
+                      borderWidth: 1,
+                      borderColor: "rgba(245,158,11,0.25)",
+                    }}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <Feather name="plus-circle" size={13} color="#D97706" />
+                      <Text style={{ fontFamily: fonts.sans700, fontSize: 12.5, color: c.ink }}>
+                        Get +50 MB Storage Add-on
+                      </Text>
+                    </View>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                      <Text style={{ fontFamily: fonts.mono700, fontSize: 12, color: "#D97706" }}>
+                        ₹49/mo
+                      </Text>
+                      <Feather name="chevron-right" size={13} color="#D97706" />
+                    </View>
+                  </View>
+                </Pressable>
+              ) : null}
             </Rise>
 
             <Rise delay={300} style={{ gap: 12 }}>
@@ -814,20 +904,21 @@ function StorageBar({ used, quota }: { used?: number | string; quota?: number | 
   const usedBytes = Number(used ?? 0);
   const quotaBytes = Number(quota ?? 0);
   const pct = quotaBytes > 0 ? Math.min(100, (usedBytes / quotaBytes) * 100) : 0;
+  const isAmber = pct >= 80;
 
   return (
     <View style={{ gap: 8 }}>
       <View style={{ height: 8, borderRadius: 8, backgroundColor: c.deep, overflow: "hidden" }}>
         <LinearGradient
-          colors={[brand.accentBright, brand.accent]}
+          colors={isAmber ? ["#FBBF24", "#F59E0B"] : [brand.accentBright, brand.accent]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
           style={{ width: `${pct}%`, height: "100%", borderRadius: 8 }}
         />
       </View>
       <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-        <Text style={{ fontFamily: fonts.sans400, fontSize: 11.5, color: c.faint }}>
-          {formatBytes(usedBytes)} used
+        <Text style={{ fontFamily: fonts.sans400, fontSize: 11.5, color: isAmber ? "#D97706" : c.faint }}>
+          {formatBytes(usedBytes)} used ({pct.toFixed(0)}%)
         </Text>
         <Text style={{ fontFamily: fonts.sans400, fontSize: 11.5, color: c.faint }}>
           {formatBytes(quotaBytes)}

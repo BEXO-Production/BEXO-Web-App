@@ -141,12 +141,18 @@ export type CardDims = typeof HOME_DIMS | typeof STUDIO_DIMS;
 
 /* ── website theming ───────────────────────────────────────────────────── */
 
+/**
+ * The three shipping layouts. `dark` describes the real canvas — Sierra
+ * Montana is a *cream* editorial page (Modern Template-2's `--bg: #e4e3db`),
+ * not the dark one it was previously listed as. Exact palettes and the
+ * per-template accent re-tuning live in `template-design.ts`.
+ */
 export const SITE_TEMPLATES = [
   {
     id: "cura-futuri",
     name: "Cura Futuri",
     tag: "Dark editorial",
-    note: "Dark editorial single page — high contrast, motion, gallery lightbox.",
+    note: "Near-black editorial single page — Rosseta display caps, gallery lightbox.",
     image: require("../../assets/brand/templates.jpg"),
     dark: true,
     serif: true,
@@ -154,30 +160,38 @@ export const SITE_TEMPLATES = [
   {
     id: "sierra-montana",
     name: "Sierra Montana",
-    tag: "Cinematic pages",
-    note: "Multi-page storytelling with smooth scroll and cinematic project pages.",
+    tag: "Cream editorial",
+    note: "Cream multi-page storytelling — Canopee serif over Acid Grotesk.",
     image: require("../../assets/brand/hero-poster.jpg"),
-    dark: true,
-    serif: false,
+    dark: false,
+    serif: true,
   },
   {
     id: "nico-palmer",
     name: "Nico Palmer",
     tag: "Cream canvas",
-    note: "Cream canvas, large display type, sticky story beats.",
+    note: "Cream canvas, Rader display type, sticky story beats.",
     image: require("../../assets/brand/publish.jpg"),
     dark: false,
-    serif: true,
+    serif: false,
   },
 ] as const;
 
+/**
+ * Exactly the accents the templates implement in their own `THEME_PALETTES`.
+ * Amber and Sky used to be offered here, but no template defines them — so
+ * picking one published as Gold, silently. The picker now only offers colours
+ * the live site can actually paint.
+ *
+ * `hex` is the platform swatch. What a given template renders for it is
+ * `templateAccent(templateId, colorId)` — each one re-tunes for its canvas.
+ */
 export const SITE_COLORS = [
   { id: "blue", label: "Navy", hex: "#2563EB" },
   { id: "emerald", label: "Emerald", hex: "#059669" },
   { id: "rose", label: "Rose", hex: "#E11D48" },
   { id: "violet", label: "Violet", hex: "#7C3AED" },
-  { id: "amber", label: "Amber", hex: "#F59E0B" },
-  { id: "sky", label: "Sky", hex: "#0284C7" },
+  { id: "gold", label: "Gold", hex: "#B98432" },
 ];
 
 export const SITE_BACKGROUNDS = [

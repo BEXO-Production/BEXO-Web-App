@@ -12,6 +12,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Path } from "react-native-svg";
 import { Feather } from "@expo/vector-icons";
 import { fonts } from "@/lib/fonts";
+import { templateDesign } from "@/lib/template-design";
 import type { ProfileResponse } from "@/lib/auth-api";
 
 export const SITE_FONT_FAMILY: Record<string, string> = {
@@ -165,12 +166,15 @@ export function NativeWebsitePreview({
   const isSierra = templateId === "sierra-montana";
   const isNico = templateId === "nico-palmer";
 
-  const isDark = !isNico;
-  const textColor = isDark ? "#FFFFFF" : "#0F0F0F";
-  const textMuted = isDark ? "rgba(255,255,255,0.68)" : "rgba(15,15,15,0.68)";
-  const textFaint = isDark ? "rgba(255,255,255,0.40)" : "rgba(15,15,15,0.40)";
-  const cardBg = isDark ? "rgba(255,255,255,0.05)" : "rgba(15,15,15,0.04)";
-  const cardBorder = isDark ? "rgba(255,255,255,0.10)" : "rgba(15,15,15,0.09)";
+  // Palette comes from the shipping template, not from a guess. Sierra
+  // Montana in particular is a cream page, not a dark one.
+  const design = templateDesign(templateId);
+  const isDark = design.dark;
+  const textColor = design.fg;
+  const textMuted = design.fgMuted;
+  const textFaint = design.fgFaint;
+  const cardBg = isDark ? "rgba(255,255,255,0.05)" : "rgba(10,10,10,0.04)";
+  const cardBorder = design.hairline;
 
   const user = data?.user;
   const profile = data?.profile;
@@ -245,13 +249,14 @@ export function NativeWebsitePreview({
     <View
       style={{
         flex: 1,
-        backgroundColor: isNico ? "#E3E3DB" : isCura ? "#090B10" : "#0D1117",
+        backgroundColor: design.canvas,
         position: "relative",
       }}
     >
-      {/* Background Pattern: for Nico Palmer, default to authentic sine wave ripples */}
+      {/* Each template has a texture it was designed around; fall back to it
+          only when the user has not chosen one of their own. */}
       <PreviewPattern
-        id={isNico && backgroundId === "grid" ? "waves" : backgroundId}
+        id={backgroundId || design.signatureBackground}
         accent={accent}
         dark={isDark}
       />
@@ -311,7 +316,9 @@ export function NativeWebsitePreview({
                     backgroundColor: accent,
                   }}
                 >
-                  <Text style={{ fontFamily: fonts.sans700, fontSize: 10, color: "#fff" }}>
+                  {/* Cura's accents are bright on near-black, so a filled
+                      block takes the template's dark on-accent ink. */}
+                  <Text style={{ fontFamily: fonts.sans700, fontSize: 10, color: design.onAccent }}>
                     {firstName[0]}
                   </Text>
                 </View>
@@ -321,7 +328,7 @@ export function NativeWebsitePreview({
                     fontSize: 12,
                     letterSpacing: 1,
                     textTransform: "uppercase",
-                    color: "#FFFFFF",
+                    color: textColor,
                   }}
                 >
                   {name}
@@ -336,7 +343,7 @@ export function NativeWebsitePreview({
                       fontSize: 10,
                       letterSpacing: 1,
                       textTransform: "uppercase",
-                      color: "rgba(255,255,255,0.6)",
+                      color: textMuted,
                     }}
                   >
                     {item}
@@ -345,14 +352,14 @@ export function NativeWebsitePreview({
               </View>
             </>
           ) : (
-            /* Sierra Montana brand header */
+            /* Sierra Montana brand header — dark type on the cream canvas */
             <>
               <Text
                 style={{
                   fontFamily: fonts.serif600,
                   fontSize: 14,
                   letterSpacing: 0.5,
-                  color: "#FFFFFF",
+                  color: textColor,
                 }}
               >
                 {firstName} {lastName}
@@ -362,7 +369,7 @@ export function NativeWebsitePreview({
                   fontFamily: fonts.mono500,
                   fontSize: 10,
                   letterSpacing: 1,
-                  color: "rgba(255,255,255,0.5)",
+                  color: textFaint,
                 }}
               >
                 CHAPTER [I]
@@ -561,13 +568,16 @@ export function NativeWebsitePreview({
 
             <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 14 }}>
               <View style={{ flex: 1, gap: 6 }}>
+                {/* Cura's `h1` is Rosseta, uppercase and enormous — the
+                    display face carries this hero, not the weight. */}
                 <Text
                   style={{
-                    fontFamily: fonts.sans800,
+                    fontFamily: fonts.serif600,
                     fontSize: isFullScreen ? 36 : 26,
                     lineHeight: isFullScreen ? 40 : 30,
-                    letterSpacing: -0.8,
-                    color: "#FFFFFF",
+                    letterSpacing: -0.4,
+                    textTransform: "uppercase",
+                    color: textColor,
                   }}
                 >
                   {name}
@@ -578,7 +588,7 @@ export function NativeWebsitePreview({
                     fontFamily: fonts.sans400,
                     fontSize: 12,
                     lineHeight: 17,
-                    color: "rgba(255,255,255,0.65)",
+                    color: textMuted,
                   }}
                 >
                   {headline}
@@ -611,7 +621,7 @@ export function NativeWebsitePreview({
                   backgroundColor: accent,
                 }}
               >
-                <Text style={{ fontFamily: fonts.sans700, fontSize: 11, color: "#fff" }}>
+                <Text style={{ fontFamily: fonts.sans700, fontSize: 11, color: design.onAccent }}>
                   Explore Works
                 </Text>
               </Pressable>
@@ -622,17 +632,21 @@ export function NativeWebsitePreview({
                   paddingHorizontal: 16,
                   borderRadius: 999,
                   borderWidth: 1,
-                  borderColor: "rgba(255,255,255,0.15)",
+                  borderColor: cardBorder,
                 }}
               >
-                <Text style={{ fontFamily: fonts.sans600, fontSize: 11, color: "#fff" }}>
+                <Text style={{ fontFamily: fonts.sans600, fontSize: 11, color: textColor }}>
                   Contact
                 </Text>
               </Pressable>
             </View>
           </View>
         ) : (
-          /* ── SIERRA MONTANA HERO (Cinematic Multi-page) ── */
+          /* ── SIERRA MONTANA HERO ──
+             Modern Template-2's `.index-hero`: a cream canvas (#e4e3db) with
+             the name stacked first/last in Canopee over an Acid Grotesk
+             headline, portrait to the right. Type sits *on* the cream — this
+             template is not the dark one it used to be drawn as. */
           <View style={{ gap: 14, paddingTop: 4 }}>
             <Text
               style={{
@@ -640,7 +654,7 @@ export function NativeWebsitePreview({
                 fontSize: 9.5,
                 letterSpacing: 1.5,
                 textTransform: "uppercase",
-                color: "rgba(255,255,255,0.5)",
+                color: textFaint,
               }}
             >
               [I. OVERVIEW · 2026 EDITION]
@@ -648,15 +662,29 @@ export function NativeWebsitePreview({
 
             <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 14 }}>
               <View style={{ flex: 1, gap: 6 }}>
+                {/* `.index-name` stacks the two lines, tight and unindented. */}
                 <Text
                   style={{
                     fontFamily: fonts.serif600,
                     fontSize: isFullScreen ? 34 : 25,
-                    lineHeight: isFullScreen ? 38 : 29,
-                    color: "#FFFFFF",
+                    lineHeight: isFullScreen ? 36 : 27,
+                    letterSpacing: -0.4,
+                    color: textColor,
                   }}
                 >
-                  {name}
+                  {firstName}
+                </Text>
+                <Text
+                  style={{
+                    fontFamily: fonts.serif600,
+                    fontSize: isFullScreen ? 34 : 25,
+                    lineHeight: isFullScreen ? 36 : 27,
+                    letterSpacing: -0.4,
+                    color: accent,
+                    marginTop: -4,
+                  }}
+                >
+                  {lastName}
                 </Text>
                 <Text
                   numberOfLines={isFullScreen ? 5 : 3}
@@ -664,10 +692,11 @@ export function NativeWebsitePreview({
                     fontFamily: fonts.sans400,
                     fontSize: 11.5,
                     lineHeight: 17,
-                    color: "rgba(255,255,255,0.68)",
+                    color: textMuted,
+                    marginTop: 4,
                   }}
                 >
-                  {bio}
+                  {headline}
                 </Text>
               </View>
 
@@ -679,7 +708,7 @@ export function NativeWebsitePreview({
                     borderRadius: 8,
                     overflow: "hidden",
                     borderWidth: 1,
-                    borderColor: "rgba(255,255,255,0.2)",
+                    borderColor: cardBorder,
                   }}
                 >
                   <Image source={{ uri: effectivePhoto }} style={{ width: "100%", height: "100%" }} />
@@ -695,11 +724,10 @@ export function NativeWebsitePreview({
                   paddingHorizontal: 14,
                   borderRadius: 4,
                   borderWidth: 1,
-                  borderColor: "rgba(255,255,255,0.3)",
-                  backgroundColor: "rgba(255,255,255,0.06)",
+                  borderColor: textColor,
                 }}
               >
-                <Text style={{ fontFamily: fonts.serif600, fontSize: 11, color: "#fff" }}>
+                <Text style={{ fontFamily: fonts.serif600, fontSize: 11, color: textColor }}>
                   Selected Works →
                 </Text>
               </Pressable>

@@ -38,7 +38,7 @@ export default function Profile() {
     { title: "Analytics", subtitle: "Views, visitors, traffic sources", icon: "bar-chart-2", go: () => router.push("/(app)/analytics") },
     { title: "Notifications", subtitle: "Requests and enquiries", icon: "bell", go: () => router.push("/(app)/notifications") },
     { title: "Storage & files", subtitle: `${formatBytes(usedBytes)} of ${formatBytes(quotaBytes)} used`, icon: "hard-drive", go: () => router.push("/(app)/settings-detail?key=storage") },
-    { title: "Billing", subtitle: data?.isPremium ? `${data?.plan} · ${data?.billingPeriod ?? "—"}` : "Free plan", icon: "credit-card", go: () => router.push("/(app)/settings-detail?key=billing") },
+    { title: "Billing & Subscriptions", subtitle: data?.isPremium ? `${data?.plan.charAt(0).toUpperCase() + data?.plan.slice(1)} · Invoices & Add-ons` : "Free plan · Upgrade & Add-ons", icon: "credit-card", go: () => router.push("/(app)/billing") },
     { title: "Account & security", subtitle: "Phone, email, sessions", icon: "shield", go: () => router.push("/(app)/settings-detail?key=account") },
     { title: "Instant Networking", subtitle: data?.user?.autoConnect ?? true ? "Auto-Connect on" : "Manual approval", icon: "zap", go: () => router.push("/(app)/settings-detail?key=auto-connect") },
     { title: "Hiring status", subtitle: data?.user?.openToHire ? "Open to hire" : "Not looking", icon: "briefcase", go: () => router.push("/(app)/settings-detail?key=hiring") },
@@ -174,11 +174,16 @@ export default function Profile() {
                 </Text>
               </View>
             </View>
-            {data.billingPeriod ? (
-              <Text style={{ fontFamily: fonts.sans400, fontSize: 11.5, color: c.faint }}>
-                {data.billingPeriod}
+            <Pressable
+              onPress={() => router.push("/(app)/billing")}
+              hitSlop={8}
+              style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
+            >
+              <Text style={{ fontFamily: fonts.sans600, fontSize: 12, color: c.accentSoft }}>
+                Manage
               </Text>
-            ) : null}
+              <Feather name="chevron-right" size={13} color={c.accentSoft} />
+            </Pressable>
           </View>
           <View style={{ gap: 8 }}>
             <ProgressBar pct={storagePct} />

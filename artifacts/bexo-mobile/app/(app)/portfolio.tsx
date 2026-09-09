@@ -14,10 +14,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 import * as WebBrowser from "expo-web-browser";
 import * as Clipboard from "expo-clipboard";
+import { BlurView } from "expo-blur";
 import { Feather } from "@expo/vector-icons";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   interpolate,
   interpolateColor,
+  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
@@ -29,6 +32,7 @@ import { Press, useBreathe, usePopOnChange } from "@/components/ui/Press";
 import { Reveal, ScrollStage, useScrollProgress, useStage } from "@/components/ui/ScrollStage";
 import { LoadingBlock, Orbit } from "@/components/ui/Loaders";
 import { LightSweep } from "@/components/ui/Effects";
+import { Celebration } from "@/components/ui/Celebration";
 import { feel } from "@/lib/haptics";
 import { ease } from "@/lib/motion";
 import { useProfile } from "@/lib/use-profile";
@@ -254,6 +258,49 @@ export default function Portfolio() {
   const liveDotStyle = useBreathe(!!site, 0.22, 1800);
   const publishPop = usePopOnChange(justPublished);
   const templatePop = usePopOnChange(templateId);
+
+  /**
+   * Swipe the preview sideways to try the next layout. Faster than reaching
+   * for the list below, and it makes the three templates feel like one deck
+   * rather than three rows of a form.
+   */
+  const swipeTemplate = useCallback(
+    (direction: 1 | -1) => {
+      const at = SITE_TEMPLATES.findIndex((t) => t.id === templateId);
+      const next = SITE_TEMPLATES[(at + direction + SITE_TEMPLATES.length) % SITE_TEMPLATES.length];
+      feel.snap();
+      setTemplateId(next.id);
+    },
+    [templateId],
+  );
+
+  const dragX = useSharedValue(0);
+
+  const swipe = useMemo(
+    () =>
+      Gesture.Pan()
+        // Horizontal intent only: the preview's own vertical scroll must win,
+        // or the page becomes impossible to read.
+        .activeOffsetX([-16, 16])
+        .failOffsetY([-14, 14])
+        .onUpdate((e) => {
+          // Rubber band — the card follows, but never all the way.
+          dragX.value = e.translationX * 0.34;
+        })
+        .onEnd((e) => {
+          const far = Math.abs(e.translationX) > 62 || Math.abs(e.velocityX) > 700;
+          if (far) runOnJS(swipeTemplate)(e.translationX < 0 ? 1 : -1);
+          dragX.value = withSpring(0, { damping: 16, stiffness: 190, mass: 0.7 });
+        }),
+    [dragX, swipeTemplate],
+  );
+
+  const dragStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: dragX.value },
+      { rotateZ: `${dragX.value * 0.02}deg` },
+    ],
+  }));
 
   const togglePreview = useCallback(() => {
     setPreviewCollapsed((wasCollapsed) => {
@@ -560,8 +607,9 @@ export default function Portfolio() {
                 </View>
               </Pressable>
 
-              {/* Viewport Content */}
-              <Animated.View style={[{ overflow: "hidden" }, viewportAnimatedStyle]}>
+              {/* Viewport Content — swipe sideways to deal the next layout */}
+              <GestureDetector gesture={swipe}>
+              <Animated.View style={[{ overflow: "hidden" }, viewportAnimatedStyle, dragStyle]}>
               {viewMode === "live" && Platform.OS !== "web" ? (
                 <View style={{ flex: 1, backgroundColor: template.dark ? "#0B0D14" : "#FAF7F1" }}>
                   <WebView
@@ -642,12 +690,24 @@ export default function Portfolio() {
                 />
               )}
               </Animated.View>
+              </GestureDetector>
             </Animated.View>
 
+            {/* The publish payoff, thrown from the middle of the preview it just
+                changed. Deliberately outside the frame, which clips its own
+                overflow — confetti cut off at a border reads as a rendering
+                bug rather than a flourish. */}
+            <Celebration play={justPublished} tint={accent} originY={0.45} />
+
           {!previewCollapsed ? (
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 4 }}>
-              <Text style={{ fontFamily: fonts.sans400, fontSize: 11.5, color: c.faint }}>
-                Tap maximize to test live scroll and full layout
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 4, gap: 10 }}>
+              <TemplateDots
+                total={SITE_TEMPLATES.length}
+                activeIndex={SITE_TEMPLATES.findIndex((t) => t.id === templateId)}
+                accent={accent}
+              />
+              <Text style={{ fontFamily: fonts.sans400, fontSize: 11.5, color: c.faint, flex: 1 }}>
+                Swipe the preview to switch layouts
               </Text>
               {hasUnsavedChanges ? (
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
@@ -1068,9 +1128,17 @@ export default function Portfolio() {
         onRequestClose={() => setFullScreenOpen(false)}
       >
         <View style={{ flex: 1, backgroundColor: template.dark ? "#090B10" : "#E3E3DB" }}>
-          {/* Modal Header Bar */}
-          <View
+          {/* Modal header — floats over the page as real frosted glass, so the
+              site keeps running underneath instead of being cropped by a bar. */}
+          <BlurView
+            intensity={Platform.OS === "android" ? 40 : 60}
+            tint={template.dark ? "dark" : "light"}
             style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              zIndex: 10,
               paddingTop: Math.max(insets.top, 14),
               paddingHorizontal: 16,
               paddingBottom: 12,
@@ -1078,8 +1146,14 @@ export default function Portfolio() {
               alignItems: "center",
               justifyContent: "space-between",
               borderBottomWidth: 1,
-              borderBottomColor: template.dark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)",
-              backgroundColor: template.dark ? "rgba(10,13,20,0.92)" : "rgba(235,232,223,0.92)",
+              borderBottomColor: template.dark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.08)",
+              // Android's blur is weaker; a wash keeps the text legible there.
+              backgroundColor:
+                Platform.OS === "android"
+                  ? template.dark
+                    ? "rgba(10,13,20,0.72)"
+                    : "rgba(235,232,223,0.72)"
+                  : "transparent",
             }}
           >
             <Press
@@ -1139,11 +1213,14 @@ export default function Portfolio() {
                 <View style={{ width: 36 }} />
               )}
             </View>
-          </View>
+          </BlurView>
 
           {/* Full-screen website scrollable view */}
           <ScrollView
-            contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 24) + 40 }}
+            contentContainerStyle={{
+              paddingTop: Math.max(insets.top, 14) + 60,
+              paddingBottom: Math.max(insets.bottom, 24) + 40,
+            }}
             showsVerticalScrollIndicator={false}
           >
             <NativeWebsitePreview
@@ -1195,6 +1272,45 @@ function CircleBtn({
       <Feather name={icon} size={15} color={c.muted} />
     </Press>
   );
+}
+
+/**
+ * The deck indicator under the preview: three dots, the live one stretched
+ * into a pill. It exists to make the swipe discoverable — a static hint line
+ * tells you it's possible, a moving indicator shows you it worked.
+ */
+function TemplateDots({
+  total,
+  activeIndex,
+  accent,
+}: {
+  total: number;
+  activeIndex: number;
+  accent: string;
+}) {
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+      {Array.from({ length: total }).map((_, i) => (
+        <Dot key={i} active={i === activeIndex} accent={accent} />
+      ))}
+    </View>
+  );
+}
+
+function Dot({ active, accent }: { active: boolean; accent: string }) {
+  const { c } = useTheme();
+  const p = useSharedValue(active ? 1 : 0);
+
+  useEffect(() => {
+    p.value = withSpring(active ? 1 : 0, { damping: 15, stiffness: 220, mass: 0.6 });
+  }, [active, p]);
+
+  const animated = useAnimatedStyle(() => ({
+    width: interpolate(p.value, [0, 1], [5, 16]),
+    backgroundColor: interpolateColor(p.value, [0, 1], [c.whisper, accent]),
+  }));
+
+  return <Animated.View style={[{ height: 5, borderRadius: 3 }, animated]} />;
 }
 
 /**
