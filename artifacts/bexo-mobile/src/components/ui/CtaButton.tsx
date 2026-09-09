@@ -33,15 +33,15 @@ export function CtaButton({ label, onPress, icon, disabled, loading }: CtaButton
       accessibilityState={{ disabled: inactive }}
       disabled={inactive}
       onPressIn={() => {
-        scale.value = withSpring(0.97, { damping: 18, stiffness: 320 });
+        scale.value = withSpring(0.97, { damping: 20, stiffness: 480, mass: 0.5 });
+        // On touch-down, not on release — the primary action of a screen should
+        // answer the finger before the handler has done anything.
+        if (!inactive) feel.commit();
       }}
       onPressOut={() => {
-        scale.value = withSpring(1, { damping: 18, stiffness: 320 });
+        scale.value = withSpring(1, { damping: 13, stiffness: 320, mass: 0.6 });
       }}
-      onPress={() => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        onPress();
-      }}
+      onPress={onPress}
       style={[
         {
           minHeight: 56,
@@ -58,7 +58,7 @@ export function CtaButton({ label, onPress, icon, disabled, loading }: CtaButton
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={c.faint} />
+        <Orbit size={22} color={c.faint} thickness={2} />
       ) : (
         <>
           {icon ? (

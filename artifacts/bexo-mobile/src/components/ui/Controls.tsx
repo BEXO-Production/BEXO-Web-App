@@ -5,8 +5,9 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
-import * as Haptics from "expo-haptics";
 import { Feather } from "@expo/vector-icons";
+import { Press } from "@/components/ui/Press";
+import { feel } from "@/lib/haptics";
 import { fonts } from "@/lib/fonts";
 import { ease } from "@/lib/motion";
 import { brand, radii } from "@/lib/theme";
@@ -27,7 +28,10 @@ export function Switch({ value, onToggle }: { value: boolean; onToggle: () => vo
       accessibilityRole="switch"
       accessibilityState={{ checked: value }}
       onPress={() => {
-        Haptics.selectionAsync().catch(() => {});
+        // A switch has two distinct states, so it gets two distinct feels:
+        // rigid going on, soft going off. You can tell which way it moved
+        // without looking at it.
+        feel.toggle(!value);
         onToggle();
       }}
       hitSlop={8}
@@ -71,11 +75,11 @@ export function Chip({
 }) {
   const { c } = useTheme();
   return (
-    <Pressable
-      onPress={() => {
-        Haptics.selectionAsync().catch(() => {});
-        onPress?.();
-      }}
+    <Press
+      onPress={onPress}
+      haptic="select"
+      accessibilityState={{ selected: active }}
+      restScale={active ? 1.03 : 1}
       style={{
         minHeight: 40,
         paddingHorizontal: 16,
@@ -95,7 +99,7 @@ export function Chip({
       >
         {label}
       </Text>
-    </Pressable>
+    </Press>
   );
 }
 
@@ -113,8 +117,10 @@ export function FilterPill({
 }) {
   const { c } = useTheme();
   return (
-    <Pressable
+    <Press
       onPress={onPress}
+      haptic="select"
+      accessibilityState={{ selected: active }}
       style={{
         paddingVertical: 9,
         paddingHorizontal: 15,
@@ -133,7 +139,7 @@ export function FilterPill({
       >
         {label}
       </Text>
-    </Pressable>
+    </Press>
   );
 }
 

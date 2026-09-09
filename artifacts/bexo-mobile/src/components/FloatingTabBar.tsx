@@ -1,9 +1,14 @@
 import { Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Animated, { useAnimatedStyle, withTiming } from "react-native-reanimated";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics";
+import { feel } from "@/lib/haptics";
 import { fonts } from "@/lib/fonts";
 import { ease } from "@/lib/motion";
 import { useTheme } from "@/lib/theme-context";
@@ -106,10 +111,15 @@ export function FloatingTabBar({ state, descriptors, navigation }: TabBarProps) 
 
           const onPress = () => {
             const event = navigation.emit({ type: "tabPress", target: route.key, canPreventDefault: true });
-            if (!focused && !event.defaultPrevented) {
-              Haptics.selectionAsync();
-              navigation.navigate(route.name);
+            if (event.defaultPrevented) return;
+            if (focused) {
+              // Re-tapping the tab you are on is not a navigation — a soft
+              // acknowledgement beats silence and beats a full selection tick.
+              feel.lift();
+              return;
             }
+            feel.select();
+            navigation.navigate(route.name);
           };
 
           return (
@@ -138,6 +148,8 @@ function TabPill({
   icon: keyof typeof Feather.glyphMap;
   onPress: () => void;
 }) {
+  const pressed = useSharedValue(0);
+
   const pillStyle = useAnimatedStyle(() => ({
     flex: withTiming(focused ? 1.5 : 1, { duration: 320, easing: ease.soft }),
   }));
@@ -145,11 +157,25 @@ function TabPill({
     maxWidth: withTiming(focused ? 90 : 0, { duration: 280, easing: ease.soft }),
     opacity: withTiming(focused ? 1 : 0, { duration: 200 }),
   }));
+  // The whole pill sinks under the finger; the icon leads it slightly, which
+  // reads as the glyph being what you actually pushed.
+  const sinkStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: 1 - 0.06 * pressed.value }],
+  }));
+  const iconStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: withSpring(focused ? 1 : 0.94, { damping: 12, stiffness: 260 }) }],
+  }));
 
   return (
-    <Animated.View style={pillStyle}>
+    <Animated.View style={[pillStyle, sinkStyle]}>
       <Pressable
         onPress={onPress}
+        onPressIn={() => {
+          pressed.value = withSpring(1, { damping: 20, stiffness: 480, mass: 0.5 });
+        }}
+        onPressOut={() => {
+          pressed.value = withSpring(0, { damping: 13, stiffness: 320, mass: 0.6 });
+        }}
         accessibilityRole="button"
         accessibilityLabel={label}
         accessibilityState={{ selected: focused }}
@@ -184,7 +210,9 @@ function TabPill({
             }}
           />
         ) : null}
-        <Feather name={icon} size={18} color={focused ? "#fff" : "rgba(255,255,255,0.55)"} />
+        <Animated.View style={iconStyle}>
+          <Feather name={icon} size={18} color={focused ? "#fff" : "rgba(255,255,255,0.55)"} />
+        </Animated.View>
         <Animated.Text
           numberOfLines={1}
           style={[
