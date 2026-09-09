@@ -4,7 +4,6 @@ import { Image, Pressable, Text, View, useWindowDimensions } from "react-native"
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   Easing,
-  FadeInDown,
   interpolate,
   runOnJS,
   useAnimatedStyle,
@@ -27,29 +26,21 @@ import { fonts } from "@/lib/fonts";
 /** Matches the design canvas's `introTimer` (6.2s per slide, `bxFillBar`). */
 const SLIDE_MS = 6200;
 
-/**
- * "02 ONBOARDING" screen, ported from the design canvas — including the
- * behavior my first pass at this screen dropped: the canvas auto-advances
- * through the four slides on a 6.2s timer like a story (`introTimer` in
- * support.js), with each dot filling left-to-right as it plays
- * (`bxFillBar 6.2s linear`), looping forever once started.
- *
- * The canvas's own loop never exits — it just repeats. Per the product ask,
- * this version hands off to sign-in once the story has played through all
- * four slides with no interaction at all, rather than looping indefinitely
- * on a screen the user isn't watching. Any interaction — tapping a dot, the
- * next arrow, Skip, or "Have a BEXO?" — stops autoplay for good and puts the
- * user back in control, matching the canvas's own comment that "tapping a
- * segment still overrides it."
- *
- * On top of dots/arrow/autoplay, the slide content also responds to a real
- * horizontal swipe (`Gesture.Pan`, not in the canvas — the canvas's own
- * pointer handler on this screen only does a 3D tilt, no slide-change
- * gesture): drag-follows the finger with rubber-band resistance past the
- * first/last slide, and releases into a swap or a spring-back based on
- * distance *or* flick velocity, whichever crosses first — so a fast short
- * flick advances just as reliably as a slow long drag.
- */
+/** Dynamic ambient lighting colors corresponding to each slide's theme */
+const SLIDE_AURAS: [string, string][] = [
+  ["rgba(47,107,255,0.24)", "rgba(47,107,255,0)"],
+  ["rgba(16,185,129,0.20)", "rgba(16,185,129,0)"],
+  ["rgba(139,92,246,0.22)", "rgba(139,92,246,0)"],
+  ["rgba(6,182,212,0.22)", "rgba(6,182,212,0)"],
+];
+
+const CHIP_ICONS: (keyof typeof Feather.glyphMap)[][] = [
+  ["globe", "layers", "zap"],
+  ["search", "eye", "inbox"],
+  ["cpu", "camera", "edit-3"],
+  ["share-2", "users", "external-link"],
+];
+
 export default function Onboarding() {
   const { c } = useTheme();
   const [index, setIndex] = useState(0);
@@ -62,8 +53,6 @@ export default function Onboarding() {
   useEffect(() => {
     if (!autoplay) return;
     const timer = setTimeout(() => {
-      // The canvas's story loops rather than handing off on its own — the
-      // user always chooses when to leave (Skip / Have a BEXO? / the FAB).
       setIndex((i) => (i >= SLIDES.length - 1 ? 0 : i + 1));
     }, SLIDE_MS);
     return () => clearTimeout(timer);
@@ -72,7 +61,7 @@ export default function Onboarding() {
   const stopAutoplay = () => setAutoplay(false);
 
   const advance = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     stopAutoplay();
     if (isLast) router.push("/(auth)/phone");
     else setIndex((i) => i + 1);
@@ -93,15 +82,9 @@ export default function Onboarding() {
   const dragX = useSharedValue(0);
   const DISTANCE_THRESHOLD = width * 0.22;
   const VELOCITY_THRESHOLD = 700;
-  // Belt-and-suspenders: guarantees at most one slide-change per physical
-  // gesture even if the underlying recognizer ever reports end-of-gesture
-  // more than once (seen on some web/RNGH-web builds; native's own
-  // recognizer already guarantees this, but the guard is free).
   const gestureConsumed = useSharedValue(false);
 
   const swipeGesture = Gesture.Pan()
-    // Only steal the gesture once the drag is clearly horizontal, so a
-    // vertical scroll/flick elsewhere on the screen isn't swallowed by this.
     .activeOffsetX([-12, 12])
     .failOffsetY([-14, 14])
     .onStart(() => {
@@ -110,8 +93,6 @@ export default function Onboarding() {
     .onUpdate((e) => {
       const atStartEdge = isFirst && e.translationX > 0;
       const atEndEdge = isLast && e.translationX < 0;
-      // Rubber-band: the drag still tracks the finger past either edge, just
-      // heavily damped, so it never feels like the gesture was ignored.
       dragX.value = atStartEdge || atEndEdge ? e.translationX * 0.32 : e.translationX;
     })
     .onEnd((e) => {
@@ -121,8 +102,6 @@ export default function Onboarding() {
         Math.abs(e.translationX) > DISTANCE_THRESHOLD || Math.abs(e.velocityX) > VELOCITY_THRESHOLD;
 
       if (pastThreshold && goingNext) {
-        // advance() itself already turns "swipe left past the last slide"
-        // into the hand-off to sign-in, same as tapping the arrow there.
         gestureConsumed.value = true;
         runOnJS(advance)();
       } else if (pastThreshold && !goingNext && !isFirst) {
@@ -134,21 +113,23 @@ export default function Onboarding() {
 
   const dragStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: dragX.value }],
-    // A faint fade while dragging hard — mirrors the resistance visually,
-    // not just physically — plus during the last-slide "no next slide"
-    // stretch, since there the drag itself is the only feedback.
     opacity: interpolate(Math.abs(dragX.value), [0, 140], [1, 0.92], "clamp"),
   }));
 
+  const currentAura = SLIDE_AURAS[index] || SLIDE_AURAS[0];
+  const currentIcons = CHIP_ICONS[index] || CHIP_ICONS[0];
+
   return (
     <Screen style={{ paddingHorizontal: 0 }} edges={["bottom"]}>
-      {/* radial accent bloom behind the header, per the canvas */}
+      {/* Dynamic ambient bloom behind the header matching active slide */}
       <LinearGradient
-        colors={["rgba(47,107,255,0.18)", "rgba(47,107,255,0)"]}
-        style={{ position: "absolute", left: 0, right: 0, top: 0, height: 320 }}
+        key={`aura-${index}`}
+        colors={currentAura}
+        style={{ position: "absolute", left: 0, right: 0, top: 0, height: 360 }}
       />
 
       <View style={{ flex: 1, paddingTop: 60 }}>
+        {/* Top Header Bar */}
         <View
           style={{
             flexDirection: "row",
@@ -166,7 +147,7 @@ export default function Onboarding() {
             <Text
               style={{
                 fontFamily: fonts.sans700,
-                fontSize: 10.5,
+                fontSize: 11,
                 letterSpacing: 3.6,
                 color: c.ink,
               }}
@@ -179,14 +160,14 @@ export default function Onboarding() {
           </Pressable>
         </View>
 
-        {/* chapter counter: "01 / 04" */}
+        {/* Chapter counter: "01 / 04" */}
         <View
           style={{
             flexDirection: "row",
             alignItems: "baseline",
             gap: 10,
             paddingHorizontal: 26,
-            paddingTop: 20,
+            paddingTop: 16,
           }}
         >
           <Text style={{ fontFamily: fonts.serif600Italic, fontSize: 26, color: c.ink }}>
@@ -204,24 +185,68 @@ export default function Onboarding() {
               <SceneArt index={index} />
             </View>
 
-            <View style={{ paddingHorizontal: 26, paddingTop: 8, gap: 14 }}>
-              <Rise key={`eyebrow-${index}`} duration={500} >
+            <View style={{ paddingHorizontal: 26, paddingTop: 6, gap: 10 }}>
+              <Rise key={`eyebrow-${index}`} duration={500}>
                 <Eyebrow>{slide.eyebrow}</Eyebrow>
               </Rise>
-              <Rise key={`title-${index}`} delay={50} duration={620} >
+              <Rise key={`title-${index}`} delay={50} duration={620}>
                 <Display>
                   {slide.title}
                   {"\n"}
                   <DisplayAccent>{slide.highlight}</DisplayAccent>
                 </Display>
               </Rise>
-              <Rise key={`body-${index}`} delay={140} duration={620} >
-                <Body style={{ fontSize: 14.5, lineHeight: 22, maxWidth: 300 }}>{slide.body}</Body>
+              <Rise key={`body-${index}`} delay={140} duration={620}>
+                <Body style={{ fontSize: 14, lineHeight: 21, maxWidth: 320 }}>{slide.body}</Body>
               </Rise>
+
+              {/* Satisfying Slide Feature Highlight Chips */}
+              {slide.chips && slide.chips.length > 0 && (
+                <Rise key={`chips-${index}`} delay={220} duration={600}>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 7, marginTop: 4 }}>
+                    {slide.chips.map((chip, idx) => (
+                      <View
+                        key={idx}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 5.5,
+                          paddingHorizontal: 11,
+                          paddingVertical: 5.5,
+                          borderRadius: 999,
+                          backgroundColor: c.panel,
+                          borderWidth: 1,
+                          borderColor: c.border,
+                          shadowColor: "#000",
+                          shadowOpacity: 0.05,
+                          shadowRadius: 6,
+                          elevation: 2,
+                        }}
+                      >
+                        <Feather
+                          name={currentIcons[idx] || "check"}
+                          size={11.5}
+                          color={c.accent}
+                        />
+                        <Text
+                          style={{
+                            fontFamily: fonts.sans500,
+                            fontSize: 11.5,
+                            color: c.ink,
+                          }}
+                        >
+                          {chip}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </Rise>
+              )}
             </View>
           </Animated.View>
         </GestureDetector>
 
+        {/* Bottom Bar: "Have a BEXO?", Progress Bars, and Expandable CTA */}
         <View
           style={{
             flexDirection: "row",
@@ -229,8 +254,8 @@ export default function Onboarding() {
             justifyContent: "space-between",
             gap: 14,
             paddingHorizontal: 26,
-            paddingTop: 14,
-            paddingBottom: 26,
+            paddingTop: 12,
+            paddingBottom: 24,
           }}
         >
           <Pressable onPress={goPhone} hitSlop={8}>
@@ -240,7 +265,8 @@ export default function Onboarding() {
           </Pressable>
 
           <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
-            <View style={{ flexDirection: "row", gap: 7 }}>
+            {/* Story Progress Bars */}
+            <View style={{ flexDirection: "row", gap: 6 }}>
               {SLIDES.map((_, i) => (
                 <Pressable
                   key={i}
@@ -251,7 +277,7 @@ export default function Onboarding() {
                   }}
                   hitSlop={10}
                   style={{
-                    width: i === index ? 44 : 22,
+                    width: i === index ? 40 : 20,
                     height: 4,
                     borderRadius: 3,
                     overflow: "hidden",
@@ -266,25 +292,41 @@ export default function Onboarding() {
               ))}
             </View>
 
+            {/* Satisfying Action Button: Smoothly expands on the last slide */}
             <Pressable
               onPress={advance}
               accessibilityRole="button"
               accessibilityLabel={isLast ? "Create my BEXO" : "Next"}
               style={{
-                width: 56,
-                height: 56,
+                flexDirection: "row",
+                height: 54,
+                paddingHorizontal: isLast ? 20 : 0,
+                width: isLast ? undefined : 54,
                 borderRadius: 999,
                 alignItems: "center",
                 justifyContent: "center",
                 backgroundColor: brand.accent,
                 shadowColor: brand.accent,
                 shadowOpacity: 0.75,
-                shadowRadius: 32,
-                shadowOffset: { width: 0, height: 14 },
+                shadowRadius: 28,
+                shadowOffset: { width: 0, height: 12 },
                 elevation: 10,
+                gap: 8,
               }}
             >
-              <Feather name={isLast ? "check" : "arrow-right"} size={19} color="#fff" />
+              {isLast ? (
+                <Text
+                  style={{
+                    fontFamily: fonts.sans700,
+                    fontSize: 14,
+                    color: "#fff",
+                    letterSpacing: 0.2,
+                  }}
+                >
+                  Create my BEXO
+                </Text>
+              ) : null}
+              <Feather name={isLast ? "arrow-right" : "arrow-right"} size={19} color="#fff" />
             </Pressable>
           </View>
         </View>
@@ -296,9 +338,7 @@ export default function Onboarding() {
 /**
  * One dot's fill. "done" dots are solid, "pending" dots are empty, and the
  * "active" dot sweeps left-to-right over `SLIDE_MS` while autoplay is
- * running — the `bxFillBar` story-progress read. Once the user takes control
- * (autoplay off), the active dot just shows as solid, like a plain position
- * marker rather than a countdown nobody asked for.
+ * running.
  */
 function ProgressFill({
   state,
@@ -322,8 +362,6 @@ function ProgressFill({
         progress.value = 1;
       }
     }
-    // Re-key on state identity, not just its string, so a slide re-becoming
-    // "active" (looping back to 0) restarts the fill from empty each time.
   }, [state, autoplay, progress]);
 
   const style = useAnimatedStyle(() => ({ width: `${progress.value * 100}%` }));

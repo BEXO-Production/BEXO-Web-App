@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Modal,
@@ -17,9 +17,11 @@ import * as WebBrowser from "expo-web-browser";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { Feather } from "@expo/vector-icons";
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { Screen } from "@/components/Screen";
 import { SectionLabel } from "@/components/ui/Controls";
 import { Rise } from "@/components/ui/Motion";
+import { ease } from "@/lib/motion";
 import { useProfile } from "@/lib/use-profile";
 import { useUpdateProfile } from "@/lib/profile-api";
 import { useOverlay } from "@/lib/overlay-context";
@@ -69,6 +71,16 @@ export default function Portfolio() {
   const [webViewKey, setWebViewKey] = useState(1);
   const [webViewLoading, setWebViewLoading] = useState(true);
   const [webViewFailed, setWebViewFailed] = useState(false);
+  const [previewCollapsed, setPreviewCollapsed] = useState(false);
+  const collapseProgress = useSharedValue(0);
+  const scrollRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    collapseProgress.value = withTiming(previewCollapsed ? 1 : 0, {
+      duration: 340,
+      easing: ease.soft,
+    });
+  }, [previewCollapsed, collapseProgress]);
 
   // Sync state whenever server data resolves
   useEffect(() => {
@@ -172,250 +184,297 @@ export default function Portfolio() {
     } catch {}
   }, [site, data?.user?.name]);
 
-  const viewportHeight = Math.min(Math.max(windowWidth * 1.08, 380), 480);
+  const viewportHeight = Math.min(Math.max(windowWidth * 0.92, 340), 420);
+
+  const viewportAnimatedStyle = useAnimatedStyle(() => ({
+    height: viewportHeight * (1 - collapseProgress.value),
+    opacity: 1 - collapseProgress.value,
+  }));
+
+  const chevronAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${collapseProgress.value * 180}deg` }],
+  }));
+
+  const revealPreview = useCallback(() => {
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
+    if (previewCollapsed) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      setPreviewCollapsed(false);
+    } else {
+      Haptics.selectionAsync().catch(() => {});
+    }
+  }, [previewCollapsed]);
 
   return (
     <Screen style={{ paddingHorizontal: 0 }} edges={["top"]}>
-      <ScrollView
-        contentContainerStyle={{
-          paddingHorizontal: layout.screenX,
-          paddingTop: 16,
-          paddingBottom: layout.navBarSpace + 40,
-          gap: 22,
-        }}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Header section with live domain pill and quick actions */}
-        <View style={{ gap: 14 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-            <View style={{ gap: 3 }}>
-              <Text
-                style={{
-                  fontFamily: fonts.sans700,
-                  fontSize: 10.5,
-                  letterSpacing: 2,
-                  textTransform: "uppercase",
-                  color: c.faint,
-                }}
-              >
-                Portfolio &amp; Layout
-              </Text>
-              <Text
-                style={{
-                  fontFamily: fonts.serif600,
-                  fontSize: 29,
-                  lineHeight: 34,
-                  letterSpacing: -0.8,
-                  color: c.ink,
-                }}
-              >
-                Website
-              </Text>
-            </View>
-
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-              {site ? (
-                <>
-                  <CircleBtn icon="copy" onPress={copyLiveLink} label="Copy link" />
-                  <CircleBtn icon="share-2" onPress={shareLiveSite} label="Share" />
-                  <CircleBtn icon="external-link" onPress={openLiveInBrowser} label="Open site" />
-                </>
-              ) : null}
-            </View>
-          </View>
-
-          {/* Subdomain pill banner */}
-          <Pressable
-            onPress={copyLiveLink}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-              paddingVertical: 10,
-              paddingHorizontal: 14,
-              borderRadius: 14,
-              backgroundColor: c.panel,
-              borderWidth: 1,
-              borderColor: c.border,
-            }}
-          >
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
-              <View
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: 4,
-                  backgroundColor: site ? c.success : c.faint,
-                }}
-              />
-              <Text style={{ fontFamily: fonts.mono500, fontSize: 13, color: c.ink }}>
-                {site ? `${site}` : "Draft · No subdomain claimed"}
-              </Text>
-            </View>
-
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-              <View
-                style={{
-                  paddingVertical: 3,
-                  paddingHorizontal: 8,
-                  borderRadius: 999,
-                  backgroundColor: site ? "rgba(14,159,93,0.12)" : c.deep,
-                }}
-              >
+      <View style={{ flex: 1 }}>
+        {/* ── PINNED ZONE — header, domain pill & live preview never scroll away ── */}
+        <View
+          style={{
+            paddingHorizontal: layout.screenX,
+            paddingTop: 16,
+            paddingBottom: 14,
+            gap: 14,
+            backgroundColor: c.paper,
+            borderBottomWidth: 1,
+            borderBottomColor: c.border,
+            zIndex: 2,
+            ...shadow.low,
+          }}
+        >
+          {/* Header section with live domain pill and quick actions */}
+          <View style={{ gap: 14 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <View style={{ gap: 3 }}>
                 <Text
                   style={{
                     fontFamily: fonts.sans700,
                     fontSize: 10.5,
-                    color: site ? c.success : c.faint,
-                    letterSpacing: 0.5,
+                    letterSpacing: 2,
+                    textTransform: "uppercase",
+                    color: c.faint,
                   }}
                 >
-                  {site ? "LIVE" : "DRAFT"}
+                  Portfolio &amp; Layout
+                </Text>
+                <Text
+                  style={{
+                    fontFamily: fonts.serif600,
+                    fontSize: 29,
+                    lineHeight: 34,
+                    letterSpacing: -0.8,
+                    color: c.ink,
+                  }}
+                >
+                  Website
                 </Text>
               </View>
-              <Feather name="chevron-right" size={14} color={c.faint} />
+
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                {site ? (
+                  <>
+                    <CircleBtn icon="copy" onPress={copyLiveLink} label="Copy link" />
+                    <CircleBtn icon="share-2" onPress={shareLiveSite} label="Share" />
+                    <CircleBtn icon="external-link" onPress={openLiveInBrowser} label="Open site" />
+                  </>
+                ) : null}
+              </View>
             </View>
-          </Pressable>
-        </View>
 
-        {/* ── BROWSER MOCKUP SHOWCASE ──────────────────────────────────────── */}
-        <Rise duration={380} style={{ gap: 10 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 2 }}>
-            <Text
-              style={{
-                fontFamily: fonts.sans700,
-                fontSize: 11,
-                letterSpacing: 1.5,
-                textTransform: "uppercase",
-                color: c.faint,
-              }}
-            >
-              Live Preview
-            </Text>
-            <Text
-              style={{
-                fontFamily: fonts.mono500,
-                fontSize: 11,
-                color: c.muted,
-              }}
-            >
-              {site ?? "bexo-demo.mybexo.cyou"}
-            </Text>
-          </View>
-
-          <View
-            style={{
-              borderRadius: 22,
-              overflow: "hidden",
-              borderWidth: 1,
-              borderColor: dark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.12)",
-              backgroundColor: template.dark ? "#090B10" : "#E3E3DB",
-              shadowColor: "#000",
-              shadowOpacity: dark ? 0.6 : 0.16,
-              shadowRadius: 26,
-              shadowOffset: { width: 0, height: 12 },
-              elevation: 10,
-            }}
-          >
-            {/* macOS Chrome Header Bar */}
-            <View
+            {/* Subdomain pill banner */}
+            <Pressable
+              onPress={copyLiveLink}
               style={{
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "space-between",
-                paddingHorizontal: 14,
                 paddingVertical: 10,
-                backgroundColor: dark ? "rgba(18,22,34,0.96)" : "#ECE8DF",
-                borderBottomWidth: 1,
-                borderBottomColor: dark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)",
-                gap: 10,
+                paddingHorizontal: 14,
+                borderRadius: 14,
+                backgroundColor: c.panel,
+                borderWidth: 1,
+                borderColor: c.border,
               }}
             >
-              {/* Traffic light dots */}
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                <View style={{ width: 9.5, height: 9.5, borderRadius: 5, backgroundColor: "#FF5F56" }} />
-                <View style={{ width: 9.5, height: 9.5, borderRadius: 5, backgroundColor: "#FFBD2E" }} />
-                <View style={{ width: 9.5, height: 9.5, borderRadius: 5, backgroundColor: "#27C93F" }} />
-              </View>
-
-              {/* URL Address Bar */}
-              <View
-                style={{
-                  flex: 1,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 6,
-                  height: 28,
-                  borderRadius: 8,
-                  paddingHorizontal: 10,
-                  backgroundColor: dark ? "rgba(255,255,255,0.07)" : "#FFFFFF",
-                  borderWidth: 1,
-                  borderColor: dark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)",
-                }}
-              >
-                <Feather name="lock" size={10.5} color={c.success} />
-                <Text
-                  numberOfLines={1}
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
+                <View
                   style={{
-                    fontFamily: fonts.mono500,
-                    fontSize: 11,
-                    color: dark ? "rgba(255,255,255,0.85)" : "#222",
-                    maxWidth: 160,
+                    width: 8,
+                    height: 8,
+                    borderRadius: 4,
+                    backgroundColor: site ? c.success : c.faint,
                   }}
-                >
-                  {site ? `https://${site}` : "atbexo.com"}
+                />
+                <Text style={{ fontFamily: fonts.mono500, fontSize: 13, color: c.ink }}>
+                  {site ? `${site}` : "Draft · No subdomain claimed"}
                 </Text>
               </View>
 
-              {/* View mode toggle & expand icon */}
               <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                <Pressable
-                  onPress={() => {
-                    Haptics.selectionAsync().catch(() => {});
-                    setViewMode((m) => (m === "studio" ? "live" : "studio"));
-                  }}
+                <View
                   style={{
-                    paddingVertical: 4,
+                    paddingVertical: 3,
                     paddingHorizontal: 8,
-                    borderRadius: 6,
-                    backgroundColor: dark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.07)",
+                    borderRadius: 999,
+                    backgroundColor: site ? "rgba(14,159,93,0.12)" : c.deep,
                   }}
                 >
                   <Text
                     style={{
                       fontFamily: fonts.sans700,
-                      fontSize: 10,
-                      color: viewMode === "live" ? c.accentSoft : c.muted,
-                      textTransform: "uppercase",
+                      fontSize: 10.5,
+                      color: site ? c.success : c.faint,
+                      letterSpacing: 0.5,
                     }}
                   >
-                    {viewMode === "live" ? "Live Web" : "Studio"}
+                    {site ? "LIVE" : "DRAFT"}
                   </Text>
-                </Pressable>
-
-                <Pressable
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-                    setFullScreenOpen(true);
-                  }}
-                  hitSlop={6}
-                  style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: 7,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    backgroundColor: dark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.07)",
-                  }}
-                >
-                  <Feather name="maximize-2" size={12} color={c.ink} />
-                </Pressable>
+                </View>
+                <Feather name="chevron-right" size={14} color={c.faint} />
               </View>
+            </Pressable>
+          </View>
+
+          {/* ── BROWSER MOCKUP SHOWCASE ──────────────────────────────────────── */}
+          <View style={{ gap: 10 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 2 }}>
+              <Text
+                style={{
+                  fontFamily: fonts.sans700,
+                  fontSize: 11,
+                  letterSpacing: 1.5,
+                  textTransform: "uppercase",
+                  color: c.faint,
+                }}
+              >
+                Live Preview
+              </Text>
+              <Text
+                style={{
+                  fontFamily: fonts.mono500,
+                  fontSize: 11,
+                  color: c.muted,
+                }}
+              >
+                {site ?? "bexo-demo.mybexo.cyou"}
+              </Text>
             </View>
 
-            {/* Viewport Content */}
-            <View style={{ height: viewportHeight, overflow: "hidden" }}>
+            <View
+              style={{
+                borderRadius: 22,
+                overflow: "hidden",
+                borderWidth: 1,
+                borderColor: dark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.12)",
+                backgroundColor: template.dark ? "#090B10" : "#E3E3DB",
+                shadowColor: "#000",
+                shadowOpacity: dark ? 0.6 : 0.16,
+                shadowRadius: 26,
+                shadowOffset: { width: 0, height: 12 },
+                elevation: 10,
+              }}
+            >
+              {/* macOS Chrome Header Bar */}
+              <Pressable
+                onPress={() => {
+                  Haptics.selectionAsync().catch(() => {});
+                  setPreviewCollapsed((v) => !v);
+                }}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  paddingHorizontal: 14,
+                  paddingVertical: 10,
+                  backgroundColor: dark ? "rgba(18,22,34,0.96)" : "#ECE8DF",
+                  borderBottomWidth: previewCollapsed ? 0 : 1,
+                  borderBottomColor: dark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)",
+                  gap: 10,
+                }}
+              >
+                {/* Traffic light dots */}
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <View style={{ width: 9.5, height: 9.5, borderRadius: 5, backgroundColor: "#FF5F56" }} />
+                  <View style={{ width: 9.5, height: 9.5, borderRadius: 5, backgroundColor: "#FFBD2E" }} />
+                  <View style={{ width: 9.5, height: 9.5, borderRadius: 5, backgroundColor: "#27C93F" }} />
+                </View>
+
+                {/* URL Address Bar */}
+                <View
+                  style={{
+                    flex: 1,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 6,
+                    height: 28,
+                    borderRadius: 8,
+                    paddingHorizontal: 10,
+                    backgroundColor: dark ? "rgba(255,255,255,0.07)" : "#FFFFFF",
+                    borderWidth: 1,
+                    borderColor: dark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)",
+                  }}
+                >
+                  <Feather name="lock" size={10.5} color={c.success} />
+                  <Text
+                    numberOfLines={1}
+                    style={{
+                      fontFamily: fonts.mono500,
+                      fontSize: 11,
+                      color: dark ? "rgba(255,255,255,0.85)" : "#222",
+                      maxWidth: 160,
+                    }}
+                  >
+                    {site ? `https://${site}` : "atbexo.com"}
+                  </Text>
+                </View>
+
+                {/* View mode toggle, collapse chevron & expand icon */}
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Pressable
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      Haptics.selectionAsync().catch(() => {});
+                      setViewMode((m) => (m === "studio" ? "live" : "studio"));
+                    }}
+                    style={{
+                      paddingVertical: 4,
+                      paddingHorizontal: 8,
+                      borderRadius: 6,
+                      backgroundColor: dark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.07)",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontFamily: fonts.sans700,
+                        fontSize: 10,
+                        color: viewMode === "live" ? c.accentSoft : c.muted,
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      {viewMode === "live" ? "Live Web" : "Studio"}
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                      setFullScreenOpen(true);
+                    }}
+                    hitSlop={6}
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 7,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: dark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.07)",
+                    }}
+                  >
+                    <Feather name="maximize-2" size={12} color={c.ink} />
+                  </Pressable>
+
+                  <View
+                    hitSlop={6}
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 7,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: dark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.07)",
+                    }}
+                  >
+                    <Animated.View style={chevronAnimatedStyle}>
+                      <Feather name="chevron-up" size={13} color={c.ink} />
+                    </Animated.View>
+                  </View>
+                </View>
+              </Pressable>
+
+              {/* Viewport Content */}
+              <Animated.View style={[{ overflow: "hidden" }, viewportAnimatedStyle]}>
               {viewMode === "live" && Platform.OS !== "web" ? (
                 <View style={{ flex: 1, backgroundColor: template.dark ? "#0B0D14" : "#FAF7F1" }}>
                   <WebView
@@ -497,25 +556,41 @@ export default function Portfolio() {
                   onOpenFull={() => setFullScreenOpen(true)}
                 />
               )}
+            </Animated.View>
+          </View>
+
+          {!previewCollapsed ? (
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 4 }}>
+              <Text style={{ fontFamily: fonts.sans400, fontSize: 11.5, color: c.faint }}>
+                Tap maximize to test live scroll and full layout
+              </Text>
+              {hasUnsavedChanges ? (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: "#F59E0B" }} />
+                  <Text style={{ fontFamily: fonts.sans600, fontSize: 11, color: "#F59E0B" }}>
+                    Unsaved tweaks
+                  </Text>
+                </View>
+              ) : null}
             </View>
-          </View>
+          ) : null}
+        </View>
+      </View>
 
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 4 }}>
-            <Text style={{ fontFamily: fonts.sans400, fontSize: 11.5, color: c.faint }}>
-              Tap maximize to test live scroll and full layout
-            </Text>
-            {hasUnsavedChanges ? (
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: "#F59E0B" }} />
-                <Text style={{ fontFamily: fonts.sans600, fontSize: 11, color: "#F59E0B" }}>
-                  Unsaved tweaks
-                </Text>
-              </View>
-            ) : null}
-          </View>
-        </Rise>
-
+      {/* ── SCROLLABLE ZONE — template, colours, type & background live below the pinned preview ── */}
+      <ScrollView
+        ref={scrollRef}
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          paddingHorizontal: layout.screenX,
+          paddingTop: 18,
+          paddingBottom: layout.navBarSpace + 60,
+          gap: 22,
+        }}
+        showsVerticalScrollIndicator={false}
+      >
         {/* ── PAGE TEMPLATE SELECTOR (Faithful to Image 1) ─────────────────── */}
+        <Rise duration={340}>
         <View
           style={{
             borderRadius: 20,
@@ -709,6 +784,7 @@ export default function Portfolio() {
             </Text>
           </Pressable>
         </View>
+        </Rise>
 
         {/* ── ACCENT COLOUR ────────────────────────────────────────────────── */}
         <View style={{ gap: 12 }}>
@@ -889,6 +965,36 @@ export default function Portfolio() {
           </Text>
         </Pressable>
       </ScrollView>
+      </View>
+
+      {/* ── FLOATING QUICK-ACCESS BUTTON — jump back to the pinned preview,
+          re-expanding it first if it's been collapsed for more editing room ── */}
+      <Pressable
+        onPress={revealPreview}
+        accessibilityLabel="Back to live preview"
+        hitSlop={6}
+        style={{
+          position: "absolute",
+          left: 20,
+          bottom: Math.max(insets.bottom, 12) + 78,
+          width: 52,
+          height: 52,
+          borderRadius: 26,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: accent,
+          borderWidth: 1,
+          borderColor: "rgba(255,255,255,0.25)",
+          shadowColor: accent,
+          shadowOpacity: 0.45,
+          shadowRadius: 16,
+          shadowOffset: { width: 0, height: 8 },
+          elevation: 10,
+          zIndex: 99,
+        }}
+      >
+        <Feather name={previewCollapsed ? "eye" : "settings"} size={20} color="#fff" />
+      </Pressable>
 
       {/* ── FULL-SCREEN INTERACTIVE PREVIEW MODAL ─────────────────────────── */}
       <Modal
