@@ -159,7 +159,7 @@ export default function Home() {
     role: data?.profile?.headline ?? undefined,
     site: site ?? undefined,
     email: data?.user?.email ?? undefined,
-    phone: data?.user?.phone ? `+${data.user.phone}` : undefined,
+    phone: data?.user?.phone ? `+${data?.user?.phone}` : undefined,
     cardUrl: data?.user?.cardUrl,
     photoUrl: data?.user?.photoUrl,
   });
