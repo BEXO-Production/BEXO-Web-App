@@ -1,3 +1,5 @@
+import { Platform } from "react-native";
+import { uploadAsync, FileSystemUploadType } from "expo-file-system/legacy";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
 import { apiUrl } from "./api-client";
@@ -169,15 +171,35 @@ export async function uploadResume(file: {
   mimeType: string;
 }): Promise<ResumeUploadResult> {
   const token = await getAccessToken();
-  const form = new FormData();
-  // React Native's fetch/FormData accepts this shape (not a real Blob) for file uploads.
-  form.append("resume", {
-    uri: file.uri,
-    name: file.name,
-    type: file.mimeType,
-  } as unknown as Blob);
+  const url = apiUrl("/api/profile/resume");
 
-  const res = await fetch(apiUrl("/api/profile/resume"), {
+  if (Platform.OS !== "web") {
+    const res = await uploadAsync(url, file.uri, {
+      fieldName: "resume",
+      httpMethod: "POST",
+      uploadType: FileSystemUploadType.MULTIPART,
+      mimeType: file.mimeType || "application/pdf",
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+
+    let data: any = {};
+    try {
+      data = JSON.parse(res.body || "{}");
+    } catch {
+      /* ignore */
+    }
+
+    if (res.status < 200 || res.status >= 300) {
+      throw new Error(data?.error || "Failed to upload resume");
+    }
+    return data;
+  }
+
+  const form = new FormData();
+  const blob = await fetch(file.uri).then((r) => r.blob());
+  form.append("resume", blob, file.name || "resume.pdf");
+
+  const res = await fetch(url, {
     method: "POST",
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     body: form,
@@ -220,10 +242,35 @@ export async function uploadFile(file: {
   mimeType: string;
 }): Promise<{ url: string }> {
   const token = await getAccessToken();
-  const form = new FormData();
-  form.append("file", { uri: file.uri, name: file.name, type: file.mimeType } as unknown as Blob);
+  const url = apiUrl("/api/profile/upload");
 
-  const res = await fetch(apiUrl("/api/profile/upload"), {
+  if (Platform.OS !== "web") {
+    const res = await uploadAsync(url, file.uri, {
+      fieldName: "file",
+      httpMethod: "POST",
+      uploadType: FileSystemUploadType.MULTIPART,
+      mimeType: file.mimeType || "image/jpeg",
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+
+    let data: any = {};
+    try {
+      data = JSON.parse(res.body || "{}");
+    } catch {
+      /* ignore */
+    }
+
+    if (res.status < 200 || res.status >= 300) {
+      throw new Error(data?.error || "Failed to upload file");
+    }
+    return data;
+  }
+
+  const form = new FormData();
+  const blob = await fetch(file.uri).then((r) => r.blob());
+  form.append("file", blob, file.name || "file.jpg");
+
+  const res = await fetch(url, {
     method: "POST",
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     body: form,
